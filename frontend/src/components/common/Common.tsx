@@ -1,0 +1,6 @@
+import { Chip, Dialog, DialogActions, DialogContent, DialogTitle, Button, Card, CardContent, Grid, Typography } from '@mui/material';
+import React from 'react';
+export const StatusChip=({status}:{status:string})=><Chip label={status} color='primary' size='small'/>;
+export const ConfirmDialog=({open,title,onClose,onConfirm}:{open:boolean;title:string;onClose:()=>void;onConfirm:()=>void})=><Dialog open={open} onClose={onClose}><DialogTitle>{title}</DialogTitle><DialogActions><Button onClick={onClose}>Cancel</Button><Button onClick={onConfirm} variant='contained'>Confirm</Button></DialogActions></Dialog>;
+export const FormModal=({open,title,children,onClose}:{open:boolean;title:string;children:React.ReactNode;onClose:()=>void})=><Dialog open={open} onClose={onClose} fullWidth><DialogTitle>{title}</DialogTitle><DialogContent>{children}</DialogContent></Dialog>;
+export const InfoCard=({title,data}:{title:string;data:Record<string,any>})=><Card><CardContent><Typography variant='h6'>{title}</Typography><Grid container spacing={1}>{Object.entries(data).map(([k,v])=><Grid item xs={6} key={k}><Typography variant='caption'>{k}</Typography><Typography>{String(v??'-')}</Typography></Grid>)}</Grid></CardContent></Card>;
