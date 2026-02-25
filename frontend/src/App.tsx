@@ -1,6 +1,7 @@
 import { AppBar, Box, Button, Container, Toolbar } from '@mui/material';
 import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import {
+  CustomerDetailPage,
   CustomersPage,
   DashboardPage,
   GoodTypesPage,
@@ -27,6 +28,11 @@ const ShipmentWrap = () => {
   return <ShipmentDetailPage id={id} />;
 };
 
+const CustomerWrap = () => {
+  const { id = '0' } = useParams();
+  return <CustomerDetailPage id={id} />;
+};
+
 export const App = () => (
   <Box>
     <AppBar position='static'>
@@ -50,6 +56,7 @@ export const App = () => (
         <Route path='/login' element={<LoginPage />} />
         <Route path='/' element={<DashboardPage />} />
         <Route path='/customers' element={<CustomersPage />} />
+        <Route path='/customers/:id' element={<CustomerWrap />} />
         <Route path='/warehouses' element={<WarehousesPage />} />
         <Route path='/good-types' element={<GoodTypesPage />} />
         <Route path='/goods' element={<GoodsPage />} />

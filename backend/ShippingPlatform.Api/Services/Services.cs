@@ -124,7 +124,7 @@ public interface IWhatsAppSender { Task<(bool ok, string? err)> SendAsync(string
 public class StubWhatsAppSender : IWhatsAppSender { public Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null) => Task.FromResult<(bool, string?)>((true, null)); }
 
 public interface IExportService { Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default); }
-public class ExportService(AppDbContext db, IBlobStorageService blob) : IExportService
+public class ExportService(AppDbContext db, IBlobStorageService blob, IConfiguration cfg) : IExportService
 {
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
@@ -139,7 +139,8 @@ public class ExportService(AppDbContext db, IBlobStorageService blob) : IExportS
         await using var ms = new MemoryStream(Encoding.UTF8.GetBytes(text));
         var ext = format.ToLower() == "vcf" ? "vcf" : "csv";
         var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}." + ext;
-        var (_, url) = await blob.UploadAsync("exports", $"group-helper.{ext}", ms, "text/plain", key, ct);
+        var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
+        var (_, url) = await blob.UploadAsync(container, $"group-helper.{ext}", ms, "text/plain", key, ct);
         return url;
     }
 }
