@@ -8,20 +8,30 @@ using System.Text;
 namespace ShippingPlatform.Api.Services;
 
 public interface ITokenService { string Create(AdminUser user); }
-public class TokenService(IConfiguration cfg) : ITokenService { public string Create(AdminUser user) => Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user.Id}:{user.Email}:{cfg["Auth:Secret"] ?? "dev-secret"}")); }
+public class TokenService(IConfiguration cfg) : ITokenService
+{
+    public string Create(AdminUser user) => Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user.Id}:{user.Email}:{cfg["Auth:Secret"] ?? "dev-secret"}"));
+}
 
-public interface IBlobStorageService { Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, CancellationToken ct = default); }
+public interface IBlobStorageService { Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default); }
 public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
 {
-    public async Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, CancellationToken ct = default)
+    public async Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default)
     {
         var conn = cfg["AzureBlob:ConnectionString"];
-        if (string.IsNullOrWhiteSpace(conn)) return ($"local/{Guid.NewGuid()}-{fileName}", $"https://public.local/{fileName}");
+        var ext = Path.GetExtension(fileName);
+        var defaultFolder = container == (cfg["AzureBlob:ExportsContainer"] ?? "exports")
+            ? $"exports/reports/{DateTime.UtcNow:yyyy/MM}"
+            : $"media/packages/0/other/{DateTime.UtcNow:yyyy/MM}";
+        var blobKey = forcedBlobKey ?? $"{defaultFolder}/{Guid.NewGuid()}{ext}";
+
+        if (string.IsNullOrWhiteSpace(conn))
+            return (blobKey, $"https://public.local/{blobKey}");
+
         var service = new BlobServiceClient(conn);
         var c = service.GetBlobContainerClient(container);
         await c.CreateIfNotExistsAsync(cancellationToken: ct);
         await c.SetAccessPolicyAsync(Azure.Storage.Blobs.Models.PublicAccessType.Blob, cancellationToken: ct);
-        var blobKey = $"{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}-{fileName}";
         var blob = c.GetBlobClient(blobKey);
         await blob.UploadAsync(stream, new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType }, cancellationToken: ct);
         return (blobKey, blob.Uri.ToString());
@@ -53,17 +63,24 @@ public class PricingService(AppDbContext db) : IPricingService
         var goodIds = package.Items.Select(x => x.GoodId).Distinct().ToList();
         var goods = await db.Goods.Include(x => x.GoodType).Where(x => goodIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
         var active = await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active) ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerM3 = 1, Currency = "EUR" };
+
         package.TotalWeightKg = package.Items.Sum(x => x.WeightKg * x.Quantity);
         package.TotalVolumeM3 = package.Items.Sum(x => x.VolumeM3 * x.Quantity);
+
         decimal rateKg = active.DefaultRatePerKg, rateM3 = active.DefaultRatePerM3;
         foreach (var i in package.Items)
         {
             var g = goods[i.GoodId];
-            rateKg = g.RatePerKgOverride ?? g.GoodType.RatePerKg ?? rateKg;
-            rateM3 = g.RatePerM3Override ?? g.GoodType.RatePerM3 ?? rateM3;
-            i.LineCharge = Math.Max(i.WeightKg * i.Quantity * rateKg, i.VolumeM3 * i.Quantity * rateM3);
+            var itemRateKg = g.RatePerKgOverride ?? g.GoodType.RatePerKg ?? active.DefaultRatePerKg;
+            var itemRateM3 = g.RatePerM3Override ?? g.GoodType.RatePerM3 ?? active.DefaultRatePerM3;
+            i.LineCharge = Math.Max(i.WeightKg * i.Quantity * itemRateKg, i.VolumeM3 * i.Quantity * itemRateM3);
+            rateKg = itemRateKg;
+            rateM3 = itemRateM3;
         }
-        package.AppliedRatePerKg = rateKg; package.AppliedRatePerM3 = rateM3; package.Currency = active.Currency;
+
+        package.AppliedRatePerKg = rateKg;
+        package.AppliedRatePerM3 = rateM3;
+        package.Currency = active.Currency;
         package.ChargeAmount = Math.Max(package.TotalWeightKg * rateKg, package.TotalVolumeM3 * rateM3);
     }
 }
@@ -77,12 +94,13 @@ public interface IPhotoComplianceService
 public class PhotoComplianceService(AppDbContext db) : IPhotoComplianceService
 {
     public async Task<List<MissingGateItem>> MissingForShipmentDepartureAsync(int shipmentId) => await MissingByStage(shipmentId, MediaStage.Departure, p => true);
-    public async Task<List<MissingGateItem>> MissingForShipmentCloseAsync(int shipmentId) => await MissingByStage(shipmentId, MediaStage.Arrival, p => p.Status == PackageStatus.HandedOut);
+    public async Task<List<MissingGateItem>> MissingForShipmentCloseAsync(int shipmentId) => await MissingByStage(shipmentId, MediaStage.Arrival, p => p.Status == PackageStatus.HandedOut || p.Status == PackageStatus.Cancelled);
     public async Task<List<MissingGateItem>> MissingForPackageHandoutAsync(int packageId)
     {
         var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).FirstAsync(x => x.Id == packageId);
         return p.Media.Any(m => m.Stage == MediaStage.Arrival) ? [] : [new MissingGateItem(p.Id, p.Customer.CustomerRef, MediaStage.Arrival)];
     }
+
     private async Task<List<MissingGateItem>> MissingByStage(int shipmentId, MediaStage stage, Func<Package, bool> finalized)
     {
         var ps = await db.Packages.Include(x => x.Customer).Include(x => x.Media).Where(x => x.ShipmentId == shipmentId).ToListAsync();
@@ -99,13 +117,18 @@ public class ExportService(AppDbContext db, IBlobStorageService blob) : IExportS
 {
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
-        var customers = await db.Customers.Include(x => x.WhatsAppConsent).Where(x => x.IsActive && x.WhatsAppConsent != null && (x.WhatsAppConsent.OptInStatusUpdates || x.WhatsAppConsent.OptInArrivalPhotos || x.WhatsAppConsent.OptInDeparturePhotos)).ToListAsync(ct);
+        var customers = await db.Customers.Include(x => x.WhatsAppConsent)
+            .Where(x => x.IsActive && x.WhatsAppConsent != null && (x.WhatsAppConsent.OptInStatusUpdates || x.WhatsAppConsent.OptInArrivalPhotos || x.WhatsAppConsent.OptInDeparturePhotos))
+            .ToListAsync(ct);
+
         var text = format.ToLower() == "vcf"
             ? string.Join("\n", customers.Select(c => $"BEGIN:VCARD\nVERSION:3.0\nFN:{c.Name}\nTEL:{c.PrimaryPhone}\nEND:VCARD"))
             : "name,phone\n" + string.Join("\n", customers.Select(c => $"\"{c.Name}\",\"{c.PrimaryPhone}\""));
+
         await using var ms = new MemoryStream(Encoding.UTF8.GetBytes(text));
         var ext = format.ToLower() == "vcf" ? "vcf" : "csv";
-        var (_, url) = await blob.UploadAsync("exports", $"group-helper-{DateTime.UtcNow:yyyyMMddHHmmss}.{ext}", ms, "text/plain", ct);
+        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}." + ext;
+        var (_, url) = await blob.UploadAsync("exports", $"group-helper.{ext}", ms, "text/plain", key, ct);
         return url;
     }
 }

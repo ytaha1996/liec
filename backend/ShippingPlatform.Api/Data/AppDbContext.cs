@@ -27,6 +27,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Customer>().HasIndex(x => x.CustomerRef).IsUnique();
         modelBuilder.Entity<Customer>().HasOne(x => x.WhatsAppConsent).WithOne(x => x.Customer).HasForeignKey<WhatsAppConsent>(x => x.CustomerId);
         modelBuilder.Entity<Warehouse>().HasIndex(x => x.Code).IsUnique();
+        modelBuilder.Entity<Shipment>().HasIndex(x => x.RefCode).IsUnique();
         modelBuilder.Entity<SupplyOrder>().HasIndex(x => x.PackageId).IsUnique();
         modelBuilder.Entity<ShipmentSequence>().HasIndex(x => new { x.OriginWarehouseCode, x.Year }).IsUnique();
     }
