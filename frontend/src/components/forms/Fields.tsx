@@ -1,0 +1,6 @@
+import { Controller, Control } from 'react-hook-form';
+import { MenuItem, Switch, TextField } from '@mui/material';
+export const FormTextField = ({name, control, label}:{name:string;control:Control<any>;label:string}) => <Controller name={name} control={control} render={({field,fieldState})=><TextField fullWidth margin='dense' label={label} {...field} error={!!fieldState.error} helperText={fieldState.error?.message} />} />;
+export const FormSelect = ({name, control, label, options}:{name:string;control:Control<any>;label:string;options:{label:string;value:any}[]}) => <Controller name={name} control={control} render={({field})=><TextField select fullWidth margin='dense' label={label} {...field}>{options.map(o=><MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}</TextField>} />;
+export const FormSwitch = ({name, control,label}:{name:string;control:Control<any>;label:string}) => <Controller name={name} control={control} render={({field})=><><span>{label}</span><Switch checked={!!field.value} onChange={(_,v)=>field.onChange(v)} /></>} />;
+export const FormDateInput = ({name, control, label}:{name:string;control:Control<any>;label:string}) => <Controller name={name} control={control} render={({field})=><TextField type='date' fullWidth margin='dense' label={label} InputLabelProps={{shrink:true}} {...field}/>} />;
