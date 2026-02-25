@@ -1,5 +1,8 @@
+using System.Text;
 using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Models;
 using ShippingPlatform.Api.Services;
@@ -20,6 +23,22 @@ if (!string.IsNullOrWhiteSpace(conn))
 else
     builder.Services.AddDbContext<AppDbContext>(o => o.UseInMemoryDatabase("shipping"));
 
+var secret = builder.Configuration["Auth:Secret"] ?? "dev-secret-super-long";
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    });
+builder.Services.AddAuthorization();
+
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 builder.Services.AddScoped<IRefCodeService, RefCodeService>();
@@ -27,23 +46,14 @@ builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<IPhotoComplianceService, PhotoComplianceService>();
 builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
+builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
 
 var app = builder.Build();
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
 
-app.Use(async (ctx, next) =>
-{
-    var anon = ctx.Request.Path.StartsWithSegments("/api/auth/login") || ctx.Request.Path.StartsWithSegments("/swagger");
-    if (anon) { await next(); return; }
-    if (!ctx.Request.Headers.TryGetValue("Authorization", out var h) || !h.ToString().StartsWith("Bearer "))
-    {
-        ctx.Response.StatusCode = 401;
-        await ctx.Response.WriteAsJsonAsync(new { code = "UNAUTHORIZED", message = "Missing Bearer token." });
-        return;
-    }
-    await next();
-});
-app.MapControllers();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers().RequireAuthorization();
 
 using (var scope = app.Services.CreateScope())
 {

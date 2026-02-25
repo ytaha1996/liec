@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
@@ -10,6 +11,7 @@ namespace ShippingPlatform.Api.Controllers;
 [Route("api/auth")]
 public class AuthController(AppDbContext db, ITokenService tokens) : ControllerBase
 {
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login(LoginRequest request)
     {

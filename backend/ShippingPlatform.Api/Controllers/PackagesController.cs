@@ -8,22 +8,39 @@ using ShippingPlatform.Api.Services;
 namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
-public class PackagesController(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg) : ControllerBase
+public class PackagesController(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions) : ControllerBase
 {
     [HttpPost("api/shipments/{shipmentId:int}/packages")]
-    public async Task<IActionResult> Create(int shipmentId, Package input)
+    public async Task<IActionResult> Create(int shipmentId, CreatePackageRequest input)
     {
-        input.ShipmentId = shipmentId;
-        db.Packages.Add(input);
+        var package = new Package
+        {
+            ShipmentId = shipmentId,
+            CustomerId = input.CustomerId,
+            ProvisionMethod = input.ProvisionMethod,
+            SupplyOrderId = input.SupplyOrderId,
+            Status = PackageStatus.Draft
+        };
+        db.Packages.Add(package);
         await db.SaveChangesAsync();
-        return Created($"/api/packages/{input.Id}", input);
+        return Created($"/api/packages/{package.Id}", package.ToDto());
     }
 
     [HttpGet("api/packages")]
-    public async Task<IActionResult> List() => Ok(await db.Packages.Include(x => x.Items).ToListAsync());
+    public async Task<IActionResult> List() => Ok((await db.Packages.Include(x => x.Items).ToListAsync()).Select(x => x.ToDto()));
 
     [HttpGet("api/packages/{id:int}")]
-    public async Task<IActionResult> Get(int id) => Ok(await db.Packages.Include(x => x.Items).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id));
+    public async Task<IActionResult> Get(int id)
+    {
+        var p = await db.Packages.Include(x => x.Items).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        return Ok(new
+        {
+            package = p.ToDto(),
+            items = p.Items.Select(i => i.ToDto()),
+            media = p.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes })
+        });
+    }
 
     [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => SetStatus(id, PackageStatus.Received);
 
@@ -32,10 +49,11 @@ public class PackagesController(AppDbContext db, IPricingService pricing, IPhoto
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return NotFound();
+        if (!transitions.CanMove(p.Status, PackageStatus.Packed)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {p.Status} to Packed." });
         p.Status = PackageStatus.Packed;
         await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
-        return Ok(p);
+        return Ok(p.ToDto());
     }
 
     [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => SetStatus(id, PackageStatus.ReadyToShip);
@@ -47,9 +65,10 @@ public class PackagesController(AppDbContext db, IPricingService pricing, IPhoto
         if (p is null) return NotFound();
         if (!p.Media.Any(m => m.Stage == MediaStage.Departure))
             return Conflict(new GateFailure("PHOTO_GATE_FAILED", "Package cannot be shipped before departure photos are uploaded.", [new MissingGateItem(p.Id, p.Customer.CustomerRef, MediaStage.Departure)]));
+        if (!transitions.CanMove(p.Status, PackageStatus.Shipped)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {p.Status} to Shipped." });
         p.Status = PackageStatus.Shipped;
         await db.SaveChangesAsync();
-        return Ok(p);
+        return Ok(p.ToDto());
     }
 
     [HttpPost("api/packages/{id:int}/arrive-destination")] public Task<IActionResult> ArriveDestination(int id) => SetStatus(id, PackageStatus.ArrivedAtDestination);
@@ -64,34 +83,32 @@ public class PackagesController(AppDbContext db, IPricingService pricing, IPhoto
     }
 
     [HttpPost("api/packages/{id:int}/items")]
-    public async Task<IActionResult> AddItem(int id, PackageItem item)
+    public async Task<IActionResult> AddItem(int id, UpsertPackageItemRequest item)
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return NotFound();
         if (p.Status >= PackageStatus.Shipped) return Conflict(new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
-        item.PackageId = id;
-        db.PackageItems.Add(item);
+        var entity = new PackageItem { PackageId = id, GoodId = item.GoodId, Quantity = item.Quantity, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
+        db.PackageItems.Add(entity);
         await db.SaveChangesAsync();
         await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
-        return Ok(item);
+        return Ok(entity.ToDto());
     }
 
     [HttpPut("api/packages/{id:int}/items/{itemId:int}")]
-    public async Task<IActionResult> UpdateItem(int id, int itemId, PackageItem input)
+    public async Task<IActionResult> UpdateItem(int id, int itemId, UpsertPackageItemRequest input)
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return NotFound();
         if (p.Status >= PackageStatus.Shipped) return Conflict(new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId);
         if (i is null) return NotFound();
-        db.Entry(i).CurrentValues.SetValues(input);
-        i.Id = itemId;
-        i.PackageId = id;
+        i.GoodId = input.GoodId; i.Quantity = input.Quantity; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
         await db.SaveChangesAsync();
         await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
-        return Ok(i);
+        return Ok(i.ToDto());
     }
 
     [HttpDelete("api/packages/{id:int}/items/{itemId:int}")]
@@ -137,19 +154,20 @@ public class PackagesController(AppDbContext db, IPricingService pricing, IPhoto
         p.HasDeparturePhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Departure);
         p.HasArrivalPhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Arrival);
         await db.SaveChangesAsync();
-        return Ok(media);
+        return Ok(new { media.Id, media.Stage, media.PublicUrl, media.BlobKey, media.CapturedAt, media.OperatorName, media.Notes });
     }
 
     [HttpGet("api/packages/{id:int}/media")]
-    public async Task<IActionResult> ListMedia(int id) => Ok(await db.Media.Where(x => x.PackageId == id).ToListAsync());
+    public async Task<IActionResult> ListMedia(int id) => Ok(await db.Media.Where(x => x.PackageId == id).Select(m => new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes }).ToListAsync());
 
     private async Task<IActionResult> SetStatus(int id, PackageStatus status)
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return NotFound();
+        if (!transitions.CanMove(p.Status, status)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {p.Status} to {status}." });
         p.Status = status;
         await db.SaveChangesAsync();
-        return Ok(p);
+        return Ok(p.ToDto());
     }
 }
 

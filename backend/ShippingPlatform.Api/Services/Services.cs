@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Azure.Storage.Blobs;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
@@ -10,7 +12,16 @@ namespace ShippingPlatform.Api.Services;
 public interface ITokenService { string Create(AdminUser user); }
 public class TokenService(IConfiguration cfg) : ITokenService
 {
-    public string Create(AdminUser user) => Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user.Id}:{user.Email}:{cfg["Auth:Secret"] ?? "dev-secret"}"));
+    public string Create(AdminUser user)
+    {
+        var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(cfg["Auth:Secret"] ?? "dev-secret-super-long"));
+        var creds = new Microsoft.IdentityModel.Tokens.SigningCredentials(key, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            claims: [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Email, user.Email), new Claim(ClaimTypes.Role, "AdminUser")],
+            expires: DateTime.UtcNow.AddHours(8),
+            signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
 }
 
 public interface IBlobStorageService { Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default); }

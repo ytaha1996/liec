@@ -9,32 +9,42 @@ namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/shipments")]
-public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates) : ControllerBase
+public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] ShipmentStatus? status = null)
     {
-        var q = db.Shipments.Include(x => x.Packages).AsQueryable();
+        var q = db.Shipments.AsQueryable();
         if (status.HasValue) q = q.Where(x => x.Status == status);
-        return Ok(await q.OrderByDescending(x => x.CreatedAt).ToListAsync());
+        return Ok((await q.OrderByDescending(x => x.CreatedAt).ToListAsync()).Select(x => x.ToDto()));
     }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id)
     {
-        var s = await db.Shipments.Include(x => x.Packages).FirstOrDefaultAsync(x => x.Id == id);
-        return s is null ? NotFound() : Ok(s);
+        var s = await db.Shipments.FirstOrDefaultAsync(x => x.Id == id);
+        return s is null ? NotFound() : Ok(s.ToDto());
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(Shipment input)
+    public async Task<IActionResult> Create(CreateShipmentRequest input)
     {
         if (input.OriginWarehouseId == input.DestinationWarehouseId)
             return BadRequest(new { code = "VALIDATION_ERROR", message = "Origin and destination warehouse must be different." });
-        input.RefCode = await refs.GenerateAsync(input.OriginWarehouseId);
-        db.Shipments.Add(input);
+
+        var shipment = new Shipment
+        {
+            OriginWarehouseId = input.OriginWarehouseId,
+            DestinationWarehouseId = input.DestinationWarehouseId,
+            PlannedDepartureDate = input.PlannedDepartureDate,
+            PlannedArrivalDate = input.PlannedArrivalDate,
+            Status = ShipmentStatus.Draft,
+            RefCode = await refs.GenerateAsync(input.OriginWarehouseId)
+        };
+
+        db.Shipments.Add(shipment);
         await db.SaveChangesAsync();
-        return Created($"/api/shipments/{input.Id}", input);
+        return Created($"/api/shipments/{shipment.Id}", shipment.ToDto());
     }
 
     [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
@@ -45,10 +55,11 @@ public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoCo
     {
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return NotFound();
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Arrived)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Arrived." });
         s.Status = ShipmentStatus.Arrived;
         s.ActualArrivalAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return Ok(s);
+        return Ok(s.ToDto());
     }
 
     [HttpPost("{id:int}/depart")]
@@ -57,12 +68,14 @@ public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoCo
         var missing = await gates.MissingForShipmentDepartureAsync(id);
         if (missing.Count > 0)
             return Conflict(new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot depart until all packages have departure photos.", missing));
+
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return NotFound();
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Departed)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Departed." });
         s.Status = ShipmentStatus.Departed;
         s.ActualDepartureAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return Ok(s);
+        return Ok(s.ToDto());
     }
 
     [HttpPost("{id:int}/close")]
@@ -71,11 +84,13 @@ public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoCo
         var missing = await gates.MissingForShipmentCloseAsync(id);
         if (missing.Count > 0)
             return Conflict(new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot close until all packages have arrival photos and are finalized.", missing));
+
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return NotFound();
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Closed)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Closed." });
         s.Status = ShipmentStatus.Closed;
         await db.SaveChangesAsync();
-        return Ok(s);
+        return Ok(s.ToDto());
     }
 
     [HttpGet("{id:int}/media")]
@@ -84,7 +99,7 @@ public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoCo
         var rows = await db.Packages
             .Where(x => x.ShipmentId == id)
             .Include(x => x.Media)
-            .Select(x => new { packageId = x.Id, customerId = x.CustomerId, media = x.Media })
+            .Select(x => new { packageId = x.Id, customerId = x.CustomerId, media = x.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.CapturedAt }) })
             .ToListAsync();
         return Ok(rows);
     }
@@ -93,8 +108,9 @@ public class ShipmentsController(AppDbContext db, IRefCodeService refs, IPhotoCo
     {
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return NotFound();
+        if (!transitions.CanMove(s.Status, status)) return Conflict(new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to {status}." });
         s.Status = status;
         await db.SaveChangesAsync();
-        return Ok(s);
+        return Ok(s.ToDto());
     }
 }

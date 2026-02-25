@@ -21,8 +21,8 @@ public class WhatsAppController(AppDbContext db, IWhatsAppSender sender)
     [HttpPost("api/customers/{customerId:int}/whatsapp/photos/arrival")]
     public Task<IActionResult> ArrOne(int customerId, [FromQuery] int shipmentId) => SendIndividual(customerId, shipmentId, CampaignType.ArrivalPhotos);
 
-    [HttpGet("api/whatsapp/campaigns")] public async Task<IActionResult> Campaigns() => Ok(await db.WhatsAppCampaigns.OrderByDescending(x=>x.CreatedAt).ToListAsync());
-    [HttpGet("api/whatsapp/campaigns/{id:int}")] public async Task<IActionResult> Campaign(int id) => Ok(await db.WhatsAppDeliveryLogs.Where(x=>x.CampaignId==id).ToListAsync());
+    [HttpGet("api/whatsapp/campaigns")] public async Task<IActionResult> Campaigns() => Ok(await db.WhatsAppCampaigns.OrderByDescending(x=>x.CreatedAt).Select(x=> new { x.Id, x.Type, x.ShipmentId, x.CreatedAt, x.RecipientCount, x.Completed }).ToListAsync());
+    [HttpGet("api/whatsapp/campaigns/{id:int}")] public async Task<IActionResult> Campaign(int id) => Ok(await db.WhatsAppDeliveryLogs.Where(x=>x.CampaignId==id).Select(x=> new { x.Id, x.CampaignId, x.CustomerId, x.Phone, x.Result, x.FailureReason, x.SentAt }).ToListAsync());
 
     private async Task<IActionResult> SendBulk(int shipmentId, CampaignType type)
     {
