@@ -1,0 +1,11 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { BrowserRouter } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import { store } from './redux/store';
+import ThemeProviderWrapper from './theme/ThemeProvider';
+import { Portal } from './Portal';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+export const App = () => (_jsx(Provider, { store: store, children: _jsx(ThemeProviderWrapper, { children: _jsx(LocalizationProvider, { dateAdapter: AdapterDateFns, children: _jsxs(BrowserRouter, { children: [_jsx(Portal, {}), _jsx(ToastContainer, { position: "top-right", autoClose: 4000 })] }) }) }) }));
