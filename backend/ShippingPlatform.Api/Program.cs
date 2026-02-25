@@ -1,4 +1,3 @@
-using BCrypt.Net;
 using FluentValidation.AspNetCore;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
@@ -53,7 +52,7 @@ using (var scope = app.Services.CreateScope())
     var email = app.Configuration["SeedAdmin:Email"] ?? Environment.GetEnvironmentVariable("ADMIN_EMAIL") ?? Environment.GetEnvironmentVariable("SEED_ADMIN_EMAIL") ?? "admin@local";
     var pwd = app.Configuration["SeedAdmin:Password"] ?? Environment.GetEnvironmentVariable("ADMIN_PASSWORD") ?? Environment.GetEnvironmentVariable("SEED_ADMIN_PASSWORD") ?? "Admin123!";
     if (!db.AdminUsers.Any(x => x.Email == email))
-        db.AdminUsers.Add(new AdminUser { Email = email, PasswordHash = BCrypt.HashPassword(pwd), IsActive = true });
+        db.AdminUsers.Add(new AdminUser { Email = email, PasswordHash = BCrypt.Net.BCrypt.HashPassword(pwd), IsActive = true });
     db.SaveChanges();
 }
 
