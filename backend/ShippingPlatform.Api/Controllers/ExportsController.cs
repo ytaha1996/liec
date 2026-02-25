@@ -1,17 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
-using ShippingPlatform.Api.Services;
 
 namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/exports")]
-public class ExportsController(IExportService exports) : ControllerBase
+public class ExportsController(IExportBusiness business) : ControllerBase
 {
     [HttpPost("group-helper")]
-    public async Task<IActionResult> GroupHelper(ExportRequest req)
-    {
-        var url = await exports.GenerateGroupHelperAsync(req.Format);
-        return Ok(new { publicUrl = url, warning = "WhatsApp groups reveal phone numbers to all members." });
-    }
+    public async Task<IActionResult> GroupHelper(ExportRequest req) => Ok(await business.GroupHelperAsync(req.Format));
 }

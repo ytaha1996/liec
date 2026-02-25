@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Models;
 using ShippingPlatform.Api.Services;
+using ShippingPlatform.Api.Business;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,14 @@ builder.Services.AddScoped<IPhotoComplianceService, PhotoComplianceService>();
 builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
+builder.Services.AddScoped<IAuthBusiness, AuthBusiness>();
+builder.Services.AddScoped<IMasterDataBusiness, MasterDataBusiness>();
+builder.Services.AddScoped<ICustomerBusiness, CustomerBusiness>();
+builder.Services.AddScoped<IShipmentBusiness, ShipmentBusiness>();
+builder.Services.AddScoped<IPackageBusiness, PackageBusiness>();
+builder.Services.AddScoped<ISupplyOrderBusiness, SupplyOrderBusiness>();
+builder.Services.AddScoped<IWhatsAppBusiness, WhatsAppBusiness>();
+builder.Services.AddScoped<IExportBusiness, ExportBusiness>();
 
 var app = builder.Build();
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
