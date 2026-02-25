@@ -10,6 +10,7 @@ import {
   PackageDetailPage,
   PackagesPage,
   PricingConfigsPage,
+  ShipmentDetailPage,
   ShipmentsPage,
   SuppliersPage,
   SupplyOrdersPage,
@@ -19,6 +20,11 @@ import {
 const PkgWrap = () => {
   const { id = '0' } = useParams();
   return <PackageDetailPage id={id} />;
+};
+
+const ShipmentWrap = () => {
+  const { id = '0' } = useParams();
+  return <ShipmentDetailPage id={id} />;
 };
 
 export const App = () => (
@@ -49,6 +55,7 @@ export const App = () => (
         <Route path='/goods' element={<GoodsPage />} />
         <Route path='/pricing-configs' element={<PricingConfigsPage />} />
         <Route path='/shipments' element={<ShipmentsPage />} />
+        <Route path='/shipments/:id' element={<ShipmentWrap />} />
         <Route path='/packages' element={<PackagesPage />} />
         <Route path='/packages/:id' element={<PkgWrap />} />
         <Route path='/suppliers' element={<SuppliersPage />} />

@@ -25,6 +25,7 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
 
     [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
     [HttpPost("{id:int}/ready-to-depart")] public Task<IActionResult> ReadyToDepart(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
+    [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
 
     [HttpPost("{id:int}/arrive")]
     public async Task<IActionResult> Arrive(int id)

@@ -4,67 +4,87 @@ import {
   Button,
   CircularProgress,
   Container,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   MenuItem,
   Paper,
+  Snackbar,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Typography
 } from '@mui/material';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChangeEvent, useState } from 'react';
+import { ChangeEvent, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
-import { GateError, getJson, parseApiError, postJson, putJson, uploadMultipart } from '../api/client';
+import { z } from 'zod';
+import { getJson, parseApiError, postJson, putJson, uploadMultipart } from '../api/client';
+import { FormModal } from '../components/common/Common';
+import { FormDateInput, FormSelect, FormSwitch, FormTextField } from '../components/forms/Fields';
 import { PhotoGallery } from '../components/media/PhotoGallery';
-import { GenericCrudPage } from '../components/reusable/GenericCrudPage';
-import { GenericColumn, GenericField, RowAction } from '../components/reusable/types';
 import { GenericTable } from '../components/reusable/GenericTable';
+import { GenericField } from '../components/reusable/types';
 
 type AnyObj = Record<string, any>;
-
 const Loading = () => <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
-const Empty = ({ text }: { text: string }) => <Alert severity='info'>{text}</Alert>;
 
 function CrudPage({ title, endpoint, fields }: { title: string; endpoint: string; fields: GenericField<AnyObj>[] }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [edit, setEdit] = useState<AnyObj | null>(null);
-  const [form, setForm] = useState<Partial<AnyObj>>({});
+  const [editId, setEditId] = useState<number | null>(null);
+  const [snack, setSnack] = useState('');
+
+  const schema = useMemo(() => z.object(Object.fromEntries(fields.map((f) => [String(f.key), f.required ? z.any().refine((v) => v !== '' && v !== null && v !== undefined, `${f.label} is required`) : z.any().optional()]))), [fields]);
+  const form = useForm<AnyObj>({ resolver: zodResolver(schema), defaultValues: {} });
 
   const { data = [], isLoading } = useQuery({ queryKey: [endpoint], queryFn: () => getJson<any[]>(endpoint) });
 
   const save = useMutation({
-    mutationFn: async () => edit?.id ? putJson(`${endpoint}/${edit.id}`, form) : postJson(endpoint, form),
+    mutationFn: async (payload: AnyObj) => (editId ? putJson(`${endpoint}/${editId}`, payload) : postJson(endpoint, payload)),
     onSuccess: () => {
       setOpen(false);
-      setEdit(null);
-      setForm({});
+      setEditId(null);
+      form.reset({});
+      setSnack(`${title} saved`);
       qc.invalidateQueries({ queryKey: [endpoint] });
-    }
+    },
+    onError: (e) => setSnack(parseApiError(e).message ?? 'Save failed')
   });
 
-  const columns: GenericColumn<AnyObj>[] = [
-    { key: 'id', header: 'ID', type: 'number' },
-    ...fields.map((f) => ({ key: String(f.key), header: f.label, type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text' as any }))
-  ];
-
   return (
-    <GenericCrudPage<AnyObj>
-      title={title}
-      rows={data}
-      loading={isLoading}
-      fields={fields}
-      columns={columns}
-      open={open}
-      formValue={form}
-      onOpenCreate={() => { setEdit(null); setForm({}); setOpen(true); }}
-      onEdit={(row) => { setEdit(row); setForm(row); setOpen(true); }}
-      onFormChange={setForm}
-      onClose={() => setOpen(false)}
-      onSave={() => save.mutate()}
-    />
+    <Container>
+      <Stack direction='row' justifyContent='space-between' alignItems='center' sx={{ mb: 2 }}>
+        <Typography variant='h4'>{title}</Typography>
+        <Button variant='contained' onClick={() => { setEditId(null); form.reset({}); setOpen(true); }}>Create</Button>
+      </Stack>
+
+      {isLoading ? <Loading /> : (
+        <GenericTable
+          rows={data}
+          columns={[{ key: 'id', header: 'ID', type: 'number' }, ...fields.map((f) => ({ key: String(f.key), header: f.label }))]}
+          actions={[{ label: 'Edit', onClick: (row) => { setEditId(row.id); form.reset(row); setOpen(true); } }]}
+        />
+      )}
+
+      <FormModal open={open} onClose={() => setOpen(false)} title={`${title} Form`}>
+        <Stack gap={1} sx={{ mt: 1 }}>
+          {fields.map((f) => {
+            const key = String(f.key);
+            if (f.type === 'select') return <FormSelect key={key} name={key} label={f.label} control={form.control} options={f.options ?? []} />;
+            if (f.type === 'switch') return <FormSwitch key={key} name={key} label={f.label} control={form.control} />;
+            if (f.type === 'date') return <FormDateInput key={key} name={key} label={f.label} control={form.control} />;
+            return <FormTextField key={key} name={key} label={f.label} control={form.control} />;
+          })}
+          <Button variant='contained' onClick={form.handleSubmit((v) => save.mutate(v))}>Save</Button>
+        </Stack>
+      </FormModal>
+
+      <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack('')} message={snack} />
+    </Container>
   );
 }
 
@@ -72,252 +92,67 @@ export const LoginPage = () => {
   const [email, setE] = useState('admin@local');
   const [password, setP] = useState('Admin123!');
   const [err, setErr] = useState('');
-  const m = useMutation({
-    mutationFn: () => postJson<{ token: string }>('/api/auth/login', { email, password }),
-    onSuccess: (r) => { localStorage.setItem('token', r.token); setErr(''); },
-    onError: (e) => setErr(parseApiError(e).message ?? 'Login failed')
-  });
-
-  return (
-    <Container>
-      <Typography variant='h4'>Admin Login</Typography>
-      {err && <Alert severity='error'>{err}</Alert>}
-      <Stack gap={1} sx={{ maxWidth: 400, mt: 2 }}>
-        <TextField label='Email' value={email} onChange={(e) => setE(e.target.value)} />
-        <TextField label='Password' type='password' value={password} onChange={(e) => setP(e.target.value)} />
-        <Button onClick={() => m.mutate()} variant='contained'>Login</Button>
-      </Stack>
-    </Container>
-  );
+  const m = useMutation({ mutationFn: () => postJson<{ token: string }>('/api/auth/login', { email, password }), onSuccess: (r) => { localStorage.setItem('token', r.token); setErr('Logged in'); }, onError: (e) => setErr(parseApiError(e).message ?? 'Login failed') });
+  return <Container><Typography variant='h4'>Admin Login</Typography>{err && <Alert severity={err === 'Logged in' ? 'success' : 'error'}>{err}</Alert>}<Stack gap={1} sx={{ maxWidth: 400, mt: 2 }}><TextField label='Email' value={email} onChange={(e) => setE(e.target.value)} /><TextField label='Password' type='password' value={password} onChange={(e) => setP(e.target.value)} /><Button onClick={() => m.mutate()} variant='contained'>Login</Button></Stack></Container>;
 };
 
-export const DashboardPage = () => <Container><Typography variant='h4'>Dashboard</Typography><Typography>Admin shipping operations center.</Typography></Container>;
+export const DashboardPage = () => <Container><Typography variant='h4'>Dashboard</Typography><Typography>Admin operations console.</Typography></Container>;
 
-export const CustomersPage = () => {
-  const qc = useQueryClient();
-  const { data = [], isLoading } = useQuery({ queryKey: ['customers'], queryFn: () => getJson<any[]>('/api/customers') });
-  const [selected, setSelected] = useState<any | null>(null);
-  const [search, setSearch] = useState('');
-
-  const sendStatus = useMutation({ mutationFn: ({ customerId, shipmentId }: any) => postJson(`/api/customers/${customerId}/whatsapp/status?shipmentId=${shipmentId}`) });
-  const patchConsent = useMutation({ mutationFn: ({ id, consent }: any) => postJson(`/api/customers/${id}/whatsapp-consent`, consent), onSuccess: () => qc.invalidateQueries({ queryKey: ['customers'] }) });
-
-  const rows = data.filter((x) => !search || `${x.customerRef} ${x.name} ${x.primaryPhone}`.toLowerCase().includes(search.toLowerCase()));
-  const columns: GenericColumn<any>[] = [
-    { key: 'customerRef', header: 'Ref' },
-    { key: 'name', header: 'Name' },
-    { key: 'primaryPhone', header: 'Phone' }
-  ];
-  const actions: RowAction<any>[] = [
-    { label: 'Detail', onClick: (r) => setSelected(r) },
-    { label: 'Send Status', onClick: (r) => sendStatus.mutate({ customerId: r.id, shipmentId: 1 }) }
-  ];
-
-  return (
-    <Container>
-      <Typography variant='h4'>Customers</Typography>
-      <Stack direction='row' gap={1} sx={{ my: 2 }}>
-        <TextField size='small' label='Search' value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Button variant='outlined' onClick={() => qc.invalidateQueries({ queryKey: ['customers'] })}>Refresh</Button>
-      </Stack>
-      <GroupExportCard />
-
-      {isLoading ? <Loading /> : rows.length === 0 ? <Empty text='No customers' /> : <GenericTable rows={rows} columns={columns} actions={actions} />}
-
-      <Dialog open={!!selected} onClose={() => setSelected(null)} fullWidth>
-        <DialogTitle>Customer Detail</DialogTitle>
-        <DialogContent>
-          {selected && <Stack gap={1} sx={{ mt: 1 }}>
-            <TextField label='Name' value={selected.name} InputProps={{ readOnly: true }} />
-            <TextField label='Phone' value={selected.primaryPhone} InputProps={{ readOnly: true }} />
-            <Stack direction='row' gap={1}>
-              <Button onClick={() => patchConsent.mutate({ id: selected.id, consent: { optInStatusUpdates: true, optInDeparturePhotos: true, optInArrivalPhotos: true, optedOutAt: null } })}>Opt-in All</Button>
-              <Button onClick={() => patchConsent.mutate({ id: selected.id, consent: { optInStatusUpdates: false, optInDeparturePhotos: false, optInArrivalPhotos: false, optedOutAt: new Date().toISOString() } })}>Opt-out All</Button>
-            </Stack>
-          </Stack>}
-        </DialogContent>
-      </Dialog>
-    </Container>
-  );
-};
+export const CustomersPage = () => <Container><CrudPage title='Customers' endpoint='/api/customers' fields={[{ key: 'customerRef', label: 'CustomerRef', required: true }, { key: 'name', label: 'Name', required: true }, { key: 'primaryPhone', label: 'Phone', required: true }, { key: 'email', label: 'Email' }, { key: 'isActive', label: 'IsActive', type: 'switch' }, { key: 'whatsAppConsent', label: 'WhatsApp Consent', type: 'switch' }]} /><GroupExportCard /></Container>;
 
 export const ShipmentsPage = () => {
-  const qc = useQueryClient();
   const { data = [], isLoading } = useQuery({ queryKey: ['shipments'], queryFn: () => getJson<any[]>('/api/shipments') });
-  const [gate, setGate] = useState<GateError | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ originWarehouseId: 1, destinationWarehouseId: 2, plannedDepartureDate: new Date().toISOString().slice(0, 10), plannedArrivalDate: new Date().toISOString().slice(0, 10) });
+  return <Container><Typography variant='h4'>Shipments</Typography>{isLoading ? <Loading /> : <GenericTable rows={data} columns={[{ key: 'id', header: 'ID', type: 'number' }, { key: 'refCode', header: 'RefCode' }, { key: 'status', header: 'Status' }]} actions={[{ label: 'Details', onClick: (r) => window.location.assign(`/shipments/${r.id}`) }]} />}</Container>;
+};
 
-  const transition = useMutation({
-    mutationFn: ({ id, action }: { id: number; action: string }) => postJson(`/api/shipments/${id}/${action}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['shipments'] }),
-    onError: (e) => setGate(parseApiError(e))
-  });
+const GateMissingTable = ({ gate }: { gate: any }) => (
+  <Table size='small'>
+    <TableHead><TableRow><TableCell>PackageId</TableCell><TableCell>CustomerRef</TableCell><TableCell>Stage</TableCell><TableCell>Link</TableCell></TableRow></TableHead>
+    <TableBody>{(gate?.missing ?? []).map((m: any) => <TableRow key={`${m.packageId}-${m.stage}`}><TableCell>{m.packageId}</TableCell><TableCell>{m.customerRef}</TableCell><TableCell>{m.stage}</TableCell><TableCell><Button component={Link} to={`/packages/${m.packageId}`}>Open</Button></TableCell></TableRow>)}</TableBody>
+  </Table>
+);
 
-  const create = useMutation({ mutationFn: () => postJson('/api/shipments', form), onSuccess: () => { setCreating(false); qc.invalidateQueries({ queryKey: ['shipments'] }); } });
+export const ShipmentDetailPage = ({ id }: { id: string }) => {
+  const qc = useQueryClient();
+  const [gate, setGate] = useState<any>(null);
+  const { data, isLoading } = useQuery({ queryKey: ['shipment', id], queryFn: () => getJson<any>(`/api/shipments/${id}`) });
+  const media = useQuery({ queryKey: ['shipment-media', id], queryFn: () => getJson<any[]>(`/api/shipments/${id}/media`) });
+  const move = useMutation({ mutationFn: (a: string) => postJson(`/api/shipments/${id}/${a}`), onSuccess: () => { setGate(null); qc.invalidateQueries({ queryKey: ['shipment', id] }); }, onError: (e) => setGate(parseApiError(e)) });
 
-  const columns: GenericColumn<any>[] = [
-    { key: 'id', header: 'ID', type: 'number' },
-    { key: 'refCode', header: 'RefCode' },
-    { key: 'status', header: 'Status' }
-  ];
-  const actions: RowAction<any>[] = [
-    { label: 'Schedule', onClick: (r) => transition.mutate({ id: r.id, action: 'schedule' }) },
-    { label: 'Ready', onClick: (r) => transition.mutate({ id: r.id, action: 'ready-to-depart' }) },
-    { label: 'Depart', onClick: (r) => transition.mutate({ id: r.id, action: 'depart' }) },
-    { label: 'Arrive', onClick: (r) => transition.mutate({ id: r.id, action: 'arrive' }) },
-    { label: 'Close', onClick: (r) => transition.mutate({ id: r.id, action: 'close' }) },
-    { label: 'WA Bulk', onClick: (r) => postJson(`/api/shipments/${r.id}/whatsapp/status/bulk`) }
-  ];
-
-  return (
-    <Container>
-      <Stack direction='row' justifyContent='space-between'>
-        <Typography variant='h4'>Shipments</Typography>
-        <Button variant='contained' onClick={() => setCreating(true)}>Create Shipment</Button>
-      </Stack>
-
-      {gate?.code === 'PHOTO_GATE_FAILED' && (
-        <Alert severity='error' sx={{ mt: 2 }}>
-          {gate.message}
-          <GenericTable rows={gate.missing as any[]} columns={[{ key: 'packageId', header: 'Package' }, { key: 'customerRef', header: 'Customer' }, { key: 'stage', header: 'Stage' }]} />
-        </Alert>
-      )}
-
-      {isLoading ? <Loading /> : data.length === 0 ? <Empty text='No shipments' /> : <GenericTable rows={data} columns={columns} actions={actions} />}
-
-      <Dialog open={creating} onClose={() => setCreating(false)}>
-        <DialogTitle>Create Shipment</DialogTitle>
-        <DialogContent>
-          <Stack gap={1} sx={{ mt: 1, minWidth: 360 }}>
-            <TextField type='number' label='Origin Warehouse Id' value={form.originWarehouseId} onChange={(e) => setForm((x) => ({ ...x, originWarehouseId: Number(e.target.value) }))} />
-            <TextField type='number' label='Destination Warehouse Id' value={form.destinationWarehouseId} onChange={(e) => setForm((x) => ({ ...x, destinationWarehouseId: Number(e.target.value) }))} />
-            <TextField type='date' label='Planned Departure' InputLabelProps={{ shrink: true }} value={form.plannedDepartureDate} onChange={(e) => setForm((x) => ({ ...x, plannedDepartureDate: e.target.value }))} />
-            <TextField type='date' label='Planned Arrival' InputLabelProps={{ shrink: true }} value={form.plannedArrivalDate} onChange={(e) => setForm((x) => ({ ...x, plannedArrivalDate: e.target.value }))} />
-          </Stack>
-          <Button sx={{ mt: 2 }} onClick={() => create.mutate()} variant='contained'>Create</Button>
-        </DialogContent>
-      </Dialog>
-    </Container>
-  );
+  return <Container><Typography variant='h4'>Shipment {id}</Typography>{isLoading ? <Loading /> : <><Stack direction='row' gap={1} sx={{ my: 2, flexWrap: 'wrap' }}>{['schedule', 'ready-to-depart', 'depart', 'arrive', 'close', 'cancel'].map((x) => <Button key={x} onClick={() => move.mutate(x)}>{x}</Button>)}</Stack><Paper sx={{ p: 2, mb: 2 }}><Typography>Status: {data?.status}</Typography><Typography>RefCode: {data?.refCode}</Typography></Paper>{gate?.code === 'PHOTO_GATE_FAILED' && <Alert severity='error'>{gate.message}<GateMissingTable gate={gate} /></Alert>}<PhotoGallery media={media.data ?? []} /></>}</Container>;
 };
 
 export const PackagesPage = () => {
   const { data = [], isLoading } = useQuery({ queryKey: ['packages'], queryFn: () => getJson<any[]>('/api/packages') });
-  const columns: GenericColumn<any>[] = [
-    { key: 'id', header: 'ID', type: 'number' },
-    { key: 'shipmentId', header: 'Shipment', type: 'number' },
-    { key: 'customerId', header: 'Customer', type: 'number' },
-    { key: 'status', header: 'Status' }
-  ];
-  const actions: RowAction<any>[] = [{ label: 'Detail', onClick: (r) => window.location.assign(`/packages/${r.id}`) }];
-  return <Container><Typography variant='h4'>Packages</Typography>{isLoading ? <Loading /> : data.length === 0 ? <Empty text='No packages' /> : <GenericTable rows={data} columns={columns} actions={actions} />}</Container>;
+  return <Container><Typography variant='h4'>Packages</Typography>{isLoading ? <Loading /> : <GenericTable rows={data} columns={[{ key: 'id', header: 'ID', type: 'number' }, { key: 'shipmentId', header: 'Shipment', type: 'number' }, { key: 'customerId', header: 'Customer', type: 'number' }, { key: 'status', header: 'Status' }]} actions={[{ label: 'Details', onClick: (r) => window.location.assign(`/packages/${r.id}`) }]} />}</Container>;
 };
 
 export const PackageDetailPage = ({ id }: { id: string }) => {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ['pkg', id], queryFn: () => getJson<any>(`/api/packages/${id}`) });
+  const [stage, setStage] = useState('Receiving');
   const [gate, setGate] = useState<any>(null);
-  const [stage, setStage] = useState('Arrival');
+  const { data, isLoading } = useQuery({ queryKey: ['pkg', id], queryFn: () => getJson<any>(`/api/packages/${id}`) });
+  const media = useQuery({ queryKey: ['pkg-media', id], queryFn: () => getJson<any[]>(`/api/packages/${id}/media`) });
+  const transition = useMutation({ mutationFn: (action: string) => postJson(`/api/packages/${id}/${action}`), onSuccess: () => { setGate(null); qc.invalidateQueries({ queryKey: ['pkg', id] }); }, onError: (e) => setGate(parseApiError(e)) });
+  const upload = useMutation({ mutationFn: (file: File) => { const fd = new FormData(); fd.append('stage', stage); fd.append('file', file); return uploadMultipart(`/api/packages/${id}/media`, fd); }, onSuccess: () => qc.invalidateQueries({ queryKey: ['pkg-media', id] }) });
 
-  const transition = useMutation({ mutationFn: (action: string) => postJson(`/api/packages/${id}/${action}`), onSuccess: () => qc.invalidateQueries({ queryKey: ['pkg', id] }), onError: (e) => setGate(parseApiError(e)) });
-  const upload = useMutation({
-    mutationFn: (file: File) => {
-      const f = new FormData();
-      f.append('stage', stage);
-      f.append('file', file);
-      return uploadMultipart(`/api/packages/${id}/media`, f);
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pkg', id] })
-  });
-
-  const media = data?.media ?? [];
-  return (
-    <Container>
-      <Typography variant='h4'>Package {id}</Typography>
-      {isLoading ? <Loading /> : <>
-        {gate?.code === 'PHOTO_GATE_FAILED' && <Alert severity='error'>{gate.message}</Alert>}
-        <Stack direction='row' gap={1} sx={{ my: 2, flexWrap: 'wrap' }}>
-          <Button onClick={() => transition.mutate('receive')}>Receive</Button>
-          <Button onClick={() => transition.mutate('pack')}>Pack</Button>
-          <Button onClick={() => transition.mutate('ready-to-ship')}>ReadyToShip</Button>
-          <Button onClick={() => transition.mutate('ship')}>Ship</Button>
-          <Button onClick={() => transition.mutate('arrive-destination')}>ArriveDestination</Button>
-          <Button onClick={() => transition.mutate('ready-for-handout')}>ReadyForHandout</Button>
-          <Button onClick={() => transition.mutate('handout')}>Handout</Button>
-        </Stack>
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant='subtitle1'>Pricing Snapshot</Typography>
-          <Typography>Weight: {data?.package?.totalWeightKg}</Typography>
-          <Typography>Volume: {data?.package?.totalVolumeM3}</Typography>
-          <Typography>Rate/Kg: {data?.package?.appliedRatePerKg}</Typography>
-          <Typography>Rate/M3: {data?.package?.appliedRatePerM3}</Typography>
-          <Typography>Charge: {data?.package?.chargeAmount} {data?.package?.currency}</Typography>
-        </Paper>
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant='subtitle1'>Upload Photo</Typography>
-          <Stack direction='row' gap={1} alignItems='center'>
-            <TextField select value={stage} onChange={(e) => setStage(e.target.value)} size='small'>
-              <MenuItem value='Receiving'>Receiving</MenuItem>
-              <MenuItem value='Departure'>Departure</MenuItem>
-              <MenuItem value='Arrival'>Arrival</MenuItem>
-              <MenuItem value='Other'>Other</MenuItem>
-            </TextField>
-            <Button component='label' variant='outlined'>Choose & Upload
-              <input hidden type='file' onChange={(e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) upload.mutate(file); }} />
-            </Button>
-          </Stack>
-        </Paper>
-        <PhotoGallery media={media} />
-      </>}
-    </Container>
-  );
+  return <Container><Typography variant='h4'>Package {id}</Typography>{isLoading ? <Loading /> : <>{gate?.code === 'PHOTO_GATE_FAILED' && <Alert severity='error'>{gate.message}<GateMissingTable gate={gate} /></Alert>}<Stack direction='row' gap={1} sx={{ my: 2, flexWrap: 'wrap' }}>{['receive', 'pack', 'ready-to-ship', 'ship', 'arrive-destination', 'ready-for-handout', 'handout', 'cancel'].map((a) => <Button key={a} onClick={() => transition.mutate(a)}>{a}</Button>)}</Stack><Paper sx={{ p: 2, mb: 2 }}><Typography variant='subtitle1'>Pricing Snapshot</Typography><Typography>Weight: {data?.package?.totalWeightKg}</Typography><Typography>Volume: {data?.package?.totalVolumeM3}</Typography><Typography>Rate/Kg: {data?.package?.appliedRatePerKg}</Typography><Typography>Rate/M3: {data?.package?.appliedRatePerM3}</Typography><Typography>Charge: {data?.package?.chargeAmount} {data?.package?.currency}</Typography></Paper><Paper sx={{ p: 2, mb: 2 }}><Typography variant='subtitle1'>Upload Photo</Typography><Stack direction='row' gap={1} alignItems='center'><TextField select value={stage} onChange={(e) => setStage(e.target.value)} size='small'><MenuItem value='Receiving'>Receiving</MenuItem><MenuItem value='Departure'>Departure</MenuItem><MenuItem value='Arrival'>Arrival</MenuItem><MenuItem value='Other'>Other</MenuItem></TextField><Button component='label' variant='outlined'>Choose & Upload<input hidden type='file' onChange={(e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) upload.mutate(file); }} /></Button></Stack></Paper><PhotoGallery media={media.data ?? []} /></>}</Container>;
 };
 
 export const MessagingLogsPage = () => {
-  const [selected, setSelected] = useState<number | null>(null);
   const { data = [], isLoading } = useQuery({ queryKey: ['campaigns'], queryFn: () => getJson<any[]>('/api/whatsapp/campaigns') });
-  const details = useQuery({ queryKey: ['campaign', selected], queryFn: () => getJson<any[]>(`/api/whatsapp/campaigns/${selected}`), enabled: !!selected });
-
-  return (
-    <Container>
-      <Typography variant='h4'>Messaging Logs</Typography>
-      {isLoading ? <Loading /> : data.length === 0 ? <Empty text='No campaigns' /> : (
-        <GenericTable rows={data} columns={[
-          { key: 'id', header: 'ID', type: 'number' },
-          { key: 'type', header: 'Type' },
-          { key: 'shipmentId', header: 'Shipment', type: 'number' },
-          { key: 'recipientCount', header: 'Recipients', type: 'number' },
-          { key: 'completed', header: 'Completed', type: 'boolean' }
-        ]} actions={[{ label: 'View Logs', onClick: (r) => setSelected(r.id) }]} />
-      )}
-
-      <Dialog open={!!selected} onClose={() => setSelected(null)} fullWidth maxWidth='md'>
-        <DialogTitle>Delivery Logs</DialogTitle>
-        <DialogContent>
-          {details.isLoading ? <Loading /> : (
-            <GenericTable rows={details.data ?? []} columns={[
-              { key: 'customerId', header: 'CustomerId', type: 'number' },
-              { key: 'phone', header: 'Phone' },
-              { key: 'result', header: 'Result' },
-              { key: 'failureReason', header: 'Reason' },
-              { key: 'sentAt', header: 'SentAt', type: 'date' }
-            ]} />
-          )}
-        </DialogContent>
-      </Dialog>
-    </Container>
-  );
+  return <Container><Typography variant='h4'>Messaging Logs</Typography>{isLoading ? <Loading /> : <GenericTable rows={data} columns={[{ key: 'id', header: 'ID', type: 'number' }, { key: 'type', header: 'Type' }, { key: 'shipmentId', header: 'Shipment', type: 'number' }, { key: 'recipientCount', header: 'Recipients', type: 'number' }, { key: 'completed', header: 'Completed', type: 'boolean' }]} />}</Container>;
 };
 
 export const GroupExportCard = () => {
-  const m = useMutation({ mutationFn: (format: 'csv' | 'vcf') => postJson<{ publicUrl: string }>('/api/exports/group-helper', { format }), onSuccess: (r) => window.open(r.publicUrl, '_blank') });
-  return <Box sx={{ mt: 2 }}><Alert severity='warning'>WhatsApp groups reveal phone numbers to all members.</Alert><Stack direction='row' gap={1} sx={{ mt: 1 }}><Button onClick={() => m.mutate('csv')}>Export CSV</Button><Button onClick={() => m.mutate('vcf')}>Export VCF</Button></Stack></Box>;
+  const [snack, setSnack] = useState('');
+  const m = useMutation({ mutationFn: (format: 'csv' | 'vcf') => postJson<{ publicUrl: string }>('/api/exports/group-helper', { format }), onSuccess: (r) => { window.open(r.publicUrl, '_blank'); setSnack('Export generated'); }, onError: (e) => setSnack(parseApiError(e).message ?? 'Export failed') });
+  return <Box sx={{ mt: 2 }}><Alert severity='warning'>WhatsApp groups reveal phone numbers to all members.</Alert><Stack direction='row' gap={1} sx={{ mt: 1 }}><Button onClick={() => m.mutate('csv')}>Export CSV</Button><Button onClick={() => m.mutate('vcf')}>Export VCF</Button></Stack><Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack('')} message={snack} /></Box>;
 };
 
-export const WarehousesPage = () => <CrudPage title='Warehouses' endpoint='/api/warehouses' fields={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }, { key: 'city', label: 'City' }, { key: 'country', label: 'Country' }, { key: 'maxWeightKg', label: 'MaxWeightKg', type: 'number' }, { key: 'maxVolumeM3', label: 'MaxVolumeM3', type: 'number' }, { key: 'isActive', label: 'IsActive', type: 'select', options: [{ label: 'true', value: true }, { label: 'false', value: false }] }]} />;
-export const GoodTypesPage = () => <CrudPage title='GoodTypes' endpoint='/api/good-types' fields={[{ key: 'nameEn', label: 'Name EN' }, { key: 'nameAr', label: 'Name AR' }, { key: 'ratePerKg', label: 'Rate/Kg', type: 'number' }, { key: 'ratePerM3', label: 'Rate/M3', type: 'number' }, { key: 'isActive', label: 'IsActive', type: 'select', options: [{ label: 'true', value: true }, { label: 'false', value: false }] }]} />;
-export const GoodsPage = () => <CrudPage title='Goods' endpoint='/api/goods' fields={[{ key: 'goodTypeId', label: 'GoodTypeId', type: 'number' }, { key: 'nameEn', label: 'Name EN' }, { key: 'nameAr', label: 'Name AR' }, { key: 'unit', label: 'Unit' }, { key: 'isActive', label: 'IsActive', type: 'select', options: [{ label: 'true', value: true }, { label: 'false', value: false }] }]} />;
-export const PricingConfigsPage = () => <CrudPage title='Pricing Configs' endpoint='/api/pricing-configs' fields={[{ key: 'name', label: 'Name' }, { key: 'currency', label: 'Currency' }, { key: 'effectiveFrom', label: 'Effective From', type: 'date' }, { key: 'effectiveTo', label: 'Effective To', type: 'date' }, { key: 'defaultRatePerKg', label: 'Rate/Kg', type: 'number' }, { key: 'defaultRatePerM3', label: 'Rate/M3', type: 'number' }, { key: 'status', label: 'Status' }]} />;
-export const SuppliersPage = () => <CrudPage title='Suppliers' endpoint='/api/suppliers' fields={[{ key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'isActive', label: 'IsActive', type: 'select', options: [{ label: 'true', value: true }, { label: 'false', value: false }] }]} />;
-export const SupplyOrdersPage = () => <CrudPage title='Supply Orders' endpoint='/api/supply-orders' fields={[{ key: 'customerId', label: 'CustomerId', type: 'number' }, { key: 'supplierId', label: 'SupplierId', type: 'number' }, { key: 'packageId', label: 'PackageId', type: 'number' }, { key: 'name', label: 'Name' }, { key: 'purchasePrice', label: 'PurchasePrice', type: 'number' }, { key: 'details', label: 'Details', type: 'multiline' }]} />;
+export const WarehousesPage = () => <CrudPage title='Warehouses' endpoint='/api/warehouses' fields={[{ key: 'code', label: 'Code', required: true }, { key: 'name', label: 'Name', required: true }, { key: 'city', label: 'City' }, { key: 'country', label: 'Country' }, { key: 'maxWeightKg', label: 'MaxWeightKg' }, { key: 'maxVolumeM3', label: 'MaxVolumeM3' }, { key: 'isActive', label: 'IsActive', type: 'switch' }]} />;
+export const GoodTypesPage = () => <CrudPage title='GoodTypes' endpoint='/api/good-types' fields={[{ key: 'nameEn', label: 'Name EN', required: true }, { key: 'nameAr', label: 'Name AR' }, { key: 'ratePerKg', label: 'Rate/Kg' }, { key: 'ratePerM3', label: 'Rate/M3' }, { key: 'isActive', label: 'IsActive', type: 'switch' }]} />;
+export const GoodsPage = () => <CrudPage title='Goods' endpoint='/api/goods' fields={[{ key: 'goodTypeId', label: 'GoodTypeId', required: true }, { key: 'nameEn', label: 'Name EN', required: true }, { key: 'nameAr', label: 'Name AR' }, { key: 'unit', label: 'Unit' }, { key: 'isActive', label: 'IsActive', type: 'switch' }]} />;
+export const PricingConfigsPage = () => <CrudPage title='Pricing Configs' endpoint='/api/pricing-configs' fields={[{ key: 'name', label: 'Name', required: true }, { key: 'currency', label: 'Currency', required: true }, { key: 'effectiveFrom', label: 'Effective From', type: 'date' }, { key: 'effectiveTo', label: 'Effective To', type: 'date' }, { key: 'defaultRatePerKg', label: 'Rate/Kg' }, { key: 'defaultRatePerM3', label: 'Rate/M3' }, { key: 'status', label: 'Status' }]} />;
+export const SuppliersPage = () => <CrudPage title='Suppliers' endpoint='/api/suppliers' fields={[{ key: 'name', label: 'Name', required: true }, { key: 'email', label: 'Email' }, { key: 'isActive', label: 'IsActive', type: 'switch' }]} />;
+export const SupplyOrdersPage = () => <CrudPage title='Supply Orders' endpoint='/api/supply-orders' fields={[{ key: 'customerId', label: 'CustomerId', required: true }, { key: 'supplierId', label: 'SupplierId', required: true }, { key: 'packageId', label: 'PackageId' }, { key: 'name', label: 'Name', required: true }, { key: 'purchasePrice', label: 'PurchasePrice', required: true }, { key: 'details', label: 'Details' }]} />;

@@ -24,6 +24,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
     [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
     [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => Change(id, PackageStatus.ReadyToShip);
+    [HttpPost("api/packages/{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => Change(id, PackageStatus.Cancelled);
     [HttpPost("api/packages/{id:int}/ship")] public Task<IActionResult> Ship(int id) => Change(id, PackageStatus.Shipped, checkDepartureGate: true);
     [HttpPost("api/packages/{id:int}/arrive-destination")] public Task<IActionResult> ArriveDestination(int id) => Change(id, PackageStatus.ArrivedAtDestination);
     [HttpPost("api/packages/{id:int}/ready-for-handout")] public Task<IActionResult> ReadyForHandout(int id) => Change(id, PackageStatus.ReadyForHandout);
