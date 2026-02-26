@@ -58,11 +58,6 @@ namespace ShippingPlatform.Api.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("CustomerRef")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
-
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -81,9 +76,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("varchar(30)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CustomerRef")
-                        .IsUnique();
 
                     b.ToTable("Customers");
                 });

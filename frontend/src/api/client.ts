@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5173'
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:53095'
 });
 
 api.interceptors.request.use((c) => {
@@ -13,7 +13,7 @@ api.interceptors.request.use((c) => {
 export type GateError = {
   code: 'PHOTO_GATE_FAILED';
   message: string;
-  missing: Array<{ packageId: number; customerRef: string; stage: string }>;
+  missing: Array<{ packageId: number; stage: string }>;
 };
 
 export const parseApiError = (e: any) => e?.response?.data ?? { message: e?.message ?? 'Unknown error' };

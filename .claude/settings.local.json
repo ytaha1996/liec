@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install tss-react @reduxjs/toolkit react-redux @iconify/react @mui/x-date-pickers @date-io/date-fns date-fns react-toastify numeral nprogress simplebar-react @types/nprogress @types/numeral)",
+      "Bash(cat /c/Workarea/liec/frontend/src/redux/confirmation/*.ts)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.get\\(''dependencies'',{}\\).items\\(\\)}, indent=2\\)\\)\")",
+      "Bash(npm install dayjs --save)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run build)",
+      "Bash(xargs rm -f)",
+      "Bash(test -f c:/Workarea/liec/frontend/.env.local)",
+      "Bash(find c:/Workarea/liec/frontend/src -name \"*.js\" -delete)",
+      "Bash(dotnet ef migrations add RemoveCustomerRef)",
+      "Bash(dotnet tool install --global dotnet-ef)",
+      "Bash(dotnet build)",
+      "Bash(dotnet ef database update)"
+    ]
+  }
+}

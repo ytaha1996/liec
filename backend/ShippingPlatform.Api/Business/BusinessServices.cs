@@ -152,7 +152,7 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
     public async Task<List<CustomerDto>> ListAsync(string? q)
     {
         var query = db.Customers.Include(x => x.WhatsAppConsent).AsQueryable();
-        if (!string.IsNullOrWhiteSpace(q)) query = query.Where(x => x.CustomerRef.Contains(q) || x.Name.Contains(q) || x.PrimaryPhone.Contains(q));
+        if (!string.IsNullOrWhiteSpace(q)) query = query.Where(x => x.Name.Contains(q) || x.PrimaryPhone.Contains(q));
         return (await query.OrderBy(x => x.Name).ToListAsync()).Select(x => x.ToDto()).ToList();
     }
 
@@ -160,7 +160,7 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
 
     public async Task<CustomerDto> CreateAsync(CreateCustomerRequest req)
     {
-        var entity = new Customer { CustomerRef = req.CustomerRef, Name = req.Name, PrimaryPhone = req.PrimaryPhone, Email = req.Email, IsActive = req.IsActive };
+        var entity = new Customer { Name = req.Name, PrimaryPhone = req.PrimaryPhone, Email = req.Email, IsActive = req.IsActive };
         db.Customers.Add(entity);
         await db.SaveChangesAsync();
         db.WhatsAppConsents.Add(new WhatsAppConsent { CustomerId = entity.Id, OptInStatusUpdates = true, OptInDeparturePhotos = true, OptInArrivalPhotos = true });
