@@ -17,7 +17,11 @@
       "Bash(dotnet ef migrations add ProposalAlignment --no-build)",
       "Bash(dotnet ef migrations remove --no-build)",
       "Bash(git restore backend/ShippingPlatform.Api/Migrations/20260225132341_RemoveCustomerRef.cs backend/ShippingPlatform.Api/Migrations/20260225132341_RemoveCustomerRef.Designer.cs)",
-      "Bash(find src -name \"*.js\" -delete)"
+      "Bash(find src -name \"*.js\" -delete)",
+      "Bash(dotnet build -c Release)",
+      "Bash(dotnet ef database drop --force)",
+      "Bash(timeout 15 dotnet run --no-build -c Release)",
+      "Bash(timeout 20 dotnet run --no-build -c Release)"
     ]
   }
 }

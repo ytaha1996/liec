@@ -42,3 +42,4 @@ TestResults/
 artifacts/
 tmp/
 admin-template/
+.vs/
