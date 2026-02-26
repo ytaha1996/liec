@@ -69,12 +69,27 @@ const ShipmentDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any[]>('/api/packages'),
   });
 
+  const customersQuery = useQuery<any[]>({
+    queryKey: ['/api/customers'],
+    queryFn: () => getJson<any[]>('/api/customers'),
+  });
+
+  const customersMap = (customersQuery.data ?? []).reduce((acc: Record<number, string>, c: any) => {
+    acc[c.id] = `${c.name} (#${c.id})`;
+    return acc;
+  }, {});
+
   const shipmentPackages = (packagesQuery.data ?? []).filter(
     (p) => String(p.shipmentId) === String(id),
   );
 
   const packageTableData = shipmentPackages.reduce((acc: Record<string, any>, item: any) => {
-    acc[item.id] = { ...item, hasDeparturePhotos: String(item.hasDeparturePhotos), hasArrivalPhotos: String(item.hasArrivalPhotos) };
+    acc[item.id] = {
+      ...item,
+      customer: customersMap[item.customerId] ?? `#${item.customerId}`,
+      hasDeparturePhotos: String(item.hasDeparturePhotos),
+      hasArrivalPhotos: String(item.hasArrivalPhotos),
+    };
     return acc;
   }, {});
 
@@ -87,7 +102,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       disablePadding: false,
       onClick: (_tableId: string, row: Record<string, any>) => navigate(`/packages/${row.id}`),
     },
-    { id: 'customerId', label: 'Customer ID', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
+    { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     {
       id: 'status',
       label: 'Status',
@@ -183,7 +198,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Package</TableCell>
-                    <TableCell>Customer</TableCell>
                     <TableCell>Stage</TableCell>
                     <TableCell>Link</TableCell>
                   </TableRow>
@@ -192,7 +206,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
                   {(gate.missing ?? []).map((m) => (
                     <TableRow key={`${m.packageId}-${m.stage}`}>
                       <TableCell>{m.packageId}</TableCell>
-                      <TableCell>{m.customerRef}</TableCell>
                       <TableCell>{m.stage}</TableCell>
                       <TableCell>
                         <Button component={Link} to={`/packages/${m.packageId}`} size="small">Open</Button>

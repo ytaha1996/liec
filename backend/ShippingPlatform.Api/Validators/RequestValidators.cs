@@ -16,7 +16,6 @@ public class CreateCustomerRequestValidator : AbstractValidator<CreateCustomerRe
 {
     public CreateCustomerRequestValidator()
     {
-        RuleFor(x => x.CustomerRef).NotEmpty().MaximumLength(30);
         RuleFor(x => x.Name).NotEmpty();
         RuleFor(x => x.PrimaryPhone).NotEmpty();
     }

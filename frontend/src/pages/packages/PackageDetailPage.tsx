@@ -246,7 +246,6 @@ const PackageDetailPage = ({ id }: Props) => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Package</TableCell>
-                    <TableCell>Customer</TableCell>
                     <TableCell>Stage</TableCell>
                     <TableCell>Link</TableCell>
                   </TableRow>
@@ -255,7 +254,6 @@ const PackageDetailPage = ({ id }: Props) => {
                   {(gate.missing ?? []).map((m) => (
                     <TableRow key={`${m.packageId}-${m.stage}`}>
                       <TableCell>{m.packageId}</TableCell>
-                      <TableCell>{m.customerRef}</TableCell>
                       <TableCell>{m.stage}</TableCell>
                       <TableCell>
                         <Button component={Link} to={`/packages/${m.packageId}`} size="small">Open</Button>

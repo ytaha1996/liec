@@ -7,7 +7,13 @@
       "Bash(npm install dayjs --save)",
       "Bash(npx tsc --noEmit)",
       "Bash(npm run build)",
-      "Bash(xargs rm -f)"
+      "Bash(xargs rm -f)",
+      "Bash(test -f c:/Workarea/liec/frontend/.env.local)",
+      "Bash(find c:/Workarea/liec/frontend/src -name \"*.js\" -delete)",
+      "Bash(dotnet ef migrations add RemoveCustomerRef)",
+      "Bash(dotnet tool install --global dotnet-ef)",
+      "Bash(dotnet build)",
+      "Bash(dotnet ef database update)"
     ]
   }
 }

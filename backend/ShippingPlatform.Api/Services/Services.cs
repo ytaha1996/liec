@@ -109,14 +109,14 @@ public class PhotoComplianceService(AppDbContext db) : IPhotoComplianceService
     public async Task<List<MissingGateItem>> MissingForPackageHandoutAsync(int packageId)
     {
         var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).FirstAsync(x => x.Id == packageId);
-        return p.Media.Any(m => m.Stage == MediaStage.Arrival) ? [] : [new MissingGateItem(p.Id, p.Customer.CustomerRef, MediaStage.Arrival)];
+        return p.Media.Any(m => m.Stage == MediaStage.Arrival) ? [] : [new MissingGateItem(p.Id, p.Customer.Name, MediaStage.Arrival)];
     }
 
     private async Task<List<MissingGateItem>> MissingByStage(int shipmentId, MediaStage stage, Func<Package, bool> finalized)
     {
         var ps = await db.Packages.Include(x => x.Customer).Include(x => x.Media).Where(x => x.ShipmentId == shipmentId).ToListAsync();
         return ps.Where(x => !x.Media.Any(m => m.Stage == stage) || (stage == MediaStage.Arrival && !finalized(x)))
-            .Select(x => new MissingGateItem(x.Id, x.Customer.CustomerRef, stage)).ToList();
+            .Select(x => new MissingGateItem(x.Id, x.Customer.Name, stage)).ToList();
     }
 }
 

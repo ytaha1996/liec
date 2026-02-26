@@ -19,9 +19,20 @@ const PackagesPage = () => {
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
 
+  const { data: customers = [] } = useQuery<any[]>({
+    queryKey: ['/api/customers'],
+    queryFn: () => getJson<any[]>('/api/customers'),
+  });
+
+  const customersMap = (customers as any[]).reduce((acc: Record<number, string>, c: any) => {
+    acc[c.id] = `${c.name} (#${c.id})`;
+    return acc;
+  }, {});
+
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
     acc[item.id] = {
       ...item,
+      customer: customersMap[item.customerId] ?? `#${item.customerId}`,
       hasDeparturePhotos: String(item.hasDeparturePhotos),
       hasArrivalPhotos: String(item.hasArrivalPhotos),
     };
@@ -45,10 +56,10 @@ const PackagesPage = () => {
       disablePadding: false,
     },
     {
-      id: 'customerId',
-      label: 'Customer ID',
-      type: EnhancedTableColumnType.NUMBER,
-      numeric: true,
+      id: 'customer',
+      label: 'Customer',
+      type: EnhancedTableColumnType.TEXT,
+      numeric: false,
       disablePadding: false,
     },
     {

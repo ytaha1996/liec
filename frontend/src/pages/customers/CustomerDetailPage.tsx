@@ -114,7 +114,7 @@ const CustomerDetailPage = ({ id }: Props) => {
           <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: '#00A6A6' }}>
             {data.name}
           </Typography>
-          <Chip label={data.customerRef} color="primary" variant="outlined" />
+          <Chip label={`#${data.id}`} color="primary" variant="outlined" />
           <Chip
             label={data.isActive ? 'Active' : 'Inactive'}
             color={data.isActive ? 'success' : 'default'}
@@ -139,8 +139,8 @@ const CustomerDetailPage = ({ id }: Props) => {
                   <Typography>{data.name}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Customer Ref</Typography>
-                  <Typography>{data.customerRef}</Typography>
+                  <Typography variant="subtitle2" color="text.secondary">ID</Typography>
+                  <Typography>#{data.id}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary">Primary Phone</Typography>

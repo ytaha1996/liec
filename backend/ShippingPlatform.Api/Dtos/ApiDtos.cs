@@ -2,8 +2,8 @@ using ShippingPlatform.Api.Models;
 
 namespace ShippingPlatform.Api.Dtos;
 
-public record CustomerDto(int Id, string CustomerRef, string Name, string PrimaryPhone, string? Email, bool IsActive, WhatsAppConsentDto? WhatsAppConsent);
-public record CreateCustomerRequest(string CustomerRef, string Name, string PrimaryPhone, string? Email, bool IsActive = true);
+public record CustomerDto(int Id, string Name, string PrimaryPhone, string? Email, bool IsActive, WhatsAppConsentDto? WhatsAppConsent);
+public record CreateCustomerRequest(string Name, string PrimaryPhone, string? Email, bool IsActive = true);
 public record UpdateCustomerRequest(string Name, string PrimaryPhone, string? Email, bool IsActive);
 public record WhatsAppConsentDto(bool OptInStatusUpdates, bool OptInDeparturePhotos, bool OptInArrivalPhotos, DateTime? OptedOutAt);
 
@@ -36,7 +36,7 @@ public record UpsertPackageItemRequest(int GoodId, int Quantity, decimal WeightK
 
 public static class DtoMap
 {
-    public static CustomerDto ToDto(this Customer c) => new(c.Id, c.CustomerRef, c.Name, c.PrimaryPhone, c.Email, c.IsActive, c.WhatsAppConsent is null ? null : new WhatsAppConsentDto(c.WhatsAppConsent.OptInStatusUpdates, c.WhatsAppConsent.OptInDeparturePhotos, c.WhatsAppConsent.OptInArrivalPhotos, c.WhatsAppConsent.OptedOutAt));
+    public static CustomerDto ToDto(this Customer c) => new(c.Id, c.Name, c.PrimaryPhone, c.Email, c.IsActive, c.WhatsAppConsent is null ? null : new WhatsAppConsentDto(c.WhatsAppConsent.OptInStatusUpdates, c.WhatsAppConsent.OptInDeparturePhotos, c.WhatsAppConsent.OptInArrivalPhotos, c.WhatsAppConsent.OptedOutAt));
     public static WarehouseDto ToDto(this Warehouse x) => new(x.Id, x.Code, x.Name, x.City, x.Country, x.MaxWeightKg, x.MaxVolumeM3, x.IsActive);
     public static GoodTypeDto ToDto(this GoodType x) => new(x.Id, x.NameEn, x.NameAr, x.RatePerKg, x.RatePerM3, x.IsActive);
     public static GoodDto ToDto(this Good x) => new(x.Id, x.GoodTypeId, x.NameEn, x.NameAr, x.CanBurn, x.CanBreak, x.Unit, x.RatePerKgOverride, x.RatePerM3Override, x.IsActive);

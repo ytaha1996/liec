@@ -19,14 +19,6 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 const ENDPOINT = '/api/customers';
 
 const buildFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
-  customerRef: {
-    type: DynamicField.TEXT,
-    name: 'customerRef',
-    title: 'Customer Ref',
-    required: true,
-    disabled: false,
-    value: initial?.customerRef ?? '',
-  },
   name: {
     type: DynamicField.TEXT,
     name: 'name',
@@ -100,7 +92,7 @@ const CustomersPage = () => {
   }, {});
 
   const tableHeaders: EnhanceTableHeaderTypes[] = [
-    { id: 'customerRef', label: 'Ref', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
+    { id: 'id', label: 'ID', type: EnhancedTableColumnType.TEXT, numeric: true, disablePadding: false },
     { id: 'name', label: 'Name', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     { id: 'primaryPhone', label: 'Phone', type: EnhancedTableColumnType.PhoneNumber, numeric: false, disablePadding: false },
     { id: 'email', label: 'Email', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },

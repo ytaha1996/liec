@@ -124,7 +124,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (p is null) return (null, null, null);
 
         if (checkDepartureGate && !p.Media.Any(m => m.Stage == MediaStage.Departure))
-            return (null, null, new GateFailure("PHOTO_GATE_FAILED", "Package cannot be shipped before departure photos are uploaded.", [new MissingGateItem(p.Id, p.Customer.CustomerRef, MediaStage.Departure)]));
+            return (null, null, new GateFailure("PHOTO_GATE_FAILED", "Package cannot be shipped before departure photos are uploaded.", [new MissingGateItem(p.Id, p.Customer.Name, MediaStage.Departure)]));
 
         if (checkArrivalGate)
         {

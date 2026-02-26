@@ -26,14 +26,15 @@ const LIFECYCLE_ACTIONS: { label: string; action: string }[] = [
   { label: 'Cancel', action: 'cancel' },
 ];
 
-const buildFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
+const buildFields = (initial: Record<string, any> | undefined, customersItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
   customerId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'customerId',
-    title: 'Customer ID',
+    title: 'Customer',
     required: true,
     disabled: false,
-    value: initial?.customerId ?? '',
+    items: customersItems,
+    value: String(initial?.customerId ?? ''),
   },
   supplierId: {
     type: DynamicField.NUMBER,
@@ -87,6 +88,21 @@ const SupplyOrdersPage = () => {
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
 
+  const { data: customers = [] } = useQuery<any[]>({
+    queryKey: ['/api/customers'],
+    queryFn: () => getJson<any[]>('/api/customers'),
+  });
+
+  const customersItems = (customers as any[]).reduce((acc: Record<string, string>, c: any) => {
+    acc[String(c.id)] = `${c.name} (#${c.id})`;
+    return acc;
+  }, {});
+
+  const customersMap = (customers as any[]).reduce((acc: Record<number, string>, c: any) => {
+    acc[c.id] = `${c.name} (#${c.id})`;
+    return acc;
+  }, {});
+
   const save = useMutation({
     mutationFn: (payload: Record<string, any>) =>
       editing ? putJson(`${ENDPOINT}/${editing.id}`, payload) : postJson(ENDPOINT, payload),
@@ -112,7 +128,7 @@ const SupplyOrdersPage = () => {
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
-    acc[item.id] = item;
+    acc[item.id] = { ...item, customer: customersMap[item.customerId] ?? `#${item.customerId}` };
     return acc;
   }, {});
 
@@ -125,6 +141,7 @@ const SupplyOrdersPage = () => {
 
   const tableHeaders: EnhanceTableHeaderTypes[] = [
     { id: 'name', label: 'Name', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
+    { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     {
       id: 'status',
       label: 'Status',
@@ -194,7 +211,7 @@ const SupplyOrdersPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined)}
+          fields={buildFields(editing ?? undefined, customersItems)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>
