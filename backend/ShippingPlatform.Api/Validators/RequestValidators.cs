@@ -28,6 +28,7 @@ public class CreateShipmentRequestValidator : AbstractValidator<CreateShipmentRe
         RuleFor(x => x.OriginWarehouseId).GreaterThan(0);
         RuleFor(x => x.DestinationWarehouseId).GreaterThan(0);
         RuleFor(x => x).Must(x => x.OriginWarehouseId != x.DestinationWarehouseId).WithMessage("Origin and destination must be different.");
+        RuleFor(x => x.TiiuCode).MaximumLength(4).When(x => !string.IsNullOrWhiteSpace(x.TiiuCode));
     }
 }
 

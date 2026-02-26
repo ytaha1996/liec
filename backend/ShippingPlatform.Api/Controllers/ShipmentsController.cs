@@ -23,9 +23,19 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
         return Created($"/api/shipments/{dto.Id}", dto);
     }
 
-    [HttpPost("{id:int}/activate")] public Task<IActionResult> Activate(int id) => SetStatus(id, ShipmentStatus.Pending);
-    [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.Loaded);
+    [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
+    [HttpPost("{id:int}/activate")] public Task<IActionResult> Activate(int id) => SetStatus(id, ShipmentStatus.Scheduled);
+    [HttpPost("{id:int}/ready-to-depart")] public Task<IActionResult> ReadyToDepart(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
+    [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
     [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
+
+    [HttpPatch("{id:int}/tiiu")]
+    public async Task<IActionResult> UpdateTiiu(int id, UpdateShipmentTiiuRequest req)
+    {
+        var (dto, err) = await business.UpdateTiiuAsync(id, req.TiiuCode);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
 
     [HttpPost("{id:int}/arrive")]
     public async Task<IActionResult> Arrive(int id)
@@ -35,28 +45,30 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [HttpPost("{id:int}/depart")]
     [HttpPost("{id:int}/ship")]
-    public async Task<IActionResult> Ship(int id)
+    public async Task<IActionResult> Depart(int id)
     {
-        var (dto, gate, err) = await business.ShipAsync(id);
-        if (gate is not null) return Conflict(gate);
-        if (dto is null && err is null) return NotFound();
-        return err is null ? Ok(dto) : Conflict(err);
-    }
-
-    [HttpPost("{id:int}/complete")]
-    public async Task<IActionResult> Complete(int id)
-    {
-        var (dto, gate, err) = await business.CompleteAsync(id);
+        var (dto, gate, err) = await business.DepartAsync(id);
         if (gate is not null) return Conflict(gate);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
     }
 
     [HttpPost("{id:int}/close")]
+    [HttpPost("{id:int}/complete")]
     public async Task<IActionResult> Close(int id)
     {
-        var (dto, err) = await business.ArchiveAsync(id);
+        var (dto, gate, err) = await business.CloseAsync(id);
+        if (gate is not null) return Conflict(gate);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
+    [HttpPost("{id:int}/tracking/sync")]
+    public async Task<IActionResult> SyncTracking(int id, ShipmentTrackingSyncRequest req, CancellationToken ct)
+    {
+        var (dto, err) = await business.SyncTrackingAsync(id, req.Code, ct);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
     }

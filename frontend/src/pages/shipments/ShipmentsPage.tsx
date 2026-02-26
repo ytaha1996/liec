@@ -68,6 +68,14 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
     disabled: false,
     value: 0,
   },
+  tiiuCode: {
+    type: DynamicField.TEXT,
+    name: 'tiiuCode',
+    title: 'TIIU Prefix (optional in Draft)',
+    required: false,
+    disabled: false,
+    value: '',
+  },
 });
 
 const ShipmentsPage = () => {
@@ -122,12 +130,10 @@ const ShipmentsPage = () => {
       disablePadding: false,
       chipColors: {
         Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Pending: { color: '#fff', backgroundColor: '#0288d1' },
-        NearlyFull: { color: '#fff', backgroundColor: '#f57c00' },
-        Loaded: { color: '#fff', backgroundColor: '#ed6c02' },
-        Shipped: { color: '#fff', backgroundColor: '#1565c0' },
+        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
+        ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
+        Departed: { color: '#fff', backgroundColor: '#1565c0' },
         Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-        Completed: { color: '#fff', backgroundColor: '#388e3c' },
         Closed: { color: '#fff', backgroundColor: '#616161' },
         Cancelled: { color: '#fff', backgroundColor: '#c62828' },
       },

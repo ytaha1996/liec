@@ -12,13 +12,14 @@ public interface IShipmentBusiness
     Task<ShipmentDto?> GetAsync(int id);
     Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input);
     Task<(ShipmentDto? dto, object? error)> SetStatusAsync(int id, ShipmentStatus status);
-    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> ShipAsync(int id);
-    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CompleteAsync(int id);
-    Task<(ShipmentDto? dto, object? error)> ArchiveAsync(int id);
+    Task<(ShipmentDto? dto, object? error)> UpdateTiiuAsync(int id, string tiiuCode);
+    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id);
+    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id);
+    Task<(ShipmentDto? dto, object? error)> SyncTrackingAsync(int id, string code, CancellationToken ct = default);
     Task<List<object>> MediaAsync(int id);
 }
 
-public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions) : IShipmentBusiness
+public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking) : IShipmentBusiness
 {
     public async Task<List<ShipmentDto>> ListAsync(ShipmentStatus? status)
     {
@@ -43,52 +44,80 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
             MaxWeightKg = input.MaxWeightKg,
             MaxVolumeM3 = input.MaxVolumeM3,
             Status = ShipmentStatus.Draft,
-            RefCode = await refs.GenerateAsync()
+            RefCode = await refs.GenerateAsync(input.OriginWarehouseId),
+            TiiuCode = string.IsNullOrWhiteSpace(input.TiiuCode) ? null : input.TiiuCode!.Trim().ToUpperInvariant()
         };
         db.Shipments.Add(shipment);
         await db.SaveChangesAsync();
         return (shipment.ToDto(), null);
     }
 
+
+    public async Task<(ShipmentDto? dto, object? error)> UpdateTiiuAsync(int id, string tiiuCode)
+    {
+        var s = await db.Shipments.FindAsync(id);
+        if (s is null) return (null, null);
+        if (s.Status != ShipmentStatus.Draft)
+            return (null, new { code = "SHIPMENT_LOCKED", message = "TIIU can only be edited while shipment is Draft." });
+        if (string.IsNullOrWhiteSpace(tiiuCode))
+            return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required." });
+        var normalized = tiiuCode.Trim().ToUpperInvariant();
+        if (normalized.Length > 4)
+            return (null, new { code = "VALIDATION_ERROR", message = "TIIU code must be at most 4 characters." });
+        s.TiiuCode = normalized;
+        await db.SaveChangesAsync();
+        return (s.ToDto(), null);
+    }
     public async Task<(ShipmentDto? dto, object? error)> SetStatusAsync(int id, ShipmentStatus status)
     {
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null);
+        if (status == ShipmentStatus.Scheduled && string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling shipment." });
         if (!transitions.CanMove(s.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to {status}." });
         s.Status = status;
         await db.SaveChangesAsync();
         return (s.ToDto(), null);
     }
 
-    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> ShipAsync(int id)
+    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id)
     {
         var missing = await gates.MissingForShipmentDepartureAsync(id);
-        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot ship until all packages have departure photos.", missing), null);
+        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot be set to Departed until all packages have departure photos.", missing), null);
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null, null);
-        if (!transitions.CanMove(s.Status, ShipmentStatus.Shipped)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Shipped." });
-        s.Status = ShipmentStatus.Shipped; s.ActualDepartureAt = DateTime.UtcNow;
+        if (string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling/departing." });
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Departed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Departed." });
+        s.Status = ShipmentStatus.Departed; s.ActualDepartureAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return (s.ToDto(), null, null);
     }
 
-    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CompleteAsync(int id)
+    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id)
     {
         var missing = await gates.MissingForShipmentCloseAsync(id);
-        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot complete until all packages have arrival photos and are finalized.", missing), null);
+        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot be set to Closed until all packages have arrival photos and are finalized.", missing), null);
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null, null);
-        if (!transitions.CanMove(s.Status, ShipmentStatus.Completed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Completed." });
-        s.Status = ShipmentStatus.Completed; await db.SaveChangesAsync();
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Closed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Closed." });
+        s.Status = ShipmentStatus.Closed; await db.SaveChangesAsync();
         return (s.ToDto(), null, null);
     }
 
-    public async Task<(ShipmentDto? dto, object? error)> ArchiveAsync(int id)
+    public async Task<(ShipmentDto? dto, object? error)> SyncTrackingAsync(int id, string code, CancellationToken ct = default)
     {
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null);
-        if (!transitions.CanMove(s.Status, ShipmentStatus.Closed)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Closed." });
-        s.Status = ShipmentStatus.Closed;
+        if (s.Status is ShipmentStatus.Draft or ShipmentStatus.Cancelled)
+            return (null, new { code = "INVALID_STATUS", message = "Tracking can be synced only for Scheduled/ReadyToDepart/Departed shipments." });
+        var snap = await tracking.LookupAsync(code, ct);
+        if (snap is null) return (null, new { code = "TRACKING_NOT_FOUND", message = "Tracking details were not found." });
+        s.ExternalTrackingCode = snap.Code;
+        s.ExternalCarrierName = snap.Name;
+        s.ExternalOrigin = snap.Origin;
+        s.ExternalDestination = snap.Destination;
+        s.ExternalEstimatedArrivalAt = snap.EstimatedArrivalAt;
+        s.ExternalStatus = snap.Status;
+        s.ExternalLastSyncedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return (s.ToDto(), null);
     }
@@ -130,7 +159,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     public async Task<(PackageDto? dto, object? error)> AutoAssignAsync(CreatePackageRequest input)
     {
         var shipment = await db.Shipments
-            .Where(s => s.Status == ShipmentStatus.Pending || s.Status == ShipmentStatus.NearlyFull)
+            .Where(s => s.Status == ShipmentStatus.Scheduled || s.Status == ShipmentStatus.ReadyToDepart)
             .OrderBy(s => s.CreatedAt)
             .FirstOrDefaultAsync();
         if (shipment is null) return (null, new { code = "NO_PENDING_CONTAINER", message = "No Pending container available for auto-assignment." });
