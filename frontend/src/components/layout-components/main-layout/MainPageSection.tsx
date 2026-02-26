@@ -41,7 +41,6 @@ const useStyles = makeStyles()((theme) => {
       borderRadius: '10px 10px 0 0'
     },
     body: {
-      maxHeight: "250px",
       padding: "20px",
     },
     link: {

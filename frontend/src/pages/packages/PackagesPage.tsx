@@ -29,7 +29,10 @@ const PKG_STATUS_COLORS: Record<string, { color: string; backgroundColor: string
   Cancelled: { color: '#fff', backgroundColor: '#c62828' },
 };
 
-const buildAutoAssignFields = (customersItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
+const buildAutoAssignFields = (
+  customersItems: Record<string, string>,
+  warehousesItems: Record<string, string>,
+): Record<string, DynamicFieldTypes> => ({
   customerId: {
     type: DynamicField.SELECT,
     name: 'customerId',
@@ -48,6 +51,24 @@ const buildAutoAssignFields = (customersItems: Record<string, string>): Record<s
     items: { CustomerProvided: 'Customer Provided', ProcuredForCustomer: 'Procured For Customer' },
     value: 'CustomerProvided',
   },
+  originWarehouseId: {
+    type: DynamicField.SELECT,
+    name: 'originWarehouseId',
+    title: 'Origin Warehouse',
+    required: true,
+    disabled: false,
+    items: warehousesItems,
+    value: '',
+  },
+  destinationWarehouseId: {
+    type: DynamicField.SELECT,
+    name: 'destinationWarehouseId',
+    title: 'Destination Warehouse',
+    required: true,
+    disabled: false,
+    items: warehousesItems,
+    value: '',
+  },
 });
 
 const PackagesPage = () => {
@@ -65,6 +86,11 @@ const PackagesPage = () => {
     queryFn: () => getJson<any[]>('/api/customers'),
   });
 
+  const { data: warehouses = [] } = useQuery<any[]>({
+    queryKey: ['/api/warehouses'],
+    queryFn: () => getJson<any[]>('/api/warehouses'),
+  });
+
   const customersMap = (customers as any[]).reduce((acc: Record<number, string>, c: any) => {
     acc[c.id] = `${c.name} (#${c.id})`;
     return acc;
@@ -75,18 +101,25 @@ const PackagesPage = () => {
     return acc;
   }, {});
 
+  const warehousesItems = (warehouses as any[]).reduce((acc: Record<string, string>, w: any) => {
+    acc[String(w.id)] = `${w.name} (${w.code})`;
+    return acc;
+  }, {});
+
   const autoAssign = useMutation({
     mutationFn: (payload: Record<string, any>) =>
       postJson<any>(`${ENDPOINT}/auto-assign`, {
         customerId: Number(payload.customerId),
         provisionMethod: payload.provisionMethod,
         supplyOrderId: null,
+        originWarehouseId: Number(payload.originWarehouseId),
+        destinationWarehouseId: Number(payload.destinationWarehouseId),
       }),
     onSuccess: (result: any) => {
-      toast.success('Package auto-assigned');
+      toast.success('Package auto-assigned to container');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
       setAutoAssignOpen(false);
-      navigate(`/packages/${result.id}`);
+      navigate(`/ops/packages/${result.id}`);
     },
     onError: (e: any) => {
       const payload = e?.response?.data ?? {};
@@ -111,7 +144,7 @@ const PackagesPage = () => {
       type: EnhancedTableColumnType.Clickable,
       numeric: false,
       disablePadding: false,
-      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/packages/${row.id}`),
+      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/packages/${row.id}`),
     },
     {
       id: 'shipmentId',
@@ -228,7 +261,7 @@ const PackagesPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildAutoAssignFields(customersItems)}
+          fields={buildAutoAssignFields(customersItems, warehousesItems)}
           onSubmit={handleAutoAssignSubmit}
         />
       </GenericDialog>

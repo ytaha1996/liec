@@ -135,7 +135,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
 public interface IPackageBusiness
 {
     Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input);
-    Task<(PackageDto? dto, object? error)> AutoAssignAsync(CreatePackageRequest input);
+    Task<(PackageDto? dto, object? error)> AutoAssignAsync(AutoAssignPackageRequest input);
     Task<List<PackageDto>> ListAsync();
     Task<object?> GetAsync(int id);
     Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false);
@@ -148,7 +148,7 @@ public interface IPackageBusiness
     Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id);
 }
 
-public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark) : IPackageBusiness
+public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark, IRefCodeService refs) : IPackageBusiness
 {
     public async Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input)
     {
@@ -156,14 +156,42 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         db.Packages.Add(package); await db.SaveChangesAsync(); return package.ToDto();
     }
 
-    public async Task<(PackageDto? dto, object? error)> AutoAssignAsync(CreatePackageRequest input)
+    public async Task<(PackageDto? dto, object? error)> AutoAssignAsync(AutoAssignPackageRequest input)
     {
+        if (input.OriginWarehouseId == input.DestinationWarehouseId)
+            return (null, new { code = "VALIDATION_ERROR", message = "Origin and destination warehouse must be different." });
+
+        // Find oldest Draft or Scheduled shipment matching the warehouse pair
         var shipment = await db.Shipments
-            .Where(s => s.Status == ShipmentStatus.Scheduled || s.Status == ShipmentStatus.ReadyToDepart)
+            .Where(s => s.OriginWarehouseId == input.OriginWarehouseId
+                     && s.DestinationWarehouseId == input.DestinationWarehouseId
+                     && (s.Status == ShipmentStatus.Draft || s.Status == ShipmentStatus.Scheduled))
             .OrderBy(s => s.CreatedAt)
             .FirstOrDefaultAsync();
-        if (shipment is null) return (null, new { code = "NO_PENDING_CONTAINER", message = "No Pending container available for auto-assignment." });
-        var dto = await CreateAsync(shipment.Id, input);
+
+        // If none exists, auto-create a Draft shipment for that route
+        if (shipment is null)
+        {
+            var originExists = await db.Warehouses.AnyAsync(w => w.Id == input.OriginWarehouseId);
+            var destExists   = await db.Warehouses.AnyAsync(w => w.Id == input.DestinationWarehouseId);
+            if (!originExists) return (null, new { code = "VALIDATION_ERROR", message = "Origin warehouse not found." });
+            if (!destExists)   return (null, new { code = "VALIDATION_ERROR", message = "Destination warehouse not found." });
+
+            shipment = new Shipment
+            {
+                OriginWarehouseId      = input.OriginWarehouseId,
+                DestinationWarehouseId = input.DestinationWarehouseId,
+                PlannedDepartureDate   = DateTime.UtcNow.AddDays(30),
+                PlannedArrivalDate     = DateTime.UtcNow.AddDays(60),
+                Status                 = ShipmentStatus.Draft,
+                RefCode                = await refs.GenerateAsync(input.OriginWarehouseId),
+            };
+            db.Shipments.Add(shipment);
+            await db.SaveChangesAsync();
+        }
+
+        var pkg = new CreatePackageRequest(input.CustomerId, input.ProvisionMethod, input.SupplyOrderId);
+        var dto = await CreateAsync(shipment.Id, pkg);
         return (dto, null);
     }
 
@@ -171,7 +199,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
     public async Task<object?> GetAsync(int id)
     {
-        var p = await db.Packages.Include(x => x.Items).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await db.Packages.Include(x => x.Items).ThenInclude(i => i.GoodType).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
         return new { package = p.ToDto(), items = p.Items.Select(i => i.ToDto()), media = p.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes }) };
     }
@@ -215,9 +243,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container volume capacity." });
         }
 
-        var entity = new PackageItem { PackageId = id, GoodId = item.GoodId, Quantity = item.Quantity, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
+        var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
         db.PackageItems.Add(entity);
         await db.SaveChangesAsync();
+        await db.Entry(entity).Reference(x => x.GoodType).LoadAsync();
         await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
         await capacity.RecalculateAsync(p.ShipmentId);
@@ -243,8 +272,9 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container volume capacity." });
         }
 
-        i.GoodId = input.GoodId; i.Quantity = input.Quantity; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
+        i.GoodTypeId = input.GoodTypeId; i.Quantity = input.Quantity; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
         await db.SaveChangesAsync();
+        await db.Entry(i).Reference(x => x.GoodType).LoadAsync();
         await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
         await capacity.RecalculateAsync(p.ShipmentId);

@@ -21,7 +21,13 @@
       "Bash(dotnet build -c Release)",
       "Bash(dotnet ef database drop --force)",
       "Bash(timeout 15 dotnet run --no-build -c Release)",
-      "Bash(timeout 20 dotnet run --no-build -c Release)"
+      "Bash(timeout 20 dotnet run --no-build -c Release)",
+      "Bash(ls -la /c/Workarea/liec/frontend/src/pages/*/)",
+      "Bash(dotnet ef migrations list)",
+      "Bash(dotnet ef migrations add Initial)",
+      "Bash(ls -la \"c:\\\\Workarea\\\\liec\\\\frontend\\\\src\\\\components\\\\layout-components\\\\main-layout\"\" 2>/dev/null || echo \"Directory not found \")",
+      "Bash(mysql \"server=beez-app.mysql.database.azure.com;user=adminBeez;database=shippingapp;port=3306;password=Beez4Life12345;sslmode=Required\" --execute=\"SELECT 1\")",
+      "Bash(where mysql)"
     ]
   }
 }

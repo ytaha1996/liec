@@ -36,11 +36,6 @@ public interface IMasterDataBusiness
     Task<GoodTypeDto> CreateGoodTypeAsync(UpsertGoodTypeRequest req);
     Task<GoodTypeDto?> UpdateGoodTypeAsync(int id, UpsertGoodTypeRequest req);
 
-    Task<List<GoodDto>> ListGoodsAsync();
-    Task<GoodDto?> GetGoodAsync(int id);
-    Task<GoodDto> CreateGoodAsync(UpsertGoodRequest req);
-    Task<GoodDto?> UpdateGoodAsync(int id, UpsertGoodRequest req);
-
     Task<List<SupplierDto>> ListSuppliersAsync();
     Task<SupplierDto?> GetSupplierAsync(int id);
     Task<SupplierDto> CreateSupplierAsync(UpsertSupplierRequest req);
@@ -81,20 +76,6 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     {
         var e = await db.GoodTypes.FindAsync(id); if (e is null) return null;
         e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.RatePerKg = req.RatePerKg; e.RatePerM3 = req.RatePerM3; e.IsActive = req.IsActive;
-        await db.SaveChangesAsync(); return e.ToDto();
-    }
-
-    public async Task<List<GoodDto>> ListGoodsAsync() => (await db.Goods.ToListAsync()).Select(x => x.ToDto()).ToList();
-    public async Task<GoodDto?> GetGoodAsync(int id) => (await db.Goods.FindAsync(id))?.ToDto();
-    public async Task<GoodDto> CreateGoodAsync(UpsertGoodRequest req)
-    {
-        var e = new Good { GoodTypeId = req.GoodTypeId, NameEn = req.NameEn, NameAr = req.NameAr, CanBurn = req.CanBurn, CanBreak = req.CanBreak, Unit = req.Unit, RatePerKgOverride = req.RatePerKgOverride, RatePerM3Override = req.RatePerM3Override, IsActive = req.IsActive };
-        db.Goods.Add(e); await db.SaveChangesAsync(); return e.ToDto();
-    }
-    public async Task<GoodDto?> UpdateGoodAsync(int id, UpsertGoodRequest req)
-    {
-        var e = await db.Goods.FindAsync(id); if (e is null) return null;
-        e.GoodTypeId = req.GoodTypeId; e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.CanBurn = req.CanBurn; e.CanBreak = req.CanBreak; e.Unit = req.Unit; e.RatePerKgOverride = req.RatePerKgOverride; e.RatePerM3Override = req.RatePerM3Override; e.IsActive = req.IsActive;
         await db.SaveChangesAsync(); return e.ToDto();
     }
 

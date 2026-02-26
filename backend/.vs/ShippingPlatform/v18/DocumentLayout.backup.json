@@ -3,12 +3,16 @@
   "WorkspaceRootPath": "C:\\Workarea\\liec\\backend\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|c:\\workarea\\liec\\backend\\shippingplatform.api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
-      "RelativeMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|solutionrelative:shippingplatform.api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+      "AbsoluteMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|c:\\workarea\\liec\\backend\\shippingplatform.api\\services\\services.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|solutionrelative:shippingplatform.api\\services\\services.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|c:\\workarea\\liec\\backend\\shippingplatform.api\\migrations\\20260225110121_initial.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|solutionrelative:shippingplatform.api\\migrations\\20260225110121_initial.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|c:\\workarea\\liec\\backend\\shippingplatform.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|solutionrelative:shippingplatform.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|c:\\workarea\\liec\\backend\\shippingplatform.api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{11111111-1111-1111-1111-111111111111}|ShippingPlatform.Api\\ShippingPlatform.Api.csproj|solutionrelative:shippingplatform.api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
     }
   ],
   "DocumentGroupContainers": [
@@ -18,7 +22,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 2,
+          "SelectedChildIndex": 1,
           "Children": [
             {
               "$type": "Bookmark",
@@ -26,28 +30,40 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "20260225110121_Initial.cs",
-              "DocumentMoniker": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\Migrations\\20260225110121_Initial.cs",
-              "RelativeDocumentMoniker": "ShippingPlatform.Api\\Migrations\\20260225110121_Initial.cs",
-              "ToolTip": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\Migrations\\20260225110121_Initial.cs",
-              "RelativeToolTip": "ShippingPlatform.Api\\Migrations\\20260225110121_Initial.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAABAAAAAAAAAA==",
+              "DocumentIndex": 0,
+              "Title": "Services.cs",
+              "DocumentMoniker": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\Services\\Services.cs",
+              "RelativeDocumentMoniker": "ShippingPlatform.Api\\Services\\Services.cs",
+              "ToolTip": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\Services\\Services.cs",
+              "RelativeToolTip": "ShippingPlatform.Api\\Services\\Services.cs",
+              "ViewState": "AgIAAFsAAAAAAAAAAADwv2EAAABAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-02-25T11:01:21.509Z"
+              "WhenOpened": "2026-02-26T11:42:56.539Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\Program.cs",
+              "RelativeDocumentMoniker": "ShippingPlatform.Api\\Program.cs",
+              "ToolTip": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\Program.cs",
+              "RelativeToolTip": "ShippingPlatform.Api\\Program.cs",
+              "ViewState": "AgIAAF4AAAAAAAAAAAAAAGkAAAAYAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-26T11:40:58.725Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
               "Title": "appsettings.json",
               "DocumentMoniker": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\appsettings.json",
               "RelativeDocumentMoniker": "ShippingPlatform.Api\\appsettings.json",
               "ToolTip": "C:\\Workarea\\liec\\backend\\ShippingPlatform.Api\\appsettings.json",
               "RelativeToolTip": "ShippingPlatform.Api\\appsettings.json",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAYAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAwAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2026-02-25T09:56:19.596Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-02-25T09:56:19.596Z"
             }
           ]
         }

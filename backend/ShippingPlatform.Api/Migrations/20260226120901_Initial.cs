@@ -40,8 +40,6 @@ namespace ShippingPlatform.Api.Migrations
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
-                    CustomerRef = table.Column<string>(type: "varchar(30)", maxLength: 30, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
                     Name = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     PrimaryPhone = table.Column<string>(type: "varchar(30)", maxLength: 30, nullable: false)
@@ -199,37 +197,6 @@ namespace ShippingPlatform.Api.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
-                name: "Goods",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
-                    GoodTypeId = table.Column<int>(type: "int", nullable: false),
-                    NameEn = table.Column<string>(type: "longtext", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    NameAr = table.Column<string>(type: "longtext", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    CanBurn = table.Column<bool>(type: "tinyint(1)", nullable: false),
-                    CanBreak = table.Column<bool>(type: "tinyint(1)", nullable: false),
-                    Unit = table.Column<string>(type: "longtext", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    RatePerKgOverride = table.Column<decimal>(type: "decimal(65,30)", nullable: true),
-                    RatePerM3Override = table.Column<decimal>(type: "decimal(65,30)", nullable: true),
-                    IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Goods", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Goods_GoodTypes_GoodTypeId",
-                        column: x => x.GoodTypeId,
-                        principalTable: "GoodTypes",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateTable(
                 name: "SupplyOrders",
                 columns: table => new
                 {
@@ -273,6 +240,8 @@ namespace ShippingPlatform.Api.Migrations
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     RefCode = table.Column<string>(type: "varchar(255)", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
+                    TiiuCode = table.Column<string>(type: "varchar(4)", maxLength: 4, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
                     OriginWarehouseId = table.Column<int>(type: "int", nullable: false),
                     DestinationWarehouseId = table.Column<int>(type: "int", nullable: false),
                     PlannedDepartureDate = table.Column<DateTime>(type: "datetime(6)", nullable: false),
@@ -280,6 +249,22 @@ namespace ShippingPlatform.Api.Migrations
                     ActualDepartureAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     ActualArrivalAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
+                    MaxWeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    MaxVolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    TotalWeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    TotalVolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    ExternalTrackingCode = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ExternalCarrierName = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ExternalOrigin = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ExternalDestination = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ExternalEstimatedArrivalAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
+                    ExternalStatus = table.Column<string>(type: "longtext", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ExternalLastSyncedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
@@ -346,6 +331,7 @@ namespace ShippingPlatform.Api.Migrations
                     ChargeAmount = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     HasDeparturePhotos = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     HasArrivalPhotos = table.Column<bool>(type: "tinyint(1)", nullable: false),
+                    HasPricingOverride = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     SupplyOrderId = table.Column<int>(type: "int", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
@@ -406,7 +392,7 @@ namespace ShippingPlatform.Api.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     PackageId = table.Column<int>(type: "int", nullable: false),
-                    GoodId = table.Column<int>(type: "int", nullable: false),
+                    GoodTypeId = table.Column<int>(type: "int", nullable: false),
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     WeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     VolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
@@ -416,9 +402,9 @@ namespace ShippingPlatform.Api.Migrations
                 {
                     table.PrimaryKey("PK_PackageItems", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_PackageItems_Goods_GoodId",
-                        column: x => x.GoodId,
-                        principalTable: "Goods",
+                        name: "FK_PackageItems_GoodTypes_GoodTypeId",
+                        column: x => x.GoodTypeId,
+                        principalTable: "GoodTypes",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
@@ -430,16 +416,32 @@ namespace ShippingPlatform.Api.Migrations
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Customers_CustomerRef",
-                table: "Customers",
-                column: "CustomerRef",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Goods_GoodTypeId",
-                table: "Goods",
-                column: "GoodTypeId");
+            migrationBuilder.CreateTable(
+                name: "PricingOverrides",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    PackageId = table.Column<int>(type: "int", nullable: false),
+                    OverrideType = table.Column<int>(type: "int", nullable: false),
+                    OriginalValue = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    NewValue = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    Reason = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    AdminUserId = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PricingOverrides", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PricingOverrides_Packages_PackageId",
+                        column: x => x.PackageId,
+                        principalTable: "Packages",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Media_PackageId",
@@ -447,9 +449,9 @@ namespace ShippingPlatform.Api.Migrations
                 column: "PackageId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_PackageItems_GoodId",
+                name: "IX_PackageItems_GoodTypeId",
                 table: "PackageItems",
-                column: "GoodId");
+                column: "GoodTypeId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PackageItems_PackageId",
@@ -465,6 +467,11 @@ namespace ShippingPlatform.Api.Migrations
                 name: "IX_Packages_ShipmentId",
                 table: "Packages",
                 column: "ShipmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PricingOverrides_PackageId",
+                table: "PricingOverrides",
+                column: "PackageId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Shipments_DestinationWarehouseId",
@@ -532,6 +539,9 @@ namespace ShippingPlatform.Api.Migrations
                 name: "PricingConfigs");
 
             migrationBuilder.DropTable(
+                name: "PricingOverrides");
+
+            migrationBuilder.DropTable(
                 name: "ShipmentSequences");
 
             migrationBuilder.DropTable(
@@ -542,9 +552,6 @@ namespace ShippingPlatform.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "WhatsAppDeliveryLogs");
-
-            migrationBuilder.DropTable(
-                name: "Goods");
 
             migrationBuilder.DropTable(
                 name: "Packages");

@@ -133,8 +133,8 @@ public class PricingService(AppDbContext db) : IPricingService
     {
         if (package.Status >= PackageStatus.Shipped || package.HasPricingOverride) return;
         await db.Entry(package).Collection(x => x.Items).LoadAsync();
-        var goodIds = package.Items.Select(x => x.GoodId).Distinct().ToList();
-        var goods = await db.Goods.Include(x => x.GoodType).Where(x => goodIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var goodTypeIds = package.Items.Select(x => x.GoodTypeId).Distinct().ToList();
+        var goodTypes = await db.GoodTypes.Where(x => goodTypeIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
         var active = await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active) ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerM3 = 1, Currency = "EUR" };
 
         package.TotalWeightKg = package.Items.Sum(x => x.WeightKg * x.Quantity);
@@ -143,9 +143,9 @@ public class PricingService(AppDbContext db) : IPricingService
         decimal rateKg = active.DefaultRatePerKg, rateM3 = active.DefaultRatePerM3;
         foreach (var i in package.Items)
         {
-            var g = goods[i.GoodId];
-            var itemRateKg = g.RatePerKgOverride ?? g.GoodType.RatePerKg ?? active.DefaultRatePerKg;
-            var itemRateM3 = g.RatePerM3Override ?? g.GoodType.RatePerM3 ?? active.DefaultRatePerM3;
+            goodTypes.TryGetValue(i.GoodTypeId, out var gt);
+            var itemRateKg = gt?.RatePerKg ?? active.DefaultRatePerKg;
+            var itemRateM3 = gt?.RatePerM3 ?? active.DefaultRatePerM3;
             i.LineCharge = Math.Max(i.WeightKg * i.Quantity * itemRateKg, i.VolumeM3 * i.Quantity * itemRateM3);
             rateKg = itemRateKg;
             rateM3 = itemRateM3;

@@ -80,51 +80,6 @@ namespace ShippingPlatform.Api.Migrations
                     b.ToTable("Customers");
                 });
 
-            modelBuilder.Entity("ShippingPlatform.Api.Models.Good", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("CanBreak")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("CanBurn")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<int>("GoodTypeId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("NameAr")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("NameEn")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("RatePerKgOverride")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("RatePerM3Override")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GoodTypeId");
-
-                    b.ToTable("Goods");
-                });
-
             modelBuilder.Entity("ShippingPlatform.Api.Models.GoodType", b =>
                 {
                     b.Property<int>("Id")
@@ -270,7 +225,7 @@ namespace ShippingPlatform.Api.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("GoodId")
+                    b.Property<int>("GoodTypeId")
                         .HasColumnType("int");
 
                     b.Property<decimal>("LineCharge")
@@ -290,7 +245,7 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("GoodId");
+                    b.HasIndex("GoodTypeId");
 
                     b.HasIndex("PackageId");
 
@@ -391,6 +346,27 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<int>("DestinationWarehouseId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ExternalCarrierName")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ExternalDestination")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("ExternalEstimatedArrivalAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExternalLastSyncedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ExternalOrigin")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ExternalStatus")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ExternalTrackingCode")
+                        .HasColumnType("longtext");
+
                     b.Property<decimal>("MaxVolumeM3")
                         .HasColumnType("decimal(65,30)");
 
@@ -412,6 +388,10 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<string>("TiiuCode")
+                        .HasMaxLength(4)
+                        .HasColumnType("varchar(4)");
 
                     b.Property<decimal>("TotalVolumeM3")
                         .HasColumnType("decimal(65,30)");
@@ -442,12 +422,17 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<int>("LastNumber")
                         .HasColumnType("int");
 
+                    b.Property<string>("OriginWarehouseCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)");
+
                     b.Property<int>("Year")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Year")
+                    b.HasIndex("OriginWarehouseCode", "Year")
                         .IsUnique();
 
                     b.ToTable("ShipmentSequences");
@@ -651,17 +636,6 @@ namespace ShippingPlatform.Api.Migrations
                     b.ToTable("WhatsAppDeliveryLogs");
                 });
 
-            modelBuilder.Entity("ShippingPlatform.Api.Models.Good", b =>
-                {
-                    b.HasOne("ShippingPlatform.Api.Models.GoodType", "GoodType")
-                        .WithMany()
-                        .HasForeignKey("GoodTypeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GoodType");
-                });
-
             modelBuilder.Entity("ShippingPlatform.Api.Models.Media", b =>
                 {
                     b.HasOne("ShippingPlatform.Api.Models.Package", "Package")
@@ -694,9 +668,9 @@ namespace ShippingPlatform.Api.Migrations
 
             modelBuilder.Entity("ShippingPlatform.Api.Models.PackageItem", b =>
                 {
-                    b.HasOne("ShippingPlatform.Api.Models.Good", "Good")
+                    b.HasOne("ShippingPlatform.Api.Models.GoodType", "GoodType")
                         .WithMany()
-                        .HasForeignKey("GoodId")
+                        .HasForeignKey("GoodTypeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -706,7 +680,7 @@ namespace ShippingPlatform.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Good");
+                    b.Navigation("GoodType");
 
                     b.Navigation("Package");
                 });

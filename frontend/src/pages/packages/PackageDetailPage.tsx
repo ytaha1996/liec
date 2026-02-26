@@ -4,8 +4,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   Link as MuiLink,
   MenuItem,
@@ -34,8 +32,11 @@ import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
-import PageTitleWrapper from '../../components/PageTitleWrapper';
+import PageActionsSection, { PageAction } from '../../components/layout-components/main-layout/PageActionsSection';
+import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
 import { PhotoGallery } from '../../components/media/PhotoGallery';
+import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
+import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 
 interface Props {
   id: string;
@@ -43,35 +44,59 @@ interface Props {
 
 const PKG_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
   Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-  ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
-  Departed: { color: '#fff', backgroundColor: '#1565c0' },
-  Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-  Closed: { color: '#fff', backgroundColor: '#616161' },
+  Received: { color: '#fff', backgroundColor: '#0288d1' },
+  Packed: { color: '#fff', backgroundColor: '#7b1fa2' },
+  ReadyToShip: { color: '#fff', backgroundColor: '#ed6c02' },
+  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
+  ArrivedAtDestination: { color: '#fff', backgroundColor: '#2e7d32' },
+  ReadyForHandout: { color: '#fff', backgroundColor: '#f57c00' },
+  HandedOut: { color: '#fff', backgroundColor: '#388e3c' },
   Cancelled: { color: '#fff', backgroundColor: '#c62828' },
 };
 
-const TRANSITION_ACTIONS: { label: string; action: string }[] = [
-  { label: 'Receive', action: 'receive' },
-  { label: 'Pack', action: 'pack' },
-  { label: 'Ready To Ship', action: 'ready-to-ship' },
-  { label: 'Ship', action: 'ship' },
-  { label: 'Arrive Destination', action: 'arrive-destination' },
-  { label: 'Ready For Handout', action: 'ready-for-handout' },
-  { label: 'Handout', action: 'handout' },
-  { label: 'Cancel', action: 'cancel' },
+// Allowed next transitions per package status, based on TransitionRuleService
+const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean }[]> = {
+  Draft: [
+    { label: 'Receive', action: 'receive' },
+    { label: 'Cancel', action: 'cancel', isCancel: true },
+  ],
+  Received: [
+    { label: 'Pack', action: 'pack' },
+    { label: 'Cancel', action: 'cancel', isCancel: true },
+  ],
+  Packed: [
+    { label: 'Ready To Ship', action: 'ready-to-ship' },
+    { label: 'Cancel', action: 'cancel', isCancel: true },
+  ],
+  ReadyToShip: [
+    { label: 'Ship', action: 'ship' },
+    { label: 'Cancel', action: 'cancel', isCancel: true },
+  ],
+  Shipped: [{ label: 'Arrive Destination', action: 'arrive-destination' }],
+  ArrivedAtDestination: [{ label: 'Ready For Handout', action: 'ready-for-handout' }],
+  ReadyForHandout: [{ label: 'Handout', action: 'handout' }],
+  HandedOut: [],
+  Cancelled: [],
+};
+
+const PKG_INFO_FIELDS: IInformationWidgetField[] = [
+  { type: InformationWidgetFieldTypes.Text, name: 'shipmentId', title: 'Shipment ID', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'customerId', title: 'Customer ID', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'provisionMethod', title: 'Provision Method', width: 'third' },
+  { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At', width: 'third' },
 ];
 
 const PHOTO_STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
 
-const buildItemFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
-  goodId: {
-    type: DynamicField.NUMBER,
-    name: 'goodId',
-    title: 'Good ID',
+const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
+  goodTypeId: {
+    type: DynamicField.SELECT,
+    name: 'goodTypeId',
+    title: 'Good Type',
     required: true,
     disabled: false,
-    value: initial?.goodId ?? '',
+    items: goodsItems,
+    value: String(initial?.goodTypeId ?? ''),
   },
   quantity: {
     type: DynamicField.NUMBER,
@@ -126,6 +151,11 @@ const PackageDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any[]>(`/api/packages/${id}/pricing-overrides`),
   });
 
+  const goodsQuery = useQuery<any[]>({
+    queryKey: ['/api/good-types'],
+    queryFn: () => getJson<any[]>('/api/good-types'),
+  });
+
   const applyOverride = useMutation({
     mutationFn: (payload: { overrideType: string; newValue: number; reason: string }) =>
       postJson(`/api/packages/${id}/pricing-override`, payload),
@@ -162,7 +192,7 @@ const PackageDetailPage = ({ id }: Props) => {
   const addItem = useMutation({
     mutationFn: (values: Record<string, any>) =>
       postJson(`/api/packages/${id}/items`, {
-        goodId: Number(values.goodId),
+        goodTypeId: Number(values.goodTypeId),
         quantity: Number(values.quantity),
         weightKg: Number(values.weightKg),
         volumeM3: Number(values.volumeM3),
@@ -187,7 +217,7 @@ const PackageDetailPage = ({ id }: Props) => {
   const putItem = useMutation({
     mutationFn: ({ itemId, values }: { itemId: number; values: Record<string, any> }) =>
       putJson(`/api/packages/${id}/items/${itemId}`, {
-        goodId: Number(values.goodId),
+        goodTypeId: Number(values.goodTypeId),
         quantity: Number(values.quantity),
         weightKg: Number(values.weightKg),
         volumeM3: Number(values.volumeM3),
@@ -226,14 +256,21 @@ const PackageDetailPage = ({ id }: Props) => {
     }
   };
 
+  const goodsItems: Record<string, string> = (goodsQuery.data ?? []).reduce(
+    (acc: Record<string, string>, g: any) => { acc[String(g.id)] = g.nameEn; return acc; }, {},
+  );
+  const goodsMap: Record<number, string> = (goodsQuery.data ?? []).reduce(
+    (acc: Record<number, string>, g: any) => { acc[g.id] = g.nameEn; return acc; }, {},
+  );
+
   const items: any[] = data?.items ?? [];
   const itemsTableData = items.reduce((acc: Record<string, any>, item: any) => {
-    acc[item.id] = item;
+    acc[item.id] = { ...item, goodName: item.goodTypeName || goodsMap[item.goodTypeId] || `#${item.goodTypeId}` };
     return acc;
   }, {});
 
   const itemHeaders: EnhanceTableHeaderTypes[] = [
-    { id: 'goodId', label: 'Good ID', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
+    { id: 'goodName', label: 'Good', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     { id: 'quantity', label: 'Quantity', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
     { id: 'weightKg', label: 'Weight (Kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
     { id: 'volumeM3', label: 'Volume (M3)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
@@ -282,28 +319,58 @@ const PackageDetailPage = ({ id }: Props) => {
 
   const pkg = data.package ?? data;
 
-  return (
-    <Box>
-      <PageTitleWrapper>
-        <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
-          <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: '#00A6A6' }}>
-            Package #{id}
-          </Typography>
-          {pkg.status && (
-            <Chip
-              label={pkg.status}
-              size="small"
-              sx={{
-                backgroundColor: PKG_STATUS_CHIPS[pkg.status]?.backgroundColor ?? '#e0e0e0',
-                color: PKG_STATUS_CHIPS[pkg.status]?.color ?? '#333',
-              }}
-            />
-          )}
-        </Stack>
-      </PageTitleWrapper>
+  const pricingFields: IInformationWidgetField[] = [
+    { type: InformationWidgetFieldTypes.Text, name: 'totalWeightKg', title: 'Total Weight (Kg)', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'totalVolumeM3', title: 'Total Volume (M3)', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'currency', title: 'Currency', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerM3', title: 'Rate Per M3', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerM3'); setOverrideDialogOpen(true); } } },
+    { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } },
+  ];
 
-      <Box sx={{ px: 3, pb: 3 }}>
-        <MainPageSection title="Status Transitions">
+  const transitionActions: PageAction[] = (ALLOWED_TRANSITIONS[pkg.status] ?? []).map(
+    ({ label, action, isCancel }) => ({
+      label,
+      action,
+      color: (isCancel ? 'error' : 'primary') as PageAction['color'],
+      onClick: isCancel
+        ? () =>
+            dispatch(
+              OpenConfirmation({
+                open: true,
+                title: 'Cancel Package',
+                message: 'Are you sure you want to cancel this package? This cannot be undone.',
+                onSubmit: () => transition.mutate('cancel'),
+              }),
+            )
+        : () => transition.mutate(action),
+    }),
+  );
+
+  return (
+    <>
+    <DetailPageLayout
+      title={`Package #${id}`}
+      chips={
+        pkg.status && (
+          <Chip
+            label={pkg.status}
+            size="small"
+            sx={{
+              backgroundColor: PKG_STATUS_CHIPS[pkg.status]?.backgroundColor ?? '#e0e0e0',
+              color: PKG_STATUS_CHIPS[pkg.status]?.color ?? '#333',
+            }}
+          />
+        )
+      }
+    >
+        <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkg} />
+
+        <PageActionsSection
+          title="Status Transitions"
+          actions={transitionActions}
+          isPending={transition.isPending}
+        >
           {gate?.code === 'PHOTO_GATE_FAILED' && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {gate.message}
@@ -318,7 +385,7 @@ const PackageDetailPage = ({ id }: Props) => {
                   {(gate.missing ?? []).map((m) => (
                     <TableRow key={`${m.packageId}-${m.stage}`}>
                       <TableCell>
-                        <MuiLink component={RouterLink} to={`/packages/${m.packageId}`}>
+                        <MuiLink component={RouterLink} to={`/ops/packages/${m.packageId}`}>
                           #{m.packageId}
                         </MuiLink>
                       </TableCell>
@@ -329,98 +396,15 @@ const PackageDetailPage = ({ id }: Props) => {
               </Table>
             </Alert>
           )}
-          <Stack direction="row" gap={1} flexWrap="wrap">
-            {TRANSITION_ACTIONS.map(({ label, action }) => (
-              <Button
-                key={action}
-                variant="outlined"
-                color={action === 'cancel' ? 'error' : 'primary'}
-                onClick={() =>
-                  action === 'cancel'
-                    ? dispatch(OpenConfirmation({
-                        open: true,
-                        title: 'Cancel Package',
-                        message: 'Are you sure you want to cancel this package? This cannot be undone.',
-                        onSubmit: () => transition.mutate('cancel'),
-                      }))
-                    : transition.mutate(action)
-                }
-                disabled={transition.isPending}
-              >
-                {label}
-              </Button>
-            ))}
-          </Stack>
-        </MainPageSection>
+        </PageActionsSection>
 
-        <MainPageSection title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}>
-          <Card variant="outlined">
-            <CardContent>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Total Weight (Kg)</Typography>
-                  <Typography>{pkg.totalWeightKg ?? '-'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Total Volume (M3)</Typography>
-                  <Typography>{pkg.totalVolumeM3 ?? '-'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Rate Per Kg</Typography>
-                  <Stack direction="row" alignItems="center" gap={1}>
-                    <Typography>{pkg.appliedRatePerKg ?? '-'}</Typography>
-                    <Button size="small" variant="text" onClick={() => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); }}>Override</Button>
-                  </Stack>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Rate Per M3</Typography>
-                  <Stack direction="row" alignItems="center" gap={1}>
-                    <Typography>{pkg.appliedRatePerM3 ?? '-'}</Typography>
-                    <Button size="small" variant="text" onClick={() => { setOverrideType('RatePerM3'); setOverrideDialogOpen(true); }}>Override</Button>
-                  </Stack>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Charge Amount</Typography>
-                  <Stack direction="row" alignItems="center" gap={1}>
-                    <Typography>{pkg.chargeAmount ?? '-'}</Typography>
-                    <Button size="small" variant="text" onClick={() => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); }}>Override</Button>
-                  </Stack>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Currency</Typography>
-                  <Typography>{pkg.currency ?? '-'}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-          {(overridesQuery.data ?? []).length > 0 && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Override History</Typography>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Original</TableCell>
-                    <TableCell>New</TableCell>
-                    <TableCell>Reason</TableCell>
-                    <TableCell>Date</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(overridesQuery.data ?? []).map((o: any) => (
-                    <TableRow key={o.id}>
-                      <TableCell>{o.overrideType}</TableCell>
-                      <TableCell>{o.originalValue}</TableCell>
-                      <TableCell>{o.newValue}</TableCell>
-                      <TableCell>{o.reason}</TableCell>
-                      <TableCell>{new Date(o.createdAt).toLocaleDateString()}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Box>
-          )}
-        </MainPageSection>
+        <InformationWidget
+          title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}
+          fields={pricingFields}
+          data={pkg}
+        >
+          <PricingOverrideHistory overrides={overridesQuery.data ?? []} />
+        </InformationWidget>
 
         <MainPageSection title="Items">
           <Box sx={{ mb: 2 }}>
@@ -432,7 +416,7 @@ const PackageDetailPage = ({ id }: Props) => {
             title="Package Items"
             header={itemHeaders}
             data={itemsTableData}
-            defaultOrder="goodId"
+            defaultOrder="goodName"
           />
         </MainPageSection>
 
@@ -467,7 +451,7 @@ const PackageDetailPage = ({ id }: Props) => {
         <MainPageSection title="Photo Gallery">
           <PhotoGallery media={mediaQuery.data ?? []} />
         </MainPageSection>
-      </Box>
+    </DetailPageLayout>
 
       <GenericDialog
         open={addItemOpen}
@@ -477,7 +461,7 @@ const PackageDetailPage = ({ id }: Props) => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildItemFields(editingItem ?? undefined)}
+          fields={buildItemFields(editingItem ?? undefined, goodsItems)}
           onSubmit={handleAddItemSubmit}
         />
       </GenericDialog>
@@ -530,7 +514,7 @@ const PackageDetailPage = ({ id }: Props) => {
           </Stack>
         </Box>
       </GenericDialog>
-    </Box>
+    </>
   );
 };
 

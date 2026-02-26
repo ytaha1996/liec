@@ -28,8 +28,13 @@ import {
   EnhancedTableColumnType,
 } from '../../components/enhanced-table';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
+import PageActionsSection, { PageAction } from '../../components/layout-components/main-layout/PageActionsSection';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import { PhotoGallery } from '../../components/media/PhotoGallery';
+import GenericDialog from '../../components/GenericDialog/GenericDialog';
+import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
+import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
+import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 
 interface Props {
   id: string;
@@ -45,14 +50,48 @@ const SHIPMENT_STATUS_CHIPS: Record<string, { color: string; backgroundColor: st
   Cancelled: { color: '#fff', backgroundColor: '#c62828' },
 };
 
-const TRANSITION_ACTIONS: { label: string; action: string }[] = [
-  { label: 'Schedule', action: 'schedule' },
-  { label: 'Ready To Depart', action: 'ready-to-depart' },
-  { label: 'Depart', action: 'depart' },
-  { label: 'Arrive', action: 'arrive' },
-  { label: 'Close', action: 'close' },
-  { label: 'Cancel', action: 'cancel' },
+const PKG_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
+  Draft: { color: '#333', backgroundColor: '#e0e0e0' },
+  Received: { color: '#fff', backgroundColor: '#0288d1' },
+  Packed: { color: '#fff', backgroundColor: '#7b1fa2' },
+  ReadyToShip: { color: '#fff', backgroundColor: '#ed6c02' },
+  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
+  ArrivedAtDestination: { color: '#fff', backgroundColor: '#2e7d32' },
+  ReadyForHandout: { color: '#fff', backgroundColor: '#f57c00' },
+  HandedOut: { color: '#fff', backgroundColor: '#388e3c' },
+  Cancelled: { color: '#fff', backgroundColor: '#c62828' },
+};
+
+// Allowed next transitions per shipment status, based on TransitionRuleService
+const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean }[]> = {
+  Draft: [
+    { label: 'Schedule', action: 'schedule' },
+    { label: 'Cancel', action: 'cancel', isCancel: true },
+  ],
+  Scheduled: [
+    { label: 'Ready To Depart', action: 'ready-to-depart' },
+    { label: 'Cancel', action: 'cancel', isCancel: true },
+  ],
+  ReadyToDepart: [{ label: 'Depart', action: 'depart' }],
+  Departed: [{ label: 'Arrive', action: 'arrive' }],
+  Arrived: [{ label: 'Close', action: 'close' }],
+  Closed: [],
+  Cancelled: [],
+};
+
+const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
+  { type: InformationWidgetFieldTypes.Text, name: 'refCode', title: 'Ref Code', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'tiiuCode', title: 'TIIU Code', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'originWarehouse', title: 'Origin', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'destinationWarehouse', title: 'Destination', width: 'third' },
+  { type: InformationWidgetFieldTypes.Date, name: 'plannedDepartureDate', title: 'Planned Departure', width: 'third' },
+  { type: InformationWidgetFieldTypes.Date, name: 'plannedArrivalDate', title: 'Planned Arrival', width: 'third' },
+  { type: InformationWidgetFieldTypes.Datetime, name: 'actualDepartureAt', title: 'Actual Departure', width: 'third' },
+  { type: InformationWidgetFieldTypes.Datetime, name: 'actualArrivalAt', title: 'Actual Arrival', width: 'third' },
+  { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At', width: 'third' },
 ];
+
+const CAN_ADD_PACKAGE = new Set(['Draft', 'Scheduled']);
 
 const ShipmentDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
@@ -61,6 +100,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const [gate, setGate] = useState<GateError | null>(null);
   const [trackingCode, setTrackingCode] = useState('');
   const [tiiuDraft, setTiiuDraft] = useState('');
+  const [addPkgOpen, setAddPkgOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/shipments', id],
@@ -82,10 +122,64 @@ const ShipmentDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any[]>('/api/customers'),
   });
 
+  const warehousesQuery = useQuery<any[]>({
+    queryKey: ['/api/warehouses'],
+    queryFn: () => getJson<any[]>('/api/warehouses'),
+  });
+
   const customersMap = (customersQuery.data ?? []).reduce((acc: Record<number, string>, c: any) => {
     acc[c.id] = `${c.name} (#${c.id})`;
     return acc;
   }, {});
+
+  const customersItems = (customersQuery.data ?? []).reduce((acc: Record<string, string>, c: any) => {
+    acc[String(c.id)] = `${c.name} (#${c.id})`;
+    return acc;
+  }, {});
+
+  const warehousesMap = (warehousesQuery.data ?? []).reduce((acc: Record<number, string>, w: any) => {
+    acc[w.id] = `${w.name} (${w.code})`;
+    return acc;
+  }, {});
+
+  const addPackageFields: Record<string, DynamicFieldTypes> = {
+    customerId: {
+      type: DynamicField.SELECT,
+      name: 'customerId',
+      title: 'Customer',
+      required: true,
+      disabled: false,
+      items: customersItems,
+      value: '',
+    },
+    provisionMethod: {
+      type: DynamicField.SELECT,
+      name: 'provisionMethod',
+      title: 'Provision Method',
+      required: true,
+      disabled: false,
+      items: { CustomerProvided: 'Customer Provided', ProcuredForCustomer: 'Procured For Customer' },
+      value: 'CustomerProvided',
+    },
+  };
+
+  const createPackage = useMutation({
+    mutationFn: (payload: Record<string, any>) =>
+      postJson<any>(`/api/shipments/${id}/packages`, {
+        customerId: Number(payload.customerId),
+        provisionMethod: payload.provisionMethod,
+        supplyOrderId: null,
+      }),
+    onSuccess: (result: any) => {
+      toast.success('Package created');
+      qc.invalidateQueries({ queryKey: ['/api/packages'] });
+      setAddPkgOpen(false);
+      navigate(`/ops/packages/${result.id}`);
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message ?? 'Failed to create package');
+    },
+  });
 
   const shipmentPackages = (packagesQuery.data ?? []).filter(
     (p) => String(p.shipmentId) === String(id),
@@ -108,7 +202,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       type: EnhancedTableColumnType.Clickable,
       numeric: false,
       disablePadding: false,
-      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/packages/${row.id}`),
+      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/packages/${row.id}`),
     },
     { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     {
@@ -117,7 +211,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: SHIPMENT_STATUS_CHIPS,
+      chipColors: PKG_STATUS_CHIPS,
       chipLabels: {},
     },
     {
@@ -195,6 +289,31 @@ const ShipmentDetailPage = ({ id }: Props) => {
     return <Box sx={{ p: 3 }}><Alert severity="error">Shipment not found.</Alert></Box>;
   }
 
+  const shipmentDisplayData = {
+    ...data,
+    originWarehouse: warehousesMap[data.originWarehouseId] ?? `#${data.originWarehouseId}`,
+    destinationWarehouse: warehousesMap[data.destinationWarehouseId] ?? `#${data.destinationWarehouseId}`,
+  };
+
+  const transitionActions: PageAction[] = (ALLOWED_TRANSITIONS[data.status] ?? []).map(
+    ({ label, action, isCancel }) => ({
+      label,
+      action,
+      color: (isCancel ? 'error' : 'primary') as PageAction['color'],
+      onClick: isCancel
+        ? () =>
+            dispatch(
+              OpenConfirmation({
+                open: true,
+                title: 'Cancel Shipment',
+                message: 'Are you sure you want to cancel this shipment? This cannot be undone.',
+                onSubmit: () => move.mutate('cancel'),
+              }),
+            )
+        : () => move.mutate(action),
+    }),
+  );
+
   return (
     <Box>
       <PageTitleWrapper>
@@ -214,6 +333,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       </PageTitleWrapper>
 
       <Box sx={{ px: 3, pb: 3 }}>
+        <InformationWidget title="Shipment Info" fields={SHIPMENT_INFO_FIELDS} data={shipmentDisplayData} />
 
         <MainPageSection title="TIIU Code">
           <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
@@ -234,7 +354,11 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </Stack>
         </MainPageSection>
 
-        <MainPageSection title="Status Transitions">
+        <PageActionsSection
+          title="Status Transitions"
+          actions={transitionActions}
+          isPending={move.isPending}
+        >
           {gate?.code === 'PHOTO_GATE_FAILED' && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {gate.message}
@@ -249,7 +373,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
                   {(gate.missing ?? []).map((m) => (
                     <TableRow key={`${m.packageId}-${m.stage}`}>
                       <TableCell>
-                        <MuiLink component={RouterLink} to={`/packages/${m.packageId}`}>
+                        <MuiLink component={RouterLink} to={`/ops/packages/${m.packageId}`}>
                           #{m.packageId}
                         </MuiLink>
                       </TableCell>
@@ -260,29 +384,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
               </Table>
             </Alert>
           )}
-          <Stack direction="row" gap={1} flexWrap="wrap">
-            {TRANSITION_ACTIONS.map(({ label, action }) => (
-              <Button
-                key={action}
-                variant="outlined"
-                color={action === 'cancel' ? 'error' : 'primary'}
-                onClick={() =>
-                  action === 'cancel'
-                    ? dispatch(OpenConfirmation({
-                        open: true,
-                        title: 'Cancel Shipment',
-                        message: 'Are you sure you want to cancel this shipment? This cannot be undone.',
-                        onSubmit: () => move.mutate('cancel'),
-                      }))
-                    : move.mutate(action)
-                }
-                disabled={move.isPending}
-              >
-                {label}
-              </Button>
-            ))}
-          </Stack>
-        </MainPageSection>
+        </PageActionsSection>
 
         {(data.maxWeightKg > 0 || data.maxVolumeM3 > 0) && (
           <MainPageSection title="Container Capacity">
@@ -342,6 +444,13 @@ const ShipmentDetailPage = ({ id }: Props) => {
         </MainPageSection>
 
         <MainPageSection title="Packages">
+          {CAN_ADD_PACKAGE.has(data.status) && (
+            <Box sx={{ mb: 2 }}>
+              <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>
+                + Add Package
+              </Button>
+            </Box>
+          )}
           <EnhancedTable
             title="Packages in Shipment"
             header={packageHeadersWithNav}
@@ -354,6 +463,26 @@ const ShipmentDetailPage = ({ id }: Props) => {
           <PhotoGallery media={mediaQuery.data ?? []} />
         </MainPageSection>
       </Box>
+
+      <GenericDialog
+        open={addPkgOpen}
+        title="Add Package to Shipment"
+        onClose={() => setAddPkgOpen(false)}
+      >
+        <DynamicFormWidget
+          title=""
+          drawerMode
+          fields={addPackageFields}
+          onSubmit={async (values) => {
+            try {
+              await createPackage.mutateAsync(values);
+              return true;
+            } catch {
+              return false;
+            }
+          }}
+        />
+      </GenericDialog>
     </Box>
   );
 };

@@ -21,7 +21,6 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
         customers: { name: 'customers', route: '/master/customers', title: 'Customers' },
         warehouses: { name: 'warehouses', route: '/master/warehouses', title: 'Warehouses' },
         goodTypes: { name: 'goodTypes', route: '/master/good-types', title: 'Good Types' },
-        goods: { name: 'goods', route: '/master/goods', title: 'Goods' },
         pricing: { name: 'pricing', route: '/master/pricing-configs', title: 'Pricing' },
         suppliers: { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers' },
         supplyOrders: { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders' },

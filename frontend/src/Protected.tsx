@@ -9,7 +9,6 @@ import CustomersPage from './pages/customers/CustomersPage';
 import CustomerDetailPage from './pages/customers/CustomerDetailPage';
 import WarehousesPage from './pages/warehouses/WarehousesPage';
 import GoodTypesPage from './pages/good-types/GoodTypesPage';
-import GoodsPage from './pages/goods/GoodsPage';
 import PricingConfigsPage from './pages/pricing/PricingConfigsPage';
 import ShipmentsPage from './pages/shipments/ShipmentsPage';
 import ShipmentDetailPage from './pages/shipments/ShipmentDetailPage';
@@ -58,28 +57,12 @@ export const Protected: React.FC = () => {
         <Route path="/master/customers/:id" element={<CustomerDetailWrap />} />
         <Route path="/master/warehouses" element={<WarehousesPage />} />
         <Route path="/master/good-types" element={<GoodTypesPage />} />
-        <Route path="/master/goods" element={<GoodsPage />} />
         <Route path="/master/pricing-configs" element={<PricingConfigsPage />} />
         <Route path="/master/suppliers" element={<SuppliersPage />} />
         <Route path="/master/supply-orders" element={<SupplyOrdersPage />} />
 
         <Route path="/comms/messaging-logs" element={<MessagingLogsPage />} />
         <Route path="/comms/group-helper-export" element={<GroupHelperExportPage />} />
-
-        <Route path="/dashboard" element={<Navigate to="/ops/dashboard" replace />} />
-        <Route path="/shipments" element={<Navigate to="/ops/shipments" replace />} />
-        <Route path="/shipments/:id" element={<Navigate to="/ops/shipments" replace />} />
-        <Route path="/packages" element={<Navigate to="/ops/packages" replace />} />
-        <Route path="/packages/:id" element={<Navigate to="/ops/packages" replace />} />
-        <Route path="/customers" element={<Navigate to="/master/customers" replace />} />
-        <Route path="/customers/:id" element={<Navigate to="/master/customers" replace />} />
-        <Route path="/warehouses" element={<Navigate to="/master/warehouses" replace />} />
-        <Route path="/good-types" element={<Navigate to="/master/good-types" replace />} />
-        <Route path="/goods" element={<Navigate to="/master/goods" replace />} />
-        <Route path="/pricing-configs" element={<Navigate to="/master/pricing-configs" replace />} />
-        <Route path="/suppliers" element={<Navigate to="/master/suppliers" replace />} />
-        <Route path="/supply-orders" element={<Navigate to="/master/supply-orders" replace />} />
-        <Route path="/messaging-logs" element={<Navigate to="/comms/messaging-logs" replace />} />
 
         <Route path="*" element={<Navigate to="/ops/dashboard" replace />} />
       </Route>

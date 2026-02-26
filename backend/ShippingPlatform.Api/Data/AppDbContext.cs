@@ -11,7 +11,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<PricingConfig> PricingConfigs => Set<PricingConfig>();
     public DbSet<GoodType> GoodTypes => Set<GoodType>();
-    public DbSet<Good> Goods => Set<Good>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ShipmentSequence> ShipmentSequences => Set<ShipmentSequence>();
     public DbSet<Package> Packages => Set<Package>();

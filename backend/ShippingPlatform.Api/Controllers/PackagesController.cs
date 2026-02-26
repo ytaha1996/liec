@@ -17,7 +17,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     }
 
     [HttpPost("api/packages/auto-assign")]
-    public async Task<IActionResult> AutoAssign(CreatePackageRequest input)
+    public async Task<IActionResult> AutoAssign(AutoAssignPackageRequest input)
     {
         var (dto, err) = await business.AutoAssignAsync(input);
         if (err is not null) return Conflict(err);

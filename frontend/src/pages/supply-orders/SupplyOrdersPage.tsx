@@ -26,7 +26,12 @@ const LIFECYCLE_ACTIONS: { label: string; action: string }[] = [
   { label: 'Cancel', action: 'cancel' },
 ];
 
-const buildFields = (initial: Record<string, any> | undefined, customersItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
+const buildFields = (
+  initial: Record<string, any> | undefined,
+  customersItems: Record<string, string>,
+  suppliersItems: Record<string, string>,
+  packagesItems: Record<string, string>,
+): Record<string, DynamicFieldTypes> => ({
   customerId: {
     type: DynamicField.SELECT,
     name: 'customerId',
@@ -37,20 +42,22 @@ const buildFields = (initial: Record<string, any> | undefined, customersItems: R
     value: String(initial?.customerId ?? ''),
   },
   supplierId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'supplierId',
-    title: 'Supplier ID',
+    title: 'Supplier',
     required: true,
     disabled: false,
-    value: initial?.supplierId ?? '',
+    items: suppliersItems,
+    value: String(initial?.supplierId ?? ''),
   },
   packageId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'packageId',
-    title: 'Package ID',
+    title: 'Package',
     required: false,
     disabled: false,
-    value: initial?.packageId ?? '',
+    items: packagesItems,
+    value: String(initial?.packageId ?? ''),
   },
   name: {
     type: DynamicField.TEXT,
@@ -96,6 +103,16 @@ const SupplyOrdersPage = () => {
     queryFn: () => getJson<any[]>('/api/customers'),
   });
 
+  const { data: suppliers = [] } = useQuery<any[]>({
+    queryKey: ['/api/suppliers'],
+    queryFn: () => getJson<any[]>('/api/suppliers'),
+  });
+
+  const { data: packages = [] } = useQuery<any[]>({
+    queryKey: ['/api/packages'],
+    queryFn: () => getJson<any[]>('/api/packages'),
+  });
+
   const customersItems = (customers as any[]).reduce((acc: Record<string, string>, c: any) => {
     acc[String(c.id)] = `${c.name} (#${c.id})`;
     return acc;
@@ -105,6 +122,18 @@ const SupplyOrdersPage = () => {
     acc[c.id] = `${c.name} (#${c.id})`;
     return acc;
   }, {});
+
+  const suppliersItems = (suppliers as any[]).reduce((acc: Record<string, string>, s: any) => {
+    acc[String(s.id)] = s.name;
+    return acc;
+  }, {});
+
+  const packagesItems = (packages as any[])
+    .filter((p: any) => p.status !== 'Cancelled' && p.status !== 'HandedOut')
+    .reduce((acc: Record<string, string>, p: any) => {
+      acc[String(p.id)] = `Package #${p.id}`;
+      return acc;
+    }, {});
 
   const save = useMutation({
     mutationFn: (payload: Record<string, any>) =>
@@ -222,7 +251,7 @@ const SupplyOrdersPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined, customersItems)}
+          fields={buildFields(editing ?? undefined, customersItems, suppliersItems, packagesItems)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>

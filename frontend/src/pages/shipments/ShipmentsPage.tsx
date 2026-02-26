@@ -120,7 +120,7 @@ const ShipmentsPage = () => {
       type: EnhancedTableColumnType.Clickable,
       numeric: false,
       disablePadding: false,
-      onClick: (_id: string, row: Record<string, any>) => navigate(`/shipments/${row.id}`),
+      onClick: (_id: string, row: Record<string, any>) => navigate(`/ops/shipments/${row.id}`),
     },
     {
       id: 'status',

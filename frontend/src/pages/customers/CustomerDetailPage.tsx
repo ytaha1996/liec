@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Box,
-  Card,
-  CardContent,
   Chip,
   TextField,
   Typography,
@@ -17,10 +15,18 @@ import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
+import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 
 interface Props {
   id: string;
 }
+
+const CUSTOMER_INFO_FIELDS: IInformationWidgetField[] = [
+  { type: InformationWidgetFieldTypes.Text, name: 'name', title: 'Name', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'primaryPhone', title: 'Primary Phone', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'email', title: 'Email', width: 'third' },
+  { type: InformationWidgetFieldTypes.Boolean, name: 'isActive', title: 'Active', width: 'third' },
+];
 
 const buildConsentFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
   optInStatusUpdates: {
@@ -124,65 +130,26 @@ const CustomerDetailPage = ({ id }: Props) => {
       </PageTitleWrapper>
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <MainPageSection title="Info">
-          <Card variant="outlined">
-            <CardContent>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Name</Typography>
-                  <Typography>{data.name}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">ID</Typography>
-                  <Typography>#{data.id}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Primary Phone</Typography>
-                  <Typography>{data.primaryPhone}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Email</Typography>
-                  <Typography>{data.email ?? '-'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Is Active</Typography>
-                  <Chip
-                    label={data.isActive ? 'Active' : 'Inactive'}
-                    color={data.isActive ? 'success' : 'default'}
-                    size="small"
-                  />
-                </Box>
-                <Box sx={{ gridColumn: { sm: '1 / -1' } }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    WhatsApp Consent Flags
-                  </Typography>
-                  <Stack direction="row" gap={1} flexWrap="wrap">
-                    <Chip
-                      label={`Status: ${consent.optInStatusUpdates ? 'Yes' : 'No'}`}
-                      color={consent.optInStatusUpdates ? 'success' : 'default'}
-                      size="small"
-                    />
-                    <Chip
-                      label={`Departure Photos: ${consent.optInDeparturePhotos ? 'Yes' : 'No'}`}
-                      color={consent.optInDeparturePhotos ? 'success' : 'default'}
-                      size="small"
-                    />
-                    <Chip
-                      label={`Arrival Photos: ${consent.optInArrivalPhotos ? 'Yes' : 'No'}`}
-                      color={consent.optInArrivalPhotos ? 'success' : 'default'}
-                      size="small"
-                    />
-                  </Stack>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+        <InformationWidget title="Info" fields={CUSTOMER_INFO_FIELDS} data={data} />
+
+        <MainPageSection title="WhatsApp Consent Flags">
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Chip
+              label={`Status: ${consent.optInStatusUpdates ? 'Yes' : 'No'}`}
+              color={consent.optInStatusUpdates ? 'success' : 'default'}
+              size="small"
+            />
+            <Chip
+              label={`Departure Photos: ${consent.optInDeparturePhotos ? 'Yes' : 'No'}`}
+              color={consent.optInDeparturePhotos ? 'success' : 'default'}
+              size="small"
+            />
+            <Chip
+              label={`Arrival Photos: ${consent.optInArrivalPhotos ? 'Yes' : 'No'}`}
+              color={consent.optInArrivalPhotos ? 'success' : 'default'}
+              size="small"
+            />
+          </Stack>
         </MainPageSection>
 
         <MainPageSection title="WhatsApp Consent">
