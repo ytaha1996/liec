@@ -14,8 +14,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Good> Goods => Set<Good>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ShipmentSequence> ShipmentSequences => Set<ShipmentSequence>();
+    public DbSet<Container> Containers => Set<Container>();
     public DbSet<Package> Packages => Set<Package>();
     public DbSet<PackageItem> PackageItems => Set<PackageItem>();
+    public DbSet<PackageFee> PackageFees => Set<PackageFee>();
+    public DbSet<VesselTracking> VesselTrackings => Set<VesselTracking>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<SupplyOrder> SupplyOrders => Set<SupplyOrder>();
     public DbSet<Media> Media => Set<Media>();
@@ -29,5 +32,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Shipment>().HasIndex(x => x.RefCode).IsUnique();
         modelBuilder.Entity<SupplyOrder>().HasIndex(x => x.PackageId).IsUnique();
         modelBuilder.Entity<ShipmentSequence>().HasIndex(x => new { x.OriginWarehouseCode, x.Year }).IsUnique();
+        modelBuilder.Entity<Container>().HasIndex(x => x.Code).IsUnique();
     }
 }

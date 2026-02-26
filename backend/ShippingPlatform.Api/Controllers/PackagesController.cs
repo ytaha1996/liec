@@ -6,13 +6,13 @@ using ShippingPlatform.Api.Models;
 namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
-public class PackagesController(IPackageBusiness business) : ControllerBase
+public class PackagesController(IPackageBusiness business, IShipmentBusiness shipments) : ControllerBase
 {
     [HttpPost("api/shipments/{shipmentId:int}/packages")]
     public async Task<IActionResult> Create(int shipmentId, CreatePackageRequest input)
     {
         var p = await business.CreateAsync(shipmentId, input);
-        return Created($"/api/packages/{p.Id}", p);
+        return p is null ? NotFound() : Created($"/api/packages/{p.Id}", p);
     }
 
     [HttpGet("api/packages")]
@@ -55,6 +55,22 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("api/packages/{id:int}/metadata")]
+    public async Task<IActionResult> UpdateMetadata(int id, PackageMetadataUpdateRequest input)
+    {
+        var (dto, err) = await business.UpdateMetadataAsync(id, input);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
+    [HttpPost("api/packages/{id:int}/fees")]
+    public async Task<IActionResult> AddFee(int id, UpsertPackageFeeRequest input)
+    {
+        var (dto, err) = await business.AddFeeAsync(id, input);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
     [HttpPost("api/packages/{id:int}/media")]
     public async Task<IActionResult> UploadMedia(int id, [FromForm] MediaUploadRequest req)
     {
@@ -66,6 +82,14 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
 
     [HttpGet("api/packages/{id:int}/media")]
     public async Task<IActionResult> ListMedia(int id) => Ok(await business.ListMediaAsync(id));
+
+    [HttpGet("api/shipments/{id:int}/vessel")]
+    public async Task<IActionResult> GetVessel(int id)
+        => (await shipments.GetVesselAsync(id)) is { } v ? Ok(v) : NotFound();
+
+    [HttpPut("api/shipments/{id:int}/vessel")]
+    public async Task<IActionResult> UpsertVessel(int id, UpsertVesselTrackingRequest input)
+        => (await shipments.UpsertVesselAsync(id, input)) is { } v ? Ok(v) : NotFound();
 
     private async Task<IActionResult> Change(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
     {

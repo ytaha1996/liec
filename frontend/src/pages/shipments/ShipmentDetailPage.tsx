@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, getJson, postJson } from '../../api/client';
+import { GateError, getJson, postJson, putJson } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -53,6 +53,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [gate, setGate] = useState<GateError | null>(null);
+  const [vesselForm, setVesselForm] = useState({ vesselName: '', voyageNumber: '', lastKnownPort: '' });
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/shipments', id],
@@ -154,6 +155,21 @@ const ShipmentDetailPage = ({ id }: Props) => {
     },
   });
 
+
+  const vesselQuery = useQuery<any>({
+    queryKey: ['/api/shipments', id, 'vessel'],
+    queryFn: () => getJson<any>(`/api/shipments/${id}/vessel`),
+    retry: false,
+  });
+
+  const saveVessel = useMutation({
+    mutationFn: () => putJson(`/api/shipments/${id}/vessel`, vesselForm),
+    onSuccess: () => {
+      toast.success('Vessel updated');
+      qc.invalidateQueries({ queryKey: ['/api/shipments', id, 'vessel'] });
+    },
+    onError: () => toast.error('Failed to save vessel data'),
+  });
   const sendBulk = useMutation({
     mutationFn: (kind: 'status' | 'departure' | 'arrival') => {
       if (kind === 'status') return postJson(`/api/shipments/${id}/whatsapp/status/bulk`);
@@ -244,6 +260,15 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </Stack>
         </MainPageSection>
 
+
+        <MainPageSection title="Vessel Tracking">
+          <Stack direction="row" gap={2} flexWrap="wrap" alignItems="center">
+            <input style={{padding:8}} placeholder={vesselQuery.data?.vesselName ?? 'Vessel Name'} value={vesselForm.vesselName} onChange={(e) => setVesselForm((x) => ({ ...x, vesselName: e.target.value }))} />
+            <input style={{padding:8}} placeholder={vesselQuery.data?.voyageNumber ?? 'Voyage Number'} value={vesselForm.voyageNumber} onChange={(e) => setVesselForm((x) => ({ ...x, voyageNumber: e.target.value }))} />
+            <input style={{padding:8}} placeholder={vesselQuery.data?.lastKnownPort ?? 'Last Known Port'} value={vesselForm.lastKnownPort} onChange={(e) => setVesselForm((x) => ({ ...x, lastKnownPort: e.target.value }))} />
+            <Button variant="outlined" onClick={() => saveVessel.mutate()} disabled={saveVessel.isPending}>Save Vessel</Button>
+          </Stack>
+        </MainPageSection>
         <MainPageSection title="Packages">
           <EnhancedTable
             title="Packages in Shipment"

@@ -29,10 +29,15 @@ public record UpsertPricingConfigRequest(string Name, string Currency, DateTime 
 public record ShipmentDto(int Id, string RefCode, int OriginWarehouseId, int DestinationWarehouseId, DateTime PlannedDepartureDate, DateTime PlannedArrivalDate, DateTime? ActualDepartureAt, DateTime? ActualArrivalAt, ShipmentStatus Status, DateTime CreatedAt);
 public record CreateShipmentRequest(int OriginWarehouseId, int DestinationWarehouseId, DateTime PlannedDepartureDate, DateTime PlannedArrivalDate);
 
-public record PackageDto(int Id, int ShipmentId, int CustomerId, ProvisionMethod ProvisionMethod, PackageStatus Status, decimal TotalWeightKg, decimal TotalVolumeM3, string Currency, decimal AppliedRatePerKg, decimal AppliedRatePerM3, decimal ChargeAmount, bool HasDeparturePhotos, bool HasArrivalPhotos, int? SupplyOrderId, DateTime CreatedAt);
-public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId);
+public record PackageDto(int Id, int ShipmentId, int CustomerId, int? ContainerId, string? RoutingCode, ProvisionMethod ProvisionMethod, PackageStatus Status, decimal TotalWeightKg, decimal TotalVolumeM3, string Currency, decimal AppliedRatePerKg, decimal AppliedRatePerM3, decimal PricingRateOverridePerKg, decimal PricingRateOverridePerM3, decimal CustomerDiscountPercent, decimal SubtotalAmount, decimal AdditionalFeesAmount, decimal ChargeAmount, bool HasDeparturePhotos, bool HasArrivalPhotos, int? SupplyOrderId, DateTime CreatedAt);
+public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, string? RoutingCode);
 public record PackageItemDto(int Id, int PackageId, int GoodId, int Quantity, decimal WeightKg, decimal VolumeM3, decimal LineCharge);
 public record UpsertPackageItemRequest(int GoodId, int Quantity, decimal WeightKg, decimal VolumeM3);
+public record PackageMetadataUpdateRequest(string? RoutingCode, int? ContainerId, decimal? PricingRateOverridePerKg, decimal? PricingRateOverridePerM3, decimal? CustomerDiscountPercent);
+public record PackageFeeDto(int Id, int PackageId, string Name, decimal Amount);
+public record UpsertPackageFeeRequest(string Name, decimal Amount);
+public record VesselTrackingDto(int Id, int ShipmentId, string VesselName, string VoyageNumber, string? LastKnownPort, DateTime? LastUpdatedAt);
+public record UpsertVesselTrackingRequest(string VesselName, string VoyageNumber, string? LastKnownPort);
 
 public static class DtoMap
 {
@@ -44,6 +49,8 @@ public static class DtoMap
     public static SupplyOrderDto ToDto(this SupplyOrder x) => new(x.Id, x.CustomerId, x.SupplierId, x.PackageId, x.Name, x.PurchasePrice, x.Details, x.Status, x.CancelReason);
     public static PricingConfigDto ToDto(this PricingConfig x) => new(x.Id, x.Name, x.Currency, x.EffectiveFrom, x.EffectiveTo, x.DefaultRatePerKg, x.DefaultRatePerM3, x.Status);
     public static ShipmentDto ToDto(this Shipment x) => new(x.Id, x.RefCode, x.OriginWarehouseId, x.DestinationWarehouseId, x.PlannedDepartureDate, x.PlannedArrivalDate, x.ActualDepartureAt, x.ActualArrivalAt, x.Status, x.CreatedAt);
-    public static PackageDto ToDto(this Package x) => new(x.Id, x.ShipmentId, x.CustomerId, x.ProvisionMethod, x.Status, x.TotalWeightKg, x.TotalVolumeM3, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerM3, x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.SupplyOrderId, x.CreatedAt);
+    public static PackageDto ToDto(this Package x) => new(x.Id, x.ShipmentId, x.CustomerId, x.ContainerId, x.RoutingCode, x.ProvisionMethod, x.Status, x.TotalWeightKg, x.TotalVolumeM3, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerM3, x.PricingRateOverridePerKg, x.PricingRateOverridePerM3, x.CustomerDiscountPercent, x.SubtotalAmount, x.AdditionalFeesAmount, x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.SupplyOrderId, x.CreatedAt);
     public static PackageItemDto ToDto(this PackageItem x) => new(x.Id, x.PackageId, x.GoodId, x.Quantity, x.WeightKg, x.VolumeM3, x.LineCharge);
+    public static PackageFeeDto ToDto(this PackageFee x) => new(x.Id, x.PackageId, x.Name, x.Amount);
+    public static VesselTrackingDto ToDto(this VesselTracking x) => new(x.Id, x.ShipmentId, x.VesselName, x.VoyageNumber, x.LastKnownPort, x.LastUpdatedAt);
 }

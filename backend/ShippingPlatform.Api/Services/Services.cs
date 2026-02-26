@@ -78,12 +78,13 @@ public class PricingService(AppDbContext db) : IPricingService
         package.TotalWeightKg = package.Items.Sum(x => x.WeightKg * x.Quantity);
         package.TotalVolumeM3 = package.Items.Sum(x => x.VolumeM3 * x.Quantity);
 
-        decimal rateKg = active.DefaultRatePerKg, rateM3 = active.DefaultRatePerM3;
+        decimal rateKg = package.PricingRateOverridePerKg > 0 ? package.PricingRateOverridePerKg : active.DefaultRatePerKg;
+        decimal rateM3 = package.PricingRateOverridePerM3 > 0 ? package.PricingRateOverridePerM3 : active.DefaultRatePerM3;
         foreach (var i in package.Items)
         {
             var g = goods[i.GoodId];
-            var itemRateKg = g.RatePerKgOverride ?? g.GoodType.RatePerKg ?? active.DefaultRatePerKg;
-            var itemRateM3 = g.RatePerM3Override ?? g.GoodType.RatePerM3 ?? active.DefaultRatePerM3;
+            var itemRateKg = package.PricingRateOverridePerKg > 0 ? package.PricingRateOverridePerKg : (g.RatePerKgOverride ?? g.GoodType.RatePerKg ?? active.DefaultRatePerKg);
+            var itemRateM3 = package.PricingRateOverridePerM3 > 0 ? package.PricingRateOverridePerM3 : (g.RatePerM3Override ?? g.GoodType.RatePerM3 ?? active.DefaultRatePerM3);
             i.LineCharge = Math.Max(i.WeightKg * i.Quantity * itemRateKg, i.VolumeM3 * i.Quantity * itemRateM3);
             rateKg = itemRateKg;
             rateM3 = itemRateM3;
@@ -92,7 +93,9 @@ public class PricingService(AppDbContext db) : IPricingService
         package.AppliedRatePerKg = rateKg;
         package.AppliedRatePerM3 = rateM3;
         package.Currency = active.Currency;
-        package.ChargeAmount = Math.Max(package.TotalWeightKg * rateKg, package.TotalVolumeM3 * rateM3);
+        package.SubtotalAmount = Math.Max(package.TotalWeightKg * rateKg, package.TotalVolumeM3 * rateM3);
+        var discountFactor = Math.Max(0m, 1m - (package.CustomerDiscountPercent / 100m));
+        package.ChargeAmount = Math.Round((package.SubtotalAmount * discountFactor) + package.AdditionalFeesAmount, 2);
     }
 }
 

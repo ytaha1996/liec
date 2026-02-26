@@ -8,3 +8,4 @@ public enum ProvisionMethod { CustomerProvided, ProcuredForCustomer }
 public enum MediaStage { Receiving, Departure, Arrival, Other }
 public enum CampaignType { StatusUpdate, DeparturePhotos, ArrivalPhotos }
 public enum DeliveryResult { Pending, Sent, Failed, SkippedNoOptIn }
+public enum ContainerStatus { Planned, Loading, InTransit, Arrived, Closed }
