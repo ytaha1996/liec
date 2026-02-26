@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, Stack } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
+import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -160,7 +161,20 @@ const CustomersPage = () => {
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <EnhancedTable title="Customers" header={tableHeaders} data={tableData} defaultOrder="name" />
+        <EnhancedTable
+          title="Customers"
+          header={tableHeaders}
+          data={tableData}
+          defaultOrder="name"
+          filters={[
+            {
+              name: 'isActive',
+              title: 'Status',
+              type: TableFilterTypes.SELECT,
+              options: { true: 'Active', false: 'Inactive' },
+            } as ITableFilterType,
+          ]}
+        />
 
         <Box sx={{ mt: 3 }}>
           <Alert severity="warning" sx={{ mb: 2 }}>

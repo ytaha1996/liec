@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Chip,
+  Link as MuiLink,
   Stack,
   Table,
   TableBody,
@@ -14,9 +15,11 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import { Link } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { GateError, getJson, postJson } from '../../api/client';
+import { useAppDispatch } from '../../redux/hooks';
+import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -51,6 +54,7 @@ const TRANSITION_ACTIONS: { label: string; action: string }[] = [
 
 const ShipmentDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const qc = useQueryClient();
   const [gate, setGate] = useState<GateError | null>(null);
 
@@ -199,17 +203,17 @@ const ShipmentDetailPage = ({ id }: Props) => {
                   <TableRow>
                     <TableCell>Package</TableCell>
                     <TableCell>Stage</TableCell>
-                    <TableCell>Link</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {(gate.missing ?? []).map((m) => (
                     <TableRow key={`${m.packageId}-${m.stage}`}>
-                      <TableCell>{m.packageId}</TableCell>
-                      <TableCell>{m.stage}</TableCell>
                       <TableCell>
-                        <Button component={Link} to={`/packages/${m.packageId}`} size="small">Open</Button>
+                        <MuiLink component={RouterLink} to={`/packages/${m.packageId}`}>
+                          #{m.packageId}
+                        </MuiLink>
                       </TableCell>
+                      <TableCell>{m.stage}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -221,7 +225,17 @@ const ShipmentDetailPage = ({ id }: Props) => {
               <Button
                 key={action}
                 variant="outlined"
-                onClick={() => move.mutate(action)}
+                color={action === 'cancel' ? 'error' : 'primary'}
+                onClick={() =>
+                  action === 'cancel'
+                    ? dispatch(OpenConfirmation({
+                        open: true,
+                        title: 'Cancel Shipment',
+                        message: 'Are you sure you want to cancel this shipment? This cannot be undone.',
+                        onSubmit: () => move.mutate('cancel'),
+                      }))
+                    : move.mutate(action)
+                }
                 disabled={move.isPending}
               >
                 {label}

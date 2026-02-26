@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Box } from '@mui/material';
 import { getJson } from '../../api/client';
+import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -110,7 +111,42 @@ const PackagesPage = () => {
       <MainPageTitle title="Packages" />
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <EnhancedTable title="Packages" header={tableHeaders} data={tableData} defaultOrder="id" />
+        <EnhancedTable
+          title="Packages"
+          header={tableHeaders}
+          data={tableData}
+          defaultOrder="id"
+          filters={[
+            {
+              name: 'status',
+              title: 'Status',
+              type: TableFilterTypes.SELECT,
+              options: {
+                Draft: 'Draft',
+                Received: 'Received',
+                Packed: 'Packed',
+                ReadyToShip: 'Ready To Ship',
+                Shipped: 'Shipped',
+                ArrivedAtDestination: 'Arrived',
+                ReadyForHandout: 'Ready For Handout',
+                HandedOut: 'Handed Out',
+                Cancelled: 'Cancelled',
+              },
+            } as ITableFilterType,
+            {
+              name: 'hasDeparturePhotos',
+              title: 'Departure Photos',
+              type: TableFilterTypes.SELECT,
+              options: { true: 'Yes', false: 'No' },
+            } as ITableFilterType,
+            {
+              name: 'hasArrivalPhotos',
+              title: 'Arrival Photos',
+              type: TableFilterTypes.SELECT,
+              options: { true: 'Yes', false: 'No' },
+            } as ITableFilterType,
+          ]}
+        />
       </Box>
     </Box>
   );

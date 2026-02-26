@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Link as MuiLink,
   MenuItem,
   Stack,
   Table,
@@ -17,9 +18,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Link } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, api, getJson, postJson, uploadMultipart } from '../../api/client';
+import { GateError, api, getJson, postJson, putJson, uploadMultipart } from '../../api/client';
+import { useAppDispatch } from '../../redux/hooks';
+import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
+import EditIcon from '@mui/icons-material/Edit';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -59,14 +63,14 @@ const TRANSITION_ACTIONS: { label: string; action: string }[] = [
 
 const PHOTO_STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
 
-const buildItemFields = (): Record<string, DynamicFieldTypes> => ({
+const buildItemFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
   goodId: {
     type: DynamicField.NUMBER,
     name: 'goodId',
     title: 'Good ID',
     required: true,
     disabled: false,
-    value: '',
+    value: initial?.goodId ?? '',
   },
   quantity: {
     type: DynamicField.NUMBER,
@@ -74,7 +78,7 @@ const buildItemFields = (): Record<string, DynamicFieldTypes> => ({
     title: 'Quantity',
     required: true,
     disabled: false,
-    value: '',
+    value: initial?.quantity ?? '',
   },
   weightKg: {
     type: DynamicField.NUMBER,
@@ -82,7 +86,7 @@ const buildItemFields = (): Record<string, DynamicFieldTypes> => ({
     title: 'Weight (Kg)',
     required: true,
     disabled: false,
-    value: '',
+    value: initial?.weightKg ?? '',
   },
   volumeM3: {
     type: DynamicField.NUMBER,
@@ -90,14 +94,16 @@ const buildItemFields = (): Record<string, DynamicFieldTypes> => ({
     title: 'Volume (M3)',
     required: true,
     disabled: false,
-    value: '',
+    value: initial?.volumeM3 ?? '',
   },
 });
 
 const PackageDetailPage = ({ id }: Props) => {
+  const dispatch = useAppDispatch();
   const qc = useQueryClient();
   const [gate, setGate] = useState<GateError | null>(null);
   const [addItemOpen, setAddItemOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
   const [photoStage, setPhotoStage] = useState('Receiving');
 
   const { data, isLoading, isError } = useQuery<any>({
@@ -151,6 +157,23 @@ const PackageDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Delete failed'),
   });
 
+  const putItem = useMutation({
+    mutationFn: ({ itemId, values }: { itemId: number; values: Record<string, any> }) =>
+      putJson(`/api/packages/${id}/items/${itemId}`, {
+        goodId: Number(values.goodId),
+        quantity: Number(values.quantity),
+        weightKg: Number(values.weightKg),
+        volumeM3: Number(values.volumeM3),
+      }),
+    onSuccess: () => {
+      toast.success('Item updated');
+      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
+      setAddItemOpen(false);
+      setEditingItem(null);
+    },
+    onError: () => toast.error('Update failed'),
+  });
+
   const upload = useMutation({
     mutationFn: (file: File) => {
       const fd = new FormData();
@@ -168,7 +191,8 @@ const PackageDetailPage = ({ id }: Props) => {
 
   const handleAddItemSubmit = async (values: Record<string, any>): Promise<boolean> => {
     try {
-      await addItem.mutateAsync(values);
+      if (editingItem) await putItem.mutateAsync({ itemId: editingItem.id, values });
+      else await addItem.mutateAsync(values);
       return true;
     } catch {
       return false;
@@ -195,11 +219,25 @@ const PackageDetailPage = ({ id }: Props) => {
       disablePadding: false,
       actions: [
         {
+          icon: <EditIcon fontSize="small" />,
+          label: 'Edit',
+          onClick: (tableId: string) => {
+            const item = itemsTableData[tableId];
+            if (item) { setEditingItem(item); setAddItemOpen(true); }
+          },
+          hidden: () => false,
+        },
+        {
           icon: null,
           label: 'Delete',
           onClick: (tableId: string) => {
             const item = itemsTableData[tableId];
-            if (item) deleteItem.mutate(item.id);
+            if (item) dispatch(OpenConfirmation({
+              open: true,
+              title: 'Delete Item',
+              message: 'Delete this item? Package pricing will be recalculated.',
+              onSubmit: () => deleteItem.mutate(item.id),
+            }));
           },
           hidden: () => false,
         },
@@ -247,17 +285,17 @@ const PackageDetailPage = ({ id }: Props) => {
                   <TableRow>
                     <TableCell>Package</TableCell>
                     <TableCell>Stage</TableCell>
-                    <TableCell>Link</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {(gate.missing ?? []).map((m) => (
                     <TableRow key={`${m.packageId}-${m.stage}`}>
-                      <TableCell>{m.packageId}</TableCell>
-                      <TableCell>{m.stage}</TableCell>
                       <TableCell>
-                        <Button component={Link} to={`/packages/${m.packageId}`} size="small">Open</Button>
+                        <MuiLink component={RouterLink} to={`/packages/${m.packageId}`}>
+                          #{m.packageId}
+                        </MuiLink>
                       </TableCell>
+                      <TableCell>{m.stage}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -269,7 +307,17 @@ const PackageDetailPage = ({ id }: Props) => {
               <Button
                 key={action}
                 variant="outlined"
-                onClick={() => transition.mutate(action)}
+                color={action === 'cancel' ? 'error' : 'primary'}
+                onClick={() =>
+                  action === 'cancel'
+                    ? dispatch(OpenConfirmation({
+                        open: true,
+                        title: 'Cancel Package',
+                        message: 'Are you sure you want to cancel this package? This cannot be undone.',
+                        onSubmit: () => transition.mutate('cancel'),
+                      }))
+                    : transition.mutate(action)
+                }
                 disabled={transition.isPending}
               >
                 {label}
@@ -313,7 +361,7 @@ const PackageDetailPage = ({ id }: Props) => {
 
         <MainPageSection title="Items">
           <Box sx={{ mb: 2 }}>
-            <Button variant="contained" size="small" onClick={() => setAddItemOpen(true)}>
+            <Button variant="contained" size="small" onClick={() => { setEditingItem(null); setAddItemOpen(true); }}>
               Add Item
             </Button>
           </Box>
@@ -360,13 +408,13 @@ const PackageDetailPage = ({ id }: Props) => {
 
       <GenericDialog
         open={addItemOpen}
-        title="Add Item"
-        onClose={() => setAddItemOpen(false)}
+        title={editingItem ? 'Edit Item' : 'Add Item'}
+        onClose={() => { setAddItemOpen(false); setEditingItem(null); }}
       >
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildItemFields()}
+          fields={buildItemFields(editingItem ?? undefined)}
           onSubmit={handleAddItemSubmit}
         />
       </GenericDialog>

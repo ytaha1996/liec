@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Box, Button, Stack, TextField } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -82,6 +82,9 @@ const SupplyOrdersPage = () => {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   const { data = [] } = useQuery<any[]>({
     queryKey: [ENDPOINT],
@@ -116,8 +119,8 @@ const SupplyOrdersPage = () => {
   });
 
   const lifecycleMut = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) => {
-      const body = action === 'cancel' ? { status: 'Cancelled', cancelReason: 'Cancelled from UI' } : undefined;
+    mutationFn: ({ id, action, cancelReason }: { id: string; action: string; cancelReason?: string }) => {
+      const body = action === 'cancel' ? { status: 'Cancelled', cancelReason: cancelReason || '' } : undefined;
       return postJson(`${ENDPOINT}/${id}/${action}`, body);
     },
     onSuccess: () => {
@@ -135,7 +138,15 @@ const SupplyOrdersPage = () => {
   const lifecycleActionDefs = LIFECYCLE_ACTIONS.map(({ label, action }) => ({
     icon: <PlayArrowIcon fontSize="small" />,
     label,
-    onClick: (id: string) => lifecycleMut.mutate({ id, action }),
+    onClick: (id: string) => {
+      if (action === 'cancel') {
+        setCancelTargetId(id);
+        setCancelReason('');
+        setCancelDialogOpen(true);
+      } else {
+        lifecycleMut.mutate({ id, action });
+      }
+    },
     hidden: () => false,
   }));
 
@@ -214,6 +225,36 @@ const SupplyOrdersPage = () => {
           fields={buildFields(editing ?? undefined, customersItems)}
           onSubmit={handleSubmit}
         />
+      </GenericDialog>
+
+      <GenericDialog
+        open={cancelDialogOpen}
+        title="Cancel Supply Order"
+        onClose={() => setCancelDialogOpen(false)}
+      >
+        <Box sx={{ p: 2 }}>
+          <TextField
+            label="Reason for cancellation"
+            fullWidth
+            multiline
+            rows={3}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+          />
+          <Stack direction="row" justifyContent="flex-end" gap={1} sx={{ mt: 2 }}>
+            <Button onClick={() => setCancelDialogOpen(false)}>Back</Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={() => {
+                if (cancelTargetId) lifecycleMut.mutate({ id: cancelTargetId, action: 'cancel', cancelReason });
+                setCancelDialogOpen(false);
+              }}
+            >
+              Confirm Cancel
+            </Button>
+          </Stack>
+        </Box>
       </GenericDialog>
     </Box>
   );

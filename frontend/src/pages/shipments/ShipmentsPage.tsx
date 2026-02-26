@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
+import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -16,21 +17,23 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 
 const ENDPOINT = '/api/shipments';
 
-const buildFields = (): Record<string, DynamicFieldTypes> => ({
+const buildFields = (warehousesItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
   originWarehouseId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'originWarehouseId',
-    title: 'Origin Warehouse ID',
+    title: 'Origin Warehouse',
     required: true,
     disabled: false,
+    items: warehousesItems,
     value: '',
   },
   destinationWarehouseId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'destinationWarehouseId',
-    title: 'Destination Warehouse ID',
+    title: 'Destination Warehouse',
     required: true,
     disabled: false,
+    items: warehousesItems,
     value: '',
   },
   plannedDepartureDate: {
@@ -60,6 +63,16 @@ const ShipmentsPage = () => {
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
+
+  const { data: warehouses = [] } = useQuery<any[]>({
+    queryKey: ['/api/warehouses'],
+    queryFn: () => getJson<any[]>('/api/warehouses'),
+  });
+
+  const warehousesItems = (warehouses as any[]).reduce((acc: Record<string, string>, w: any) => {
+    acc[String(w.id)] = `${w.name} (${w.code})`;
+    return acc;
+  }, {});
 
   const create = useMutation({
     mutationFn: (payload: Record<string, any>) => postJson(ENDPOINT, payload),
@@ -131,7 +144,28 @@ const ShipmentsPage = () => {
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <EnhancedTable title="Shipments" header={tableHeaders} data={tableData} defaultOrder="plannedDepartureDate" />
+        <EnhancedTable
+          title="Shipments"
+          header={tableHeaders}
+          data={tableData}
+          defaultOrder="plannedDepartureDate"
+          filters={[
+            {
+              name: 'status',
+              title: 'Status',
+              type: TableFilterTypes.SELECT,
+              options: {
+                Draft: 'Draft',
+                Scheduled: 'Scheduled',
+                ReadyToDepart: 'Ready To Depart',
+                Departed: 'Departed',
+                Arrived: 'Arrived',
+                Closed: 'Closed',
+                Cancelled: 'Cancelled',
+              },
+            } as ITableFilterType,
+          ]}
+        />
       </Box>
 
       <GenericDialog
@@ -142,7 +176,7 @@ const ShipmentsPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields()}
+          fields={buildFields(warehousesItems)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>
