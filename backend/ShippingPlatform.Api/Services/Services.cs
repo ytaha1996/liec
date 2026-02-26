@@ -49,18 +49,81 @@ public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
     }
 }
 
-public interface IRefCodeService { Task<string> GenerateAsync(int originWarehouseId); }
+public interface IRefCodeService { Task<string> GenerateAsync(); }
 public class RefCodeService(AppDbContext db) : IRefCodeService
 {
-    public async Task<string> GenerateAsync(int originWarehouseId)
+    public async Task<string> GenerateAsync()
     {
-        var wh = await db.Warehouses.FindAsync(originWarehouseId) ?? throw new InvalidOperationException("Origin warehouse not found");
-        var yy = DateTime.UtcNow.Year % 100;
-        var seq = await db.ShipmentSequences.FirstOrDefaultAsync(x => x.OriginWarehouseCode == wh.Code && x.Year == DateTime.UtcNow.Year);
-        if (seq is null) { seq = new ShipmentSequence { OriginWarehouseCode = wh.Code, Year = DateTime.UtcNow.Year, LastNumber = 0 }; db.ShipmentSequences.Add(seq); }
+        var year = DateTime.UtcNow.Year;
+        var seq = await db.ShipmentSequences.FirstOrDefaultAsync(x => x.Year == year);
+        if (seq is null) { seq = new ShipmentSequence { Year = year, LastNumber = 0 }; db.ShipmentSequences.Add(seq); }
         seq.LastNumber++;
         await db.SaveChangesAsync();
-        return $"{wh.Code}-{yy:00}{seq.LastNumber:00}";
+        return $"{year}-{seq.LastNumber:D2}";
+    }
+}
+
+public interface ICapacityService { Task RecalculateAsync(int shipmentId); }
+public class CapacityService(AppDbContext db, IConfiguration cfg) : ICapacityService
+{
+    public async Task RecalculateAsync(int shipmentId)
+    {
+        var shipment = await db.Shipments.Include(x => x.Packages).FirstOrDefaultAsync(x => x.Id == shipmentId);
+        if (shipment is null) return;
+        var active = shipment.Packages.Where(p => p.Status != PackageStatus.Cancelled).ToList();
+        shipment.TotalWeightKg = active.Sum(p => p.TotalWeightKg);
+        shipment.TotalVolumeM3 = active.Sum(p => p.TotalVolumeM3);
+
+        var threshold = cfg.GetValue<decimal>("CapacityThresholdPct", 80) / 100m;
+        bool overThreshold =
+            (shipment.MaxWeightKg > 0 && shipment.TotalWeightKg / shipment.MaxWeightKg >= threshold) ||
+            (shipment.MaxVolumeM3 > 0 && shipment.TotalVolumeM3 / shipment.MaxVolumeM3 >= threshold);
+
+        if (overThreshold && shipment.Status == ShipmentStatus.Pending)
+            shipment.Status = ShipmentStatus.NearlyFull;
+        else if (!overThreshold && shipment.Status == ShipmentStatus.NearlyFull)
+            shipment.Status = ShipmentStatus.Pending;
+
+        await db.SaveChangesAsync();
+    }
+}
+
+public interface IImageWatermarkService { Stream Apply(Stream input, string text, string contentType); }
+public class ImageWatermarkService : IImageWatermarkService
+{
+    public Stream Apply(Stream input, string text, string contentType)
+    {
+        // Watermark is a best-effort enhancement; if SkiaSharp is unavailable, return raw stream
+        try
+        {
+            if (!contentType.StartsWith("image/")) return input;
+            var ms = new MemoryStream();
+            input.CopyTo(ms); ms.Position = 0;
+            using var bitmap = SkiaSharp.SKBitmap.Decode(ms);
+            if (bitmap is null) { ms.Position = 0; return ms; }
+            using var canvas = new SkiaSharp.SKCanvas(bitmap);
+            using var paint = new SkiaSharp.SKPaint
+            {
+                Color = SkiaSharp.SKColors.White.WithAlpha(210),
+                TextSize = Math.Max(bitmap.Height * 0.04f, 18),
+                IsAntialias = true,
+                Typeface = SkiaSharp.SKTypeface.Default,
+            };
+            using var shadow = paint.Clone();
+            shadow.Color = SkiaSharp.SKColors.Black.WithAlpha(180);
+            canvas.DrawText(text, 12, paint.TextSize + 8, shadow);
+            canvas.DrawText(text, 10, paint.TextSize + 6, paint);
+            var encoded = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 90);
+            var result = new MemoryStream();
+            encoded.AsStream().CopyTo(result);
+            result.Position = 0;
+            return result;
+        }
+        catch
+        {
+            if (input.CanSeek) input.Position = 0;
+            return input;
+        }
     }
 }
 
@@ -69,7 +132,7 @@ public class PricingService(AppDbContext db) : IPricingService
 {
     public async Task RecalculateAsync(Package package)
     {
-        if (package.Status >= PackageStatus.Shipped) return;
+        if (package.Status >= PackageStatus.Shipped || package.HasPricingOverride) return;
         await db.Entry(package).Collection(x => x.Items).LoadAsync();
         var goodIds = package.Items.Select(x => x.GoodId).Distinct().ToList();
         var goods = await db.Goods.Include(x => x.GoodType).Where(x => goodIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);

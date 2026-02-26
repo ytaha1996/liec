@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -13,6 +14,14 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     {
         var p = await business.CreateAsync(shipmentId, input);
         return Created($"/api/packages/{p.Id}", p);
+    }
+
+    [HttpPost("api/packages/auto-assign")]
+    public async Task<IActionResult> AutoAssign(CreatePackageRequest input)
+    {
+        var (dto, err) = await business.AutoAssignAsync(input);
+        if (err is not null) return Conflict(err);
+        return Created($"/api/packages/{dto!.Id}", dto);
     }
 
     [HttpGet("api/packages")]
@@ -66,6 +75,18 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
 
     [HttpGet("api/packages/{id:int}/media")]
     public async Task<IActionResult> ListMedia(int id) => Ok(await business.ListMediaAsync(id));
+
+    [HttpPost("api/packages/{id:int}/pricing-override")]
+    public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)
+    {
+        var adminId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : 1;
+        var (dto, err) = await business.ApplyPricingOverrideAsync(id, req, adminId);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
+    [HttpGet("api/packages/{id:int}/pricing-overrides")]
+    public async Task<IActionResult> GetPricingOverrides(int id) => Ok(await business.GetPricingOverridesAsync(id));
 
     private async Task<IActionResult> Change(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
     {

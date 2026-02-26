@@ -50,6 +50,8 @@ builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 builder.Services.AddScoped<IRefCodeService, RefCodeService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<IPhotoComplianceService, PhotoComplianceService>();
+builder.Services.AddScoped<ICapacityService, CapacityService>();
+builder.Services.AddScoped<IImageWatermarkService, ImageWatermarkService>();
 builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();

@@ -16,13 +16,16 @@ public class TransitionRuleService : ITransitionRuleService
         if (from == to) return true;
         return (from, to) switch
         {
-            (ShipmentStatus.Draft, ShipmentStatus.Scheduled) => true,
-            (ShipmentStatus.Scheduled, ShipmentStatus.ReadyToDepart) => true,
-            (ShipmentStatus.ReadyToDepart, ShipmentStatus.Departed) => true,
-            (ShipmentStatus.Departed, ShipmentStatus.Arrived) => true,
-            (ShipmentStatus.Arrived, ShipmentStatus.Closed) => true,
+            (ShipmentStatus.Draft, ShipmentStatus.Pending) => true,
+            (ShipmentStatus.Pending, ShipmentStatus.Loaded) => true,
+            (ShipmentStatus.NearlyFull, ShipmentStatus.Loaded) => true,
+            (ShipmentStatus.Loaded, ShipmentStatus.Shipped) => true,
+            (ShipmentStatus.Shipped, ShipmentStatus.Arrived) => true,
+            (ShipmentStatus.Arrived, ShipmentStatus.Completed) => true,
+            (ShipmentStatus.Completed, ShipmentStatus.Closed) => true,
             (ShipmentStatus.Draft, ShipmentStatus.Cancelled) => true,
-            (ShipmentStatus.Scheduled, ShipmentStatus.Cancelled) => true,
+            (ShipmentStatus.Pending, ShipmentStatus.Cancelled) => true,
+            (ShipmentStatus.NearlyFull, ShipmentStatus.Cancelled) => true,
             _ => false
         };
     }

@@ -1,6 +1,7 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Box, Card, CardContent, CircularProgress, Grid, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Grid, Typography } from '@mui/material';
 import { getJson } from '../../api/client';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
@@ -30,6 +31,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, count, isLoading, color = '#
 );
 
 const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const { data: customers, isLoading: loadingCustomers } = useQuery({
     queryKey: ['/api/customers'],
     queryFn: () => getJson<any[]>('/api/customers'),
@@ -45,12 +47,29 @@ const DashboardPage: React.FC = () => {
     queryFn: () => getJson<any[]>('/api/packages'),
   });
 
+  const activePending = (shipments ?? []).filter(
+    (s: any) => s.status === 'Pending' || s.status === 'NearlyFull',
+  ).length;
+
   return (
     <>
       <PageTitleWrapper>
         <MainPageTitle title="Dashboard" subtitle="Admin operations console for shipments, packages, media and messaging." />
       </PageTitleWrapper>
       <Box sx={{ px: 3, pb: 4 }}>
+        {!loadingShipments && activePending < 2 && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 3 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate('/shipments')}>
+                Create Shipment
+              </Button>
+            }
+          >
+            Only {activePending} active container(s) (Pending / Nearly Full) available. At least 2 are recommended.
+          </Alert>
+        )}
         <Grid container spacing={3}>
           <Grid item xs={12} sm={4}>
             <StatCard

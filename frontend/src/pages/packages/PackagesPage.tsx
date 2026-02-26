@@ -1,19 +1,59 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box } from '@mui/material';
-import { getJson } from '../../api/client';
+import { toast } from 'react-toastify';
+import { getJson, postJson } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
   EnhancedTableColumnType,
 } from '../../components/enhanced-table';
+import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
+import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
+import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 
 const ENDPOINT = '/api/packages';
 
+const PKG_STATUS_COLORS: Record<string, { color: string; backgroundColor: string }> = {
+  Draft: { color: '#333', backgroundColor: '#e0e0e0' },
+  Received: { color: '#fff', backgroundColor: '#0288d1' },
+  Packed: { color: '#fff', backgroundColor: '#7b1fa2' },
+  ReadyToShip: { color: '#fff', backgroundColor: '#ed6c02' },
+  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
+  ArrivedAtDestination: { color: '#fff', backgroundColor: '#2e7d32' },
+  ReadyForHandout: { color: '#fff', backgroundColor: '#f57c00' },
+  HandedOut: { color: '#fff', backgroundColor: '#388e3c' },
+  Cancelled: { color: '#fff', backgroundColor: '#c62828' },
+};
+
+const buildAutoAssignFields = (customersItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
+  customerId: {
+    type: DynamicField.SELECT,
+    name: 'customerId',
+    title: 'Customer',
+    required: true,
+    disabled: false,
+    items: customersItems,
+    value: '',
+  },
+  provisionMethod: {
+    type: DynamicField.SELECT,
+    name: 'provisionMethod',
+    title: 'Provision Method',
+    required: true,
+    disabled: false,
+    items: { CustomerProvided: 'Customer Provided', ProcuredForCustomer: 'Procured For Customer' },
+    value: 'CustomerProvided',
+  },
+});
+
 const PackagesPage = () => {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [autoAssignOpen, setAutoAssignOpen] = useState(false);
 
   const { data = [] } = useQuery<any[]>({
     queryKey: [ENDPOINT],
@@ -29,6 +69,30 @@ const PackagesPage = () => {
     acc[c.id] = `${c.name} (#${c.id})`;
     return acc;
   }, {});
+
+  const customersItems = (customers as any[]).reduce((acc: Record<string, string>, c: any) => {
+    acc[String(c.id)] = `${c.name} (#${c.id})`;
+    return acc;
+  }, {});
+
+  const autoAssign = useMutation({
+    mutationFn: (payload: Record<string, any>) =>
+      postJson<any>(`${ENDPOINT}/auto-assign`, {
+        customerId: Number(payload.customerId),
+        provisionMethod: payload.provisionMethod,
+        supplyOrderId: null,
+      }),
+    onSuccess: (result: any) => {
+      toast.success('Package auto-assigned');
+      qc.invalidateQueries({ queryKey: [ENDPOINT] });
+      setAutoAssignOpen(false);
+      navigate(`/packages/${result.id}`);
+    },
+    onError: (e: any) => {
+      const payload = e?.response?.data ?? {};
+      toast.error(payload.message ?? 'Auto-assign failed');
+    },
+  });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
     acc[item.id] = {
@@ -69,15 +133,7 @@ const PackagesPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-        ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
-        Departed: { color: '#fff', backgroundColor: '#1565c0' },
-        Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-        Closed: { color: '#fff', backgroundColor: '#616161' },
-        Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-      },
+      chipColors: PKG_STATUS_COLORS,
       chipLabels: {},
     },
     {
@@ -106,9 +162,24 @@ const PackagesPage = () => {
     },
   ];
 
+  const handleAutoAssignSubmit = async (values: Record<string, any>): Promise<boolean> => {
+    try {
+      await autoAssign.mutateAsync(values);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   return (
     <Box>
-      <MainPageTitle title="Packages" />
+      <MainPageTitle
+        title="Packages"
+        action={{
+          title: 'New Package (Auto-Assign)',
+          onClick: () => setAutoAssignOpen(true),
+        }}
+      />
 
       <Box sx={{ px: 3, pb: 3 }}>
         <EnhancedTable
@@ -148,6 +219,19 @@ const PackagesPage = () => {
           ]}
         />
       </Box>
+
+      <GenericDialog
+        open={autoAssignOpen}
+        title="New Package (Auto-Assign to Oldest Pending Container)"
+        onClose={() => setAutoAssignOpen(false)}
+      >
+        <DynamicFormWidget
+          title=""
+          drawerMode
+          fields={buildAutoAssignFields(customersItems)}
+          onSubmit={handleAutoAssignSubmit}
+        />
+      </GenericDialog>
     </Box>
   );
 };

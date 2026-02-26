@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Chip,
+  LinearProgress,
   Link as MuiLink,
   Stack,
   Table,
@@ -33,21 +34,24 @@ interface Props {
   id: string;
 }
 
-const SHIPMENT_STATUS_CHIPS = {
+const SHIPMENT_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
   Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-  ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
-  Departed: { color: '#fff', backgroundColor: '#1565c0' },
+  Pending: { color: '#fff', backgroundColor: '#0288d1' },
+  NearlyFull: { color: '#fff', backgroundColor: '#f57c00' },
+  Loaded: { color: '#fff', backgroundColor: '#ed6c02' },
+  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
   Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
+  Completed: { color: '#fff', backgroundColor: '#388e3c' },
   Closed: { color: '#fff', backgroundColor: '#616161' },
   Cancelled: { color: '#fff', backgroundColor: '#c62828' },
 };
 
 const TRANSITION_ACTIONS: { label: string; action: string }[] = [
-  { label: 'Schedule', action: 'schedule' },
-  { label: 'Ready To Depart', action: 'ready-to-depart' },
-  { label: 'Depart', action: 'depart' },
+  { label: 'Activate', action: 'activate' },
+  { label: 'Load', action: 'load' },
+  { label: 'Ship', action: 'ship' },
   { label: 'Arrive', action: 'arrive' },
+  { label: 'Complete', action: 'complete' },
   { label: 'Close', action: 'close' },
   { label: 'Cancel', action: 'cancel' },
 ];
@@ -186,8 +190,8 @@ const ShipmentDetailPage = ({ id }: Props) => {
             label={data.status}
             size="small"
             sx={{
-              backgroundColor: (SHIPMENT_STATUS_CHIPS as any)[data.status]?.backgroundColor ?? '#e0e0e0',
-              color: (SHIPMENT_STATUS_CHIPS as any)[data.status]?.color ?? '#333',
+              backgroundColor: SHIPMENT_STATUS_CHIPS[data.status]?.backgroundColor ?? '#e0e0e0',
+              color: SHIPMENT_STATUS_CHIPS[data.status]?.color ?? '#333',
             }}
           />
         </Stack>
@@ -243,6 +247,41 @@ const ShipmentDetailPage = ({ id }: Props) => {
             ))}
           </Stack>
         </MainPageSection>
+
+        {(data.maxWeightKg > 0 || data.maxVolumeM3 > 0) && (
+          <MainPageSection title="Container Capacity">
+            {data.maxWeightKg > 0 && (() => {
+              const pct = Math.min((data.totalWeightKg / data.maxWeightKg) * 100, 100);
+              return (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>
+                    Weight: {data.totalWeightKg} / {data.maxWeightKg} kg ({pct.toFixed(1)}%)
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'}
+                  />
+                </Box>
+              );
+            })()}
+            {data.maxVolumeM3 > 0 && (() => {
+              const pct = Math.min((data.totalVolumeM3 / data.maxVolumeM3) * 100, 100);
+              return (
+                <Box>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>
+                    Volume: {data.totalVolumeM3} / {data.maxVolumeM3} m³ ({pct.toFixed(1)}%)
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'}
+                  />
+                </Box>
+              );
+            })()}
+          </MainPageSection>
+        )}
 
         <MainPageSection title="WhatsApp Bulk Actions">
           <Stack direction="row" gap={1} flexWrap="wrap">

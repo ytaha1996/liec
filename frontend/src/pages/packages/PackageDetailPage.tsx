@@ -9,6 +9,7 @@ import {
   Chip,
   Link as MuiLink,
   MenuItem,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -105,6 +106,10 @@ const PackageDetailPage = ({ id }: Props) => {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
   const [photoStage, setPhotoStage] = useState('Receiving');
+  const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerM3' | 'TotalCharge'>('RatePerKg');
+  const [overrideValue, setOverrideValue] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/packages', id],
@@ -114,6 +119,28 @@ const PackageDetailPage = ({ id }: Props) => {
   const mediaQuery = useQuery<any[]>({
     queryKey: ['/api/packages', id, 'media'],
     queryFn: () => getJson<any[]>(`/api/packages/${id}/media`),
+  });
+
+  const overridesQuery = useQuery<any[]>({
+    queryKey: ['/api/packages', id, 'pricing-overrides'],
+    queryFn: () => getJson<any[]>(`/api/packages/${id}/pricing-overrides`),
+  });
+
+  const applyOverride = useMutation({
+    mutationFn: (payload: { overrideType: string; newValue: number; reason: string }) =>
+      postJson(`/api/packages/${id}/pricing-override`, payload),
+    onSuccess: () => {
+      toast.success('Pricing override applied');
+      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
+      qc.invalidateQueries({ queryKey: ['/api/packages', id, 'pricing-overrides'] });
+      setOverrideDialogOpen(false);
+      setOverrideValue('');
+      setOverrideReason('');
+    },
+    onError: (e: any) => {
+      const payload = e?.response?.data ?? {};
+      toast.error(payload.message ?? 'Override failed');
+    },
   });
 
   const transition = useMutation({
@@ -326,7 +353,7 @@ const PackageDetailPage = ({ id }: Props) => {
           </Stack>
         </MainPageSection>
 
-        <MainPageSection title="Pricing Snapshot">
+        <MainPageSection title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}>
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
@@ -340,15 +367,24 @@ const PackageDetailPage = ({ id }: Props) => {
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary">Rate Per Kg</Typography>
-                  <Typography>{pkg.appliedRatePerKg ?? '-'}</Typography>
+                  <Stack direction="row" alignItems="center" gap={1}>
+                    <Typography>{pkg.appliedRatePerKg ?? '-'}</Typography>
+                    <Button size="small" variant="text" onClick={() => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); }}>Override</Button>
+                  </Stack>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary">Rate Per M3</Typography>
-                  <Typography>{pkg.appliedRatePerM3 ?? '-'}</Typography>
+                  <Stack direction="row" alignItems="center" gap={1}>
+                    <Typography>{pkg.appliedRatePerM3 ?? '-'}</Typography>
+                    <Button size="small" variant="text" onClick={() => { setOverrideType('RatePerM3'); setOverrideDialogOpen(true); }}>Override</Button>
+                  </Stack>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary">Charge Amount</Typography>
-                  <Typography>{pkg.chargeAmount ?? '-'}</Typography>
+                  <Stack direction="row" alignItems="center" gap={1}>
+                    <Typography>{pkg.chargeAmount ?? '-'}</Typography>
+                    <Button size="small" variant="text" onClick={() => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); }}>Override</Button>
+                  </Stack>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary">Currency</Typography>
@@ -357,6 +393,33 @@ const PackageDetailPage = ({ id }: Props) => {
               </Box>
             </CardContent>
           </Card>
+          {(overridesQuery.data ?? []).length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Override History</Typography>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Original</TableCell>
+                    <TableCell>New</TableCell>
+                    <TableCell>Reason</TableCell>
+                    <TableCell>Date</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(overridesQuery.data ?? []).map((o: any) => (
+                    <TableRow key={o.id}>
+                      <TableCell>{o.overrideType}</TableCell>
+                      <TableCell>{o.originalValue}</TableCell>
+                      <TableCell>{o.newValue}</TableCell>
+                      <TableCell>{o.reason}</TableCell>
+                      <TableCell>{new Date(o.createdAt).toLocaleDateString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
         </MainPageSection>
 
         <MainPageSection title="Items">
@@ -417,6 +480,55 @@ const PackageDetailPage = ({ id }: Props) => {
           fields={buildItemFields(editingItem ?? undefined)}
           onSubmit={handleAddItemSubmit}
         />
+      </GenericDialog>
+
+      <GenericDialog
+        open={overrideDialogOpen}
+        title="Override Pricing"
+        onClose={() => { setOverrideDialogOpen(false); setOverrideValue(''); setOverrideReason(''); }}
+      >
+        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Override Type</Typography>
+            <Select
+              fullWidth
+              size="small"
+              value={overrideType}
+              onChange={(e) => setOverrideType(e.target.value as any)}
+            >
+              <MenuItem value="RatePerKg">Rate Per Kg</MenuItem>
+              <MenuItem value="RatePerM3">Rate Per M3</MenuItem>
+              <MenuItem value="TotalCharge">Total Charge</MenuItem>
+            </Select>
+          </Box>
+          <TextField
+            label="New Value"
+            type="number"
+            fullWidth
+            size="small"
+            value={overrideValue}
+            onChange={(e) => setOverrideValue(e.target.value)}
+          />
+          <TextField
+            label="Reason (required)"
+            fullWidth
+            multiline
+            rows={3}
+            size="small"
+            value={overrideReason}
+            onChange={(e) => setOverrideReason(e.target.value)}
+          />
+          <Stack direction="row" justifyContent="flex-end" gap={1}>
+            <Button onClick={() => { setOverrideDialogOpen(false); setOverrideValue(''); setOverrideReason(''); }}>Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={!overrideValue || !overrideReason || applyOverride.isPending}
+              onClick={() => applyOverride.mutate({ overrideType, newValue: Number(overrideValue), reason: overrideReason })}
+            >
+              Apply Override
+            </Button>
+          </Stack>
+        </Box>
       </GenericDialog>
     </Box>
   );

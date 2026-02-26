@@ -12,8 +12,9 @@ public interface IShipmentBusiness
     Task<ShipmentDto?> GetAsync(int id);
     Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input);
     Task<(ShipmentDto? dto, object? error)> SetStatusAsync(int id, ShipmentStatus status);
-    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id);
-    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id);
+    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> ShipAsync(int id);
+    Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CompleteAsync(int id);
+    Task<(ShipmentDto? dto, object? error)> ArchiveAsync(int id);
     Task<List<object>> MediaAsync(int id);
 }
 
@@ -31,14 +32,18 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
     public async Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input)
     {
         if (input.OriginWarehouseId == input.DestinationWarehouseId) return (null, "Origin and destination warehouse must be different.");
+        var originExists = await db.Warehouses.AnyAsync(x => x.Id == input.OriginWarehouseId);
+        if (!originExists) return (null, "Origin warehouse not found.");
         var shipment = new Shipment
         {
             OriginWarehouseId = input.OriginWarehouseId,
             DestinationWarehouseId = input.DestinationWarehouseId,
             PlannedDepartureDate = input.PlannedDepartureDate,
             PlannedArrivalDate = input.PlannedArrivalDate,
+            MaxWeightKg = input.MaxWeightKg,
+            MaxVolumeM3 = input.MaxVolumeM3,
             Status = ShipmentStatus.Draft,
-            RefCode = await refs.GenerateAsync(input.OriginWarehouseId)
+            RefCode = await refs.GenerateAsync()
         };
         db.Shipments.Add(shipment);
         await db.SaveChangesAsync();
@@ -55,27 +60,37 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         return (s.ToDto(), null);
     }
 
-    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id)
+    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> ShipAsync(int id)
     {
         var missing = await gates.MissingForShipmentDepartureAsync(id);
-        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot depart until all packages have departure photos.", missing), null);
+        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot ship until all packages have departure photos.", missing), null);
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null, null);
-        if (!transitions.CanMove(s.Status, ShipmentStatus.Departed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Departed." });
-        s.Status = ShipmentStatus.Departed; s.ActualDepartureAt = DateTime.UtcNow;
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Shipped)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Shipped." });
+        s.Status = ShipmentStatus.Shipped; s.ActualDepartureAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return (s.ToDto(), null, null);
     }
 
-    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id)
+    public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CompleteAsync(int id)
     {
         var missing = await gates.MissingForShipmentCloseAsync(id);
-        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot close until all packages have arrival photos and are finalized.", missing), null);
+        if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot complete until all packages have arrival photos and are finalized.", missing), null);
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null, null);
-        if (!transitions.CanMove(s.Status, ShipmentStatus.Closed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Closed." });
-        s.Status = ShipmentStatus.Closed; await db.SaveChangesAsync();
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Completed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Completed." });
+        s.Status = ShipmentStatus.Completed; await db.SaveChangesAsync();
         return (s.ToDto(), null, null);
+    }
+
+    public async Task<(ShipmentDto? dto, object? error)> ArchiveAsync(int id)
+    {
+        var s = await db.Shipments.FindAsync(id);
+        if (s is null) return (null, null);
+        if (!transitions.CanMove(s.Status, ShipmentStatus.Closed)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Closed." });
+        s.Status = ShipmentStatus.Closed;
+        await db.SaveChangesAsync();
+        return (s.ToDto(), null);
     }
 
     public async Task<List<object>> MediaAsync(int id)
@@ -91,6 +106,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
 public interface IPackageBusiness
 {
     Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input);
+    Task<(PackageDto? dto, object? error)> AutoAssignAsync(CreatePackageRequest input);
     Task<List<PackageDto>> ListAsync();
     Task<object?> GetAsync(int id);
     Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false);
@@ -99,14 +115,27 @@ public interface IPackageBusiness
     Task<object?> DeleteItemAsync(int id, int itemId);
     Task<object?> UploadMediaAsync(int id, MediaUploadRequest req);
     Task<List<object>> ListMediaAsync(int id);
+    Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId);
+    Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id);
 }
 
-public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions) : IPackageBusiness
+public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark) : IPackageBusiness
 {
     public async Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input)
     {
         var package = new Package { ShipmentId = shipmentId, CustomerId = input.CustomerId, ProvisionMethod = input.ProvisionMethod, SupplyOrderId = input.SupplyOrderId, Status = PackageStatus.Draft };
         db.Packages.Add(package); await db.SaveChangesAsync(); return package.ToDto();
+    }
+
+    public async Task<(PackageDto? dto, object? error)> AutoAssignAsync(CreatePackageRequest input)
+    {
+        var shipment = await db.Shipments
+            .Where(s => s.Status == ShipmentStatus.Pending || s.Status == ShipmentStatus.NearlyFull)
+            .OrderBy(s => s.CreatedAt)
+            .FirstOrDefaultAsync();
+        if (shipment is null) return (null, new { code = "NO_PENDING_CONTAINER", message = "No Pending container available for auto-assignment." });
+        var dto = await CreateAsync(shipment.Id, input);
+        return (dto, null);
     }
 
     public async Task<List<PackageDto>> ListAsync() => (await db.Packages.ToListAsync()).Select(x => x.ToDto()).ToList();
@@ -145,8 +174,25 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
         if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
+
+        var shipment = await db.Shipments.FindAsync(p.ShipmentId);
+        if (shipment is not null)
+        {
+            var newWeight = p.TotalWeightKg + item.WeightKg * item.Quantity;
+            var newVolume = p.TotalVolumeM3 + item.VolumeM3 * item.Quantity;
+            if (shipment.MaxWeightKg > 0 && newWeight > shipment.MaxWeightKg)
+                return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container weight capacity." });
+            if (shipment.MaxVolumeM3 > 0 && newVolume > shipment.MaxVolumeM3)
+                return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container volume capacity." });
+        }
+
         var entity = new PackageItem { PackageId = id, GoodId = item.GoodId, Quantity = item.Quantity, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
-        db.PackageItems.Add(entity); await db.SaveChangesAsync(); await pricing.RecalculateAsync(p); await db.SaveChangesAsync(); return (entity.ToDto(), null);
+        db.PackageItems.Add(entity);
+        await db.SaveChangesAsync();
+        await pricing.RecalculateAsync(p);
+        await db.SaveChangesAsync();
+        await capacity.RecalculateAsync(p.ShipmentId);
+        return (entity.ToDto(), null);
     }
 
     public async Task<(PackageItemDto? dto, object? error)> UpdateItemAsync(int id, int itemId, UpsertPackageItemRequest input)
@@ -156,8 +202,24 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId);
         if (i is null) return (null, null);
+
+        var shipment = await db.Shipments.FindAsync(p.ShipmentId);
+        if (shipment is not null)
+        {
+            var newWeight = p.TotalWeightKg - i.WeightKg * i.Quantity + input.WeightKg * input.Quantity;
+            var newVolume = p.TotalVolumeM3 - i.VolumeM3 * i.Quantity + input.VolumeM3 * input.Quantity;
+            if (shipment.MaxWeightKg > 0 && newWeight > shipment.MaxWeightKg)
+                return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container weight capacity." });
+            if (shipment.MaxVolumeM3 > 0 && newVolume > shipment.MaxVolumeM3)
+                return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container volume capacity." });
+        }
+
         i.GoodId = input.GoodId; i.Quantity = input.Quantity; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
-        await db.SaveChangesAsync(); await pricing.RecalculateAsync(p); await db.SaveChangesAsync(); return (i.ToDto(), null);
+        await db.SaveChangesAsync();
+        await pricing.RecalculateAsync(p);
+        await db.SaveChangesAsync();
+        await capacity.RecalculateAsync(p.ShipmentId);
+        return (i.ToDto(), null);
     }
 
     public async Task<object?> DeleteItemAsync(int id, int itemId)
@@ -165,19 +227,25 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var p = await db.Packages.FindAsync(id); if (p is null) return null;
         if (p.Status >= PackageStatus.Shipped) return new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." };
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId); if (i is null) return null;
-        db.PackageItems.Remove(i); await db.SaveChangesAsync(); await pricing.RecalculateAsync(p); await db.SaveChangesAsync(); return new { ok = true };
+        db.PackageItems.Remove(i);
+        await db.SaveChangesAsync();
+        await pricing.RecalculateAsync(p);
+        await db.SaveChangesAsync();
+        await capacity.RecalculateAsync(p.ShipmentId);
+        return new { ok = true };
     }
 
     public async Task<object?> UploadMediaAsync(int id, MediaUploadRequest req)
     {
-        var p = await db.Packages.FindAsync(id);
+        var p = await db.Packages.Include(x => x.Customer).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
         if (req.File is null || req.File.Length == 0) return new { code = "VALIDATION_ERROR", message = "File required." };
 
-        await using var s = req.File.OpenReadStream();
+        await using var rawStream = req.File.OpenReadStream();
+        var processedStream = watermark.Apply(rawStream, p.Customer.Name, req.File.ContentType);
         var ext = Path.GetExtension(req.File.FileName);
         var forced = $"media/packages/{id}/{req.Stage.ToString().ToLowerInvariant()}/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}{ext}";
-        var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, s, req.File.ContentType, forced);
+        var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, processedStream, req.File.ContentType, forced);
         var media = new Media { PackageId = id, Stage = req.Stage, BlobKey = key, PublicUrl = url, CapturedAt = req.CapturedAt, OperatorName = req.OperatorName, Notes = req.Notes, RecordedByAdminUserId = 1 };
         db.Media.Add(media); await db.SaveChangesAsync();
         p.HasDeparturePhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Departure);
@@ -188,6 +256,54 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
     public async Task<List<object>> ListMediaAsync(int id)
         => await db.Media.Where(x => x.PackageId == id).Select(m => (object)new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes }).ToListAsync();
+
+    public async Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId)
+    {
+        var p = await db.Packages.FindAsync(id);
+        if (p is null) return (null, null);
+        if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Cannot override pricing on a shipped package." });
+        if (string.IsNullOrWhiteSpace(req.Reason)) return (null, new { code = "VALIDATION_ERROR", message = "Reason is required." });
+
+        var originalValue = req.OverrideType switch
+        {
+            PricingOverrideType.RatePerKg => p.AppliedRatePerKg,
+            PricingOverrideType.RatePerM3 => p.AppliedRatePerM3,
+            _ => p.ChargeAmount
+        };
+
+        switch (req.OverrideType)
+        {
+            case PricingOverrideType.RatePerKg:
+                p.AppliedRatePerKg = req.NewValue;
+                p.ChargeAmount = Math.Max(p.TotalWeightKg * req.NewValue, p.TotalVolumeM3 * p.AppliedRatePerM3);
+                break;
+            case PricingOverrideType.RatePerM3:
+                p.AppliedRatePerM3 = req.NewValue;
+                p.ChargeAmount = Math.Max(p.TotalWeightKg * p.AppliedRatePerKg, p.TotalVolumeM3 * req.NewValue);
+                break;
+            case PricingOverrideType.TotalCharge:
+                p.ChargeAmount = req.NewValue;
+                break;
+        }
+
+        p.HasPricingOverride = true;
+        db.PricingOverrides.Add(new PackagePricingOverride
+        {
+            PackageId = id,
+            OverrideType = req.OverrideType,
+            OriginalValue = originalValue,
+            NewValue = req.NewValue,
+            Reason = req.Reason,
+            AdminUserId = adminUserId
+        });
+        await db.SaveChangesAsync();
+        return (p.ToDto(), null);
+    }
+
+    public async Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id)
+        => await db.PricingOverrides.Where(x => x.PackageId == id).OrderByDescending(x => x.CreatedAt)
+            .Select(x => new PricingOverrideDto(x.Id, x.OverrideType, x.OriginalValue, x.NewValue, x.Reason, x.CreatedAt))
+            .ToListAsync();
 }
 
 public interface ISupplyOrderBusiness

@@ -23,8 +23,8 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
         return Created($"/api/shipments/{dto.Id}", dto);
     }
 
-    [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
-    [HttpPost("{id:int}/ready-to-depart")] public Task<IActionResult> ReadyToDepart(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
+    [HttpPost("{id:int}/activate")] public Task<IActionResult> Activate(int id) => SetStatus(id, ShipmentStatus.Pending);
+    [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.Loaded);
     [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
 
     [HttpPost("{id:int}/arrive")]
@@ -35,10 +35,19 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
-    [HttpPost("{id:int}/depart")]
-    public async Task<IActionResult> Depart(int id)
+    [HttpPost("{id:int}/ship")]
+    public async Task<IActionResult> Ship(int id)
     {
-        var (dto, gate, err) = await business.DepartAsync(id);
+        var (dto, gate, err) = await business.ShipAsync(id);
+        if (gate is not null) return Conflict(gate);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
+    [HttpPost("{id:int}/complete")]
+    public async Task<IActionResult> Complete(int id)
+    {
+        var (dto, gate, err) = await business.CompleteAsync(id);
         if (gate is not null) return Conflict(gate);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
@@ -47,8 +56,7 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
     [HttpPost("{id:int}/close")]
     public async Task<IActionResult> Close(int id)
     {
-        var (dto, gate, err) = await business.CloseAsync(id);
-        if (gate is not null) return Conflict(gate);
+        var (dto, err) = await business.ArchiveAsync(id);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
     }
