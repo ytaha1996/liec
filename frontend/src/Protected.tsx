@@ -1,10 +1,9 @@
 import React from 'react';
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAppSelector } from './redux/hooks';
 import GenericLayout from './layouts/GenericLayout/GenericLayout';
 import { applications } from './application';
 
-// Import all page components
 import DashboardPage from './pages/dashboard/DashboardPage';
 import CustomersPage from './pages/customers/CustomersPage';
 import CustomerDetailPage from './pages/customers/CustomerDetailPage';
@@ -19,6 +18,7 @@ import PackageDetailPage from './pages/packages/PackageDetailPage';
 import SuppliersPage from './pages/suppliers/SuppliersPage';
 import SupplyOrdersPage from './pages/supply-orders/SupplyOrdersPage';
 import MessagingLogsPage from './pages/messaging/MessagingLogsPage';
+import GroupHelperExportPage from './pages/messaging/GroupHelperExportPage';
 
 const CustomerDetailWrap = () => { const { id = '0' } = useParams(); return <CustomerDetailPage id={id} />; };
 const ShipmentDetailWrap = () => { const { id = '0' } = useParams(); return <ShipmentDetailPage id={id} />; };
@@ -27,34 +27,61 @@ const PackageDetailWrap = () => { const { id = '0' } = useParams(); return <Pack
 export const Protected: React.FC = () => {
   const isAuthenticated = useAppSelector((s) => s.user.isAuthenticated);
   const currentUser = useAppSelector((s) => s.user);
+  const location = useLocation();
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const userApplications = applications(currentUser);
-  const shippingApp = userApplications['shipping'];
-  const modules = Object.values(shippingApp.modules);
+  const prefix = location.pathname.startsWith('/master')
+    ? 'masterData'
+    : location.pathname.startsWith('/comms')
+      ? 'communications'
+      : 'operations';
+
+  const currentApp = userApplications[prefix];
+  const modules = Object.values(currentApp.modules);
   const pages = modules.map(m => m.title);
   const links = modules.map(m => m.route);
 
   return (
     <Routes>
-      <Route path="" element={<GenericLayout pages={pages} links={links} appName="Shipping Platform" />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/customers" element={<CustomersPage />} />
-        <Route path="/customers/:id" element={<CustomerDetailWrap />} />
-        <Route path="/warehouses" element={<WarehousesPage />} />
-        <Route path="/good-types" element={<GoodTypesPage />} />
-        <Route path="/goods" element={<GoodsPage />} />
-        <Route path="/pricing-configs" element={<PricingConfigsPage />} />
-        <Route path="/shipments" element={<ShipmentsPage />} />
-        <Route path="/shipments/:id" element={<ShipmentDetailWrap />} />
-        <Route path="/packages" element={<PackagesPage />} />
-        <Route path="/packages/:id" element={<PackageDetailWrap />} />
-        <Route path="/suppliers" element={<SuppliersPage />} />
-        <Route path="/supply-orders" element={<SupplyOrdersPage />} />
-        <Route path="/messaging-logs" element={<MessagingLogsPage />} />
-        <Route path="*" element={<DashboardPage />} />
+      <Route path="" element={<GenericLayout pages={pages} links={links} appName={`Shipping Platform — ${currentApp.title}`} />}>
+        <Route path="/" element={<Navigate to="/ops/dashboard" replace />} />
+
+        <Route path="/ops/dashboard" element={<DashboardPage />} />
+        <Route path="/ops/shipments" element={<ShipmentsPage />} />
+        <Route path="/ops/shipments/:id" element={<ShipmentDetailWrap />} />
+        <Route path="/ops/packages" element={<PackagesPage />} />
+        <Route path="/ops/packages/:id" element={<PackageDetailWrap />} />
+
+        <Route path="/master/customers" element={<CustomersPage />} />
+        <Route path="/master/customers/:id" element={<CustomerDetailWrap />} />
+        <Route path="/master/warehouses" element={<WarehousesPage />} />
+        <Route path="/master/good-types" element={<GoodTypesPage />} />
+        <Route path="/master/goods" element={<GoodsPage />} />
+        <Route path="/master/pricing-configs" element={<PricingConfigsPage />} />
+        <Route path="/master/suppliers" element={<SuppliersPage />} />
+        <Route path="/master/supply-orders" element={<SupplyOrdersPage />} />
+
+        <Route path="/comms/messaging-logs" element={<MessagingLogsPage />} />
+        <Route path="/comms/group-helper-export" element={<GroupHelperExportPage />} />
+
+        <Route path="/dashboard" element={<Navigate to="/ops/dashboard" replace />} />
+        <Route path="/shipments" element={<Navigate to="/ops/shipments" replace />} />
+        <Route path="/shipments/:id" element={<Navigate to="/ops/shipments" replace />} />
+        <Route path="/packages" element={<Navigate to="/ops/packages" replace />} />
+        <Route path="/packages/:id" element={<Navigate to="/ops/packages" replace />} />
+        <Route path="/customers" element={<Navigate to="/master/customers" replace />} />
+        <Route path="/customers/:id" element={<Navigate to="/master/customers" replace />} />
+        <Route path="/warehouses" element={<Navigate to="/master/warehouses" replace />} />
+        <Route path="/good-types" element={<Navigate to="/master/good-types" replace />} />
+        <Route path="/goods" element={<Navigate to="/master/goods" replace />} />
+        <Route path="/pricing-configs" element={<Navigate to="/master/pricing-configs" replace />} />
+        <Route path="/suppliers" element={<Navigate to="/master/suppliers" replace />} />
+        <Route path="/supply-orders" element={<Navigate to="/master/supply-orders" replace />} />
+        <Route path="/messaging-logs" element={<Navigate to="/comms/messaging-logs" replace />} />
+
+        <Route path="*" element={<Navigate to="/ops/dashboard" replace />} />
       </Route>
     </Routes>
   );

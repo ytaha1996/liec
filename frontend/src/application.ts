@@ -1,24 +1,39 @@
 import { IApplication } from './IApplication';
 import { IUserStore } from './redux/user/types';
 
-export const applications = (user: IUserStore): Record<string, IApplication> => {
+export const applications = (_user: IUserStore): Record<string, IApplication> => {
   return {
-    shipping: {
-      title: 'Shipping Platform',
-      name: 'shipping',
-      route: '/',
+    operations: {
+      title: 'Operations',
+      name: 'operations',
+      route: '/ops',
       modules: {
-        dashboard: { name: 'dashboard', route: '/dashboard', title: 'Dashboard' },
-        customers: { name: 'customers', route: '/customers', title: 'Customers' },
-        warehouses: { name: 'warehouses', route: '/warehouses', title: 'Warehouses' },
-        goodTypes: { name: 'goodTypes', route: '/good-types', title: 'Good Types' },
-        goods: { name: 'goods', route: '/goods', title: 'Goods' },
-        pricing: { name: 'pricing', route: '/pricing-configs', title: 'Pricing' },
-        shipments: { name: 'shipments', route: '/shipments', title: 'Shipments' },
-        packages: { name: 'packages', route: '/packages', title: 'Packages' },
-        suppliers: { name: 'suppliers', route: '/suppliers', title: 'Suppliers' },
-        supplyOrders: { name: 'supplyOrders', route: '/supply-orders', title: 'Supply Orders' },
-        messaging: { name: 'messaging', route: '/messaging-logs', title: 'Messaging' },
+        dashboard: { name: 'dashboard', route: '/ops/dashboard', title: 'Dashboard' },
+        shipments: { name: 'shipments', route: '/ops/shipments', title: 'Shipments' },
+        packages: { name: 'packages', route: '/ops/packages', title: 'Packages' },
+      }
+    },
+    masterData: {
+      title: 'Master Data',
+      name: 'masterData',
+      route: '/master',
+      modules: {
+        customers: { name: 'customers', route: '/master/customers', title: 'Customers' },
+        warehouses: { name: 'warehouses', route: '/master/warehouses', title: 'Warehouses' },
+        goodTypes: { name: 'goodTypes', route: '/master/good-types', title: 'Good Types' },
+        goods: { name: 'goods', route: '/master/goods', title: 'Goods' },
+        pricing: { name: 'pricing', route: '/master/pricing-configs', title: 'Pricing' },
+        suppliers: { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers' },
+        supplyOrders: { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders' },
+      }
+    },
+    communications: {
+      title: 'Communications',
+      name: 'communications',
+      route: '/comms',
+      modules: {
+        messaging: { name: 'messaging', route: '/comms/messaging-logs', title: 'Messaging Logs' },
+        groupHelper: { name: 'groupHelper', route: '/comms/group-helper-export', title: 'Group Helper Export' },
       }
     }
   };

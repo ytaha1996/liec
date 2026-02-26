@@ -54,6 +54,7 @@ builder.Services.AddScoped<ICapacityService, CapacityService>();
 builder.Services.AddScoped<IImageWatermarkService, ImageWatermarkService>();
 builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
+builder.Services.AddHttpClient<IShipmentTrackingLookupService, ShipmentTrackingLookupService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
 builder.Services.AddScoped<IAuthBusiness, AuthBusiness>();
 builder.Services.AddScoped<IMasterDataBusiness, MasterDataBusiness>();

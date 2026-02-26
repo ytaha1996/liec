@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,11 +14,12 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, getJson, postJson } from '../../api/client';
+import { GateError, api, getJson, postJson } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -36,22 +37,19 @@ interface Props {
 
 const SHIPMENT_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
   Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Pending: { color: '#fff', backgroundColor: '#0288d1' },
-  NearlyFull: { color: '#fff', backgroundColor: '#f57c00' },
-  Loaded: { color: '#fff', backgroundColor: '#ed6c02' },
-  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
+  Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
+  ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
+  Departed: { color: '#fff', backgroundColor: '#1565c0' },
   Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-  Completed: { color: '#fff', backgroundColor: '#388e3c' },
   Closed: { color: '#fff', backgroundColor: '#616161' },
   Cancelled: { color: '#fff', backgroundColor: '#c62828' },
 };
 
 const TRANSITION_ACTIONS: { label: string; action: string }[] = [
-  { label: 'Activate', action: 'activate' },
-  { label: 'Load', action: 'load' },
-  { label: 'Ship', action: 'ship' },
+  { label: 'Schedule', action: 'schedule' },
+  { label: 'Ready To Depart', action: 'ready-to-depart' },
+  { label: 'Depart', action: 'depart' },
   { label: 'Arrive', action: 'arrive' },
-  { label: 'Complete', action: 'complete' },
   { label: 'Close', action: 'close' },
   { label: 'Cancel', action: 'cancel' },
 ];
@@ -61,6 +59,8 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const dispatch = useAppDispatch();
   const qc = useQueryClient();
   const [gate, setGate] = useState<GateError | null>(null);
+  const [trackingCode, setTrackingCode] = useState('');
+  const [tiiuDraft, setTiiuDraft] = useState('');
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/shipments', id],
@@ -162,6 +162,18 @@ const ShipmentDetailPage = ({ id }: Props) => {
     },
   });
 
+  const updateTiiu = useMutation({
+    mutationFn: (code: string) => api.patch(`/api/shipments/${id}/tiiu`, { tiiuCode: code }).then((r) => r.data),
+    onSuccess: () => { toast.success('TIIU updated'); qc.invalidateQueries({ queryKey: ['/api/shipments', id] }); },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'TIIU update failed'),
+  });
+
+  const syncTracking = useMutation({
+    mutationFn: (code: string) => postJson(`/api/shipments/${id}/tracking/sync`, { code }),
+    onSuccess: () => { toast.success('Tracking synced'); qc.invalidateQueries({ queryKey: ['/api/shipments', id] }); },
+    onError: () => toast.error('Tracking sync failed'),
+  });
+
   const sendBulk = useMutation({
     mutationFn: (kind: 'status' | 'departure' | 'arrival') => {
       if (kind === 'status') return postJson(`/api/shipments/${id}/whatsapp/status/bulk`);
@@ -170,6 +182,10 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onSuccess: () => toast.success('Bulk campaign created'),
     onError: () => toast.error('Bulk send failed'),
   });
+
+  useEffect(() => {
+    setTiiuDraft(data?.tiiuCode ?? '');
+  }, [data?.tiiuCode]);
 
   if (isLoading) {
     return <Box sx={{ p: 3 }}><Typography>Loading...</Typography></Box>;
@@ -198,6 +214,26 @@ const ShipmentDetailPage = ({ id }: Props) => {
       </PageTitleWrapper>
 
       <Box sx={{ px: 3, pb: 3 }}>
+
+        <MainPageSection title="TIIU Code">
+          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+            <TextField
+              size="small"
+              label="TIIU"
+              value={tiiuDraft}
+              onChange={(e) => setTiiuDraft(e.target.value.toUpperCase())}
+              inputProps={{ maxLength: 4 }}
+              disabled={data.status !== 'Draft'}
+              helperText={data.status === 'Draft' ? 'Editable in Draft only. Required before Schedule/Depart.' : 'Locked after Draft.'}
+            />
+            {data.status === 'Draft' && (
+              <Button variant="outlined" onClick={() => updateTiiu.mutate(tiiuDraft)} disabled={!tiiuDraft.trim() || updateTiiu.isPending}>
+                Save TIIU
+              </Button>
+            )}
+          </Stack>
+        </MainPageSection>
+
         <MainPageSection title="Status Transitions">
           {gate?.code === 'PHOTO_GATE_FAILED' && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -282,6 +318,14 @@ const ShipmentDetailPage = ({ id }: Props) => {
             })()}
           </MainPageSection>
         )}
+
+        <MainPageSection title="External Tracking Sync">
+          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+            <TextField size="small" label="Tracking code" value={trackingCode} onChange={(e) => setTrackingCode(e.target.value)} />
+            <Button variant="outlined" onClick={() => syncTracking.mutate(trackingCode)} disabled={syncTracking.isPending || !trackingCode.trim()}>Sync Tracking</Button>
+            <Typography variant="body2">Current: {data.externalTrackingCode ?? '-'} / ETA: {data.externalEstimatedArrivalAt ? new Date(data.externalEstimatedArrivalAt).toLocaleString() : '-'}</Typography>
+          </Stack>
+        </MainPageSection>
 
         <MainPageSection title="WhatsApp Bulk Actions">
           <Stack direction="row" gap={1} flexWrap="wrap">

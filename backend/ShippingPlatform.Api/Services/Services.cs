@@ -49,17 +49,19 @@ public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
     }
 }
 
-public interface IRefCodeService { Task<string> GenerateAsync(); }
+public interface IRefCodeService { Task<string> GenerateAsync(int originWarehouseId); }
 public class RefCodeService(AppDbContext db) : IRefCodeService
 {
-    public async Task<string> GenerateAsync()
+    public async Task<string> GenerateAsync(int originWarehouseId)
     {
+        var origin = await db.Warehouses.FirstAsync(x => x.Id == originWarehouseId);
         var year = DateTime.UtcNow.Year;
-        var seq = await db.ShipmentSequences.FirstOrDefaultAsync(x => x.Year == year);
-        if (seq is null) { seq = new ShipmentSequence { Year = year, LastNumber = 0 }; db.ShipmentSequences.Add(seq); }
+        var yy = year % 100;
+        var seq = await db.ShipmentSequences.FirstOrDefaultAsync(x => x.Year == year && x.OriginWarehouseCode == origin.Code);
+        if (seq is null) { seq = new ShipmentSequence { OriginWarehouseCode = origin.Code, Year = year, LastNumber = 0 }; db.ShipmentSequences.Add(seq); }
         seq.LastNumber++;
         await db.SaveChangesAsync();
-        return $"{year}-{seq.LastNumber:D2}";
+        return $"{origin.Code}-{yy:D2}{seq.LastNumber:D2}";
     }
 }
 
@@ -79,10 +81,7 @@ public class CapacityService(AppDbContext db, IConfiguration cfg) : ICapacitySer
             (shipment.MaxWeightKg > 0 && shipment.TotalWeightKg / shipment.MaxWeightKg >= threshold) ||
             (shipment.MaxVolumeM3 > 0 && shipment.TotalVolumeM3 / shipment.MaxVolumeM3 >= threshold);
 
-        if (overThreshold && shipment.Status == ShipmentStatus.Pending)
-            shipment.Status = ShipmentStatus.NearlyFull;
-        else if (!overThreshold && shipment.Status == ShipmentStatus.NearlyFull)
-            shipment.Status = ShipmentStatus.Pending;
+        // Capacity percentage can be shown in UI; no automatic status switching in proposal lifecycle.
 
         await db.SaveChangesAsync();
     }
@@ -205,5 +204,32 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, $"group-helper.{ext}", ms, "text/plain", key, ct);
         return url;
+    }
+}
+
+
+public record ShipmentTrackingSnapshot(string Code, string? Name, string? Origin, string? Destination, DateTime? EstimatedArrivalAt, string? Status);
+
+public interface IShipmentTrackingLookupService
+{
+    Task<ShipmentTrackingSnapshot?> LookupAsync(string code, CancellationToken ct = default);
+}
+
+public class ShipmentTrackingLookupService(HttpClient http) : IShipmentTrackingLookupService
+{
+    public async Task<ShipmentTrackingSnapshot?> LookupAsync(string code, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        try
+        {
+            var res = await http.GetAsync($"https://api.maerskline.com/track/{Uri.EscapeDataString(code)}", ct);
+            // Public free APIs are inconsistent; fail-open and return unknown when unavailable.
+            if (!res.IsSuccessStatusCode) return new ShipmentTrackingSnapshot(code, null, null, null, null, "Unknown");
+            return new ShipmentTrackingSnapshot(code, null, null, null, null, "Unknown");
+        }
+        catch
+        {
+            return new ShipmentTrackingSnapshot(code, null, null, null, null, "Unknown");
+        }
     }
 }

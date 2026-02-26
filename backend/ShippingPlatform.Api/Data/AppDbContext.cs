@@ -29,6 +29,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Warehouse>().HasIndex(x => x.Code).IsUnique();
         modelBuilder.Entity<Shipment>().HasIndex(x => x.RefCode).IsUnique();
         modelBuilder.Entity<SupplyOrder>().HasIndex(x => x.PackageId).IsUnique();
-        modelBuilder.Entity<ShipmentSequence>().HasIndex(x => x.Year).IsUnique();
+        modelBuilder.Entity<ShipmentSequence>().HasIndex(x => new { x.OriginWarehouseCode, x.Year }).IsUnique();
     }
 }
