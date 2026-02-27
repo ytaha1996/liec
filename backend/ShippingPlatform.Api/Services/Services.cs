@@ -271,6 +271,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             workbook.Worksheet(workbook.Worksheets.Count).Delete();
 
         var template = workbook.Worksheet(1);
+        var sourceTemplate = template.CopyTo("_template_source");
 
         var grouped = shipment.Packages
             .Where(p => p.Status != PackageStatus.Cancelled)
@@ -284,9 +285,13 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         for (var i = 0; i < grouped.Count; i++)
         {
             var g = grouped[i];
-            var ws = i == 0 ? template : template.CopyTo(SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1));
+            var name = SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1);
+            var ws = i == 0 ? template : sourceTemplate.CopyTo(name);
+            if (i == 0) ws.Name = name;
             FillCustomerInvoiceSheet(ws, shipment, g);
         }
+
+        sourceTemplate.Delete();
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
