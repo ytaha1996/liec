@@ -88,6 +88,12 @@ namespace ShippingPlatform.Api.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("CanBreak")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("CanBurn")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
@@ -232,9 +238,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<int>("PackageId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Quantity")
                         .HasColumnType("int");
 
                     b.Property<decimal>("VolumeM3")

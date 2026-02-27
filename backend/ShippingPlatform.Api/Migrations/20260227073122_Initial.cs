@@ -66,6 +66,8 @@ namespace ShippingPlatform.Api.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     RatePerKg = table.Column<decimal>(type: "decimal(65,30)", nullable: true),
                     RatePerM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: true),
+                    CanBreak = table.Column<bool>(type: "tinyint(1)", nullable: false),
+                    CanBurn = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
                 },
                 constraints: table =>
@@ -393,7 +395,6 @@ namespace ShippingPlatform.Api.Migrations
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     PackageId = table.Column<int>(type: "int", nullable: false),
                     GoodTypeId = table.Column<int>(type: "int", nullable: false),
-                    Quantity = table.Column<int>(type: "int", nullable: false),
                     WeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     VolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     LineCharge = table.Column<decimal>(type: "decimal(65,30)", nullable: false)
@@ -554,6 +555,9 @@ namespace ShippingPlatform.Api.Migrations
                 name: "WhatsAppDeliveryLogs");
 
             migrationBuilder.DropTable(
+                name: "GoodTypes");
+
+            migrationBuilder.DropTable(
                 name: "Packages");
 
             migrationBuilder.DropTable(
@@ -561,9 +565,6 @@ namespace ShippingPlatform.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "WhatsAppCampaigns");
-
-            migrationBuilder.DropTable(
-                name: "GoodTypes");
 
             migrationBuilder.DropTable(
                 name: "Customers");

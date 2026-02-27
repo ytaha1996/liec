@@ -12,7 +12,7 @@ using ShippingPlatform.Api.Data;
 namespace ShippingPlatform.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260226120901_Initial")]
+    [Migration("20260227073122_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -90,6 +90,12 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("CanBreak")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("CanBurn")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -235,9 +241,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<int>("PackageId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Quantity")
                         .HasColumnType("int");
 
                     b.Property<decimal>("VolumeM3")

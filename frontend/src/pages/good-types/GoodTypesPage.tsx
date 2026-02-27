@@ -68,6 +68,30 @@ const GoodTypesPage: React.FC = () => {
     { id: 'ratePerKg', label: 'Rate/Kg', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
     { id: 'ratePerM3', label: 'Rate/M³', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
     {
+      id: 'canBreak',
+      label: 'Can Break',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        true: { color: '#fff', backgroundColor: '#f57c00' },
+        false: { color: '#fff', backgroundColor: '#9e9e9e' },
+      },
+      chipLabels: { true: 'Yes', false: 'No' },
+    } as EnhancedTableColoredChipHeader,
+    {
+      id: 'canBurn',
+      label: 'Can Burn',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        true: { color: '#fff', backgroundColor: '#c62828' },
+        false: { color: '#fff', backgroundColor: '#9e9e9e' },
+      },
+      chipLabels: { true: 'Yes', false: 'No' },
+    } as EnhancedTableColoredChipHeader,
+    {
       id: 'isActive',
       label: 'Active',
       type: EnhancedTableColumnType.COLORED_CHIP,
@@ -129,6 +153,22 @@ const GoodTypesPage: React.FC = () => {
       disabled: false,
       value: formValues.ratePerM3 ?? '',
     } as IDynamicNumberField,
+    canBreak: {
+      type: DynamicField.CHECKBOX,
+      name: 'canBreak',
+      title: 'Can Break',
+      required: false,
+      disabled: false,
+      value: formValues.canBreak ?? false,
+    } as IDynamicCheckboxField,
+    canBurn: {
+      type: DynamicField.CHECKBOX,
+      name: 'canBurn',
+      title: 'Can Burn',
+      required: false,
+      disabled: false,
+      value: formValues.canBurn ?? false,
+    } as IDynamicCheckboxField,
     isActive: {
       type: DynamicField.CHECKBOX,
       name: 'isActive',

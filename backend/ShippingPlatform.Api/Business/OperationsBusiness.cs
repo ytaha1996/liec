@@ -235,15 +235,15 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var shipment = await db.Shipments.FindAsync(p.ShipmentId);
         if (shipment is not null)
         {
-            var newWeight = p.TotalWeightKg + item.WeightKg * item.Quantity;
-            var newVolume = p.TotalVolumeM3 + item.VolumeM3 * item.Quantity;
+            var newWeight = p.TotalWeightKg + item.WeightKg;
+            var newVolume = p.TotalVolumeM3 + item.VolumeM3;
             if (shipment.MaxWeightKg > 0 && newWeight > shipment.MaxWeightKg)
                 return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container weight capacity." });
             if (shipment.MaxVolumeM3 > 0 && newVolume > shipment.MaxVolumeM3)
                 return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container volume capacity." });
         }
 
-        var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
+        var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
         db.PackageItems.Add(entity);
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.GoodType).LoadAsync();
@@ -264,15 +264,15 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var shipment = await db.Shipments.FindAsync(p.ShipmentId);
         if (shipment is not null)
         {
-            var newWeight = p.TotalWeightKg - i.WeightKg * i.Quantity + input.WeightKg * input.Quantity;
-            var newVolume = p.TotalVolumeM3 - i.VolumeM3 * i.Quantity + input.VolumeM3 * input.Quantity;
+            var newWeight = p.TotalWeightKg - i.WeightKg + input.WeightKg;
+            var newVolume = p.TotalVolumeM3 - i.VolumeM3 + input.VolumeM3;
             if (shipment.MaxWeightKg > 0 && newWeight > shipment.MaxWeightKg)
                 return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container weight capacity." });
             if (shipment.MaxVolumeM3 > 0 && newVolume > shipment.MaxVolumeM3)
                 return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container volume capacity." });
         }
 
-        i.GoodTypeId = input.GoodTypeId; i.Quantity = input.Quantity; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
+        i.GoodTypeId = input.GoodTypeId; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
         await db.SaveChangesAsync();
         await db.Entry(i).Reference(x => x.GoodType).LoadAsync();
         await pricing.RecalculateAsync(p);

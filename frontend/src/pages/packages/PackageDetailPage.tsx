@@ -98,14 +98,6 @@ const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: R
     items: goodsItems,
     value: String(initial?.goodTypeId ?? ''),
   },
-  quantity: {
-    type: DynamicField.NUMBER,
-    name: 'quantity',
-    title: 'Quantity',
-    required: true,
-    disabled: false,
-    value: initial?.quantity ?? '',
-  },
   weightKg: {
     type: DynamicField.NUMBER,
     name: 'weightKg',
@@ -193,7 +185,6 @@ const PackageDetailPage = ({ id }: Props) => {
     mutationFn: (values: Record<string, any>) =>
       postJson(`/api/packages/${id}/items`, {
         goodTypeId: Number(values.goodTypeId),
-        quantity: Number(values.quantity),
         weightKg: Number(values.weightKg),
         volumeM3: Number(values.volumeM3),
       }),
@@ -218,7 +209,6 @@ const PackageDetailPage = ({ id }: Props) => {
     mutationFn: ({ itemId, values }: { itemId: number; values: Record<string, any> }) =>
       putJson(`/api/packages/${id}/items/${itemId}`, {
         goodTypeId: Number(values.goodTypeId),
-        quantity: Number(values.quantity),
         weightKg: Number(values.weightKg),
         volumeM3: Number(values.volumeM3),
       }),
@@ -271,7 +261,6 @@ const PackageDetailPage = ({ id }: Props) => {
 
   const itemHeaders: EnhanceTableHeaderTypes[] = [
     { id: 'goodName', label: 'Good', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
-    { id: 'quantity', label: 'Quantity', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
     { id: 'weightKg', label: 'Weight (Kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
     { id: 'volumeM3', label: 'Volume (M3)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
     { id: 'lineCharge', label: 'Line Charge', type: EnhancedTableColumnType.CURRENCY, numeric: true, disablePadding: false },

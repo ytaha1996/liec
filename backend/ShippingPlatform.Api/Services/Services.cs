@@ -137,8 +137,8 @@ public class PricingService(AppDbContext db) : IPricingService
         var goodTypes = await db.GoodTypes.Where(x => goodTypeIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
         var active = await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active) ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerM3 = 1, Currency = "EUR" };
 
-        package.TotalWeightKg = package.Items.Sum(x => x.WeightKg * x.Quantity);
-        package.TotalVolumeM3 = package.Items.Sum(x => x.VolumeM3 * x.Quantity);
+        package.TotalWeightKg = package.Items.Sum(x => x.WeightKg);
+        package.TotalVolumeM3 = package.Items.Sum(x => x.VolumeM3);
 
         decimal rateKg = active.DefaultRatePerKg, rateM3 = active.DefaultRatePerM3;
         foreach (var i in package.Items)
@@ -146,7 +146,7 @@ public class PricingService(AppDbContext db) : IPricingService
             goodTypes.TryGetValue(i.GoodTypeId, out var gt);
             var itemRateKg = gt?.RatePerKg ?? active.DefaultRatePerKg;
             var itemRateM3 = gt?.RatePerM3 ?? active.DefaultRatePerM3;
-            i.LineCharge = Math.Max(i.WeightKg * i.Quantity * itemRateKg, i.VolumeM3 * i.Quantity * itemRateM3);
+            i.LineCharge = Math.Max(i.WeightKg * itemRateKg, i.VolumeM3 * itemRateM3);
             rateKg = itemRateKg;
             rateM3 = itemRateM3;
         }

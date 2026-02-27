@@ -27,7 +27,9 @@
       "Bash(dotnet ef migrations add Initial)",
       "Bash(ls -la \"c:\\\\Workarea\\\\liec\\\\frontend\\\\src\\\\components\\\\layout-components\\\\main-layout\"\" 2>/dev/null || echo \"Directory not found \")",
       "Bash(mysql \"server=beez-app.mysql.database.azure.com;user=adminBeez;database=shippingapp;port=3306;password=Beez4Life12345;sslmode=Required\" --execute=\"SELECT 1\")",
-      "Bash(where mysql)"
+      "Bash(where mysql)",
+      "Bash(dotnet ef --version)",
+      "Bash(dotnet build --no-restore)"
     ]
   }
 }
