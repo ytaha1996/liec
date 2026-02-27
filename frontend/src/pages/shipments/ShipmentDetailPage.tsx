@@ -75,6 +75,7 @@ const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
 
 const CAN_ADD_PACKAGE = new Set(['Draft', 'Scheduled']);
 const CAN_EDIT_SHIPMENT = new Set(['Draft', 'Scheduled']);
+const EXPORTABLE_STATUSES = new Set(['ReadyToDepart', 'Departed', 'Arrived', 'Closed']);
 
 const ShipmentDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
@@ -265,6 +266,24 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Bulk send failed'),
   });
 
+  const exportBol = useMutation({
+    mutationFn: () => postJson<{ publicUrl: string }>(`/api/exports/shipments/${id}/bol-report`),
+    onSuccess: (res) => {
+      if (res?.publicUrl) window.open(res.publicUrl, '_blank', 'noopener,noreferrer');
+      toast.success('BOL report is ready');
+    },
+    onError: () => toast.error('BOL export failed'),
+  });
+
+  const exportCustomerInvoices = useMutation({
+    mutationFn: () => postJson<{ publicUrl: string }>(`/api/exports/shipments/${id}/customer-invoices-excel`),
+    onSuccess: (res) => {
+      if (res?.publicUrl) window.open(res.publicUrl, '_blank', 'noopener,noreferrer');
+      toast.success('Customer invoices excel is ready');
+    },
+    onError: () => toast.error('Customer invoices export failed'),
+  });
+
   if (isLoading) {
     return <Loader />;
   }
@@ -438,6 +457,19 @@ const ShipmentDetailPage = ({ id }: Props) => {
             </Button>
           </Stack>
         </MainPageSection>
+
+        {EXPORTABLE_STATUSES.has(data.status) && (
+          <MainPageSection title="Shipment Reports">
+            <Stack direction="row" gap={1} flexWrap="wrap">
+              <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>
+                BOL report
+              </Button>
+              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>
+                customer-invoices-excel
+              </Button>
+            </Stack>
+          </MainPageSection>
+        )}
 
         <MainPageSection title="Packages">
           {CAN_ADD_PACKAGE.has(data.status) && (
