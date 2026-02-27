@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,7 +20,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, api, getJson, postJson } from '../../api/client';
+import { GateError, getJson, patchJson, postJson } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -29,33 +29,34 @@ import {
   EnhancedTableColumnType,
 } from '../../components/enhanced-table';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
-import PageActionsSection, { PageAction } from '../../components/layout-components/main-layout/PageActionsSection';
-import PageTitleWrapper from '../../components/PageTitleWrapper';
+import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
+import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
 import { PhotoGallery } from '../../components/media/PhotoGallery';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
+import GenericDrawer from '../../components/drawer/GenericDrawer';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import Loader from '../../components/Loader';
-import { BRAND_TEAL, BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
+import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
 
 interface Props {
   id: string;
 }
 
 // Allowed next transitions per shipment status, based on TransitionRuleService
-const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean }[]> = {
+const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean; confirmMessage: string }[]> = {
   Draft: [
-    { label: 'Schedule', action: 'schedule' },
-    { label: 'Cancel', action: 'cancel', isCancel: true },
+    { label: 'Schedule', action: 'schedule', confirmMessage: 'Schedule this shipment? It will be locked for departure preparation.' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? This cannot be undone.' },
   ],
   Scheduled: [
-    { label: 'Ready To Depart', action: 'ready-to-depart' },
-    { label: 'Cancel', action: 'cancel', isCancel: true },
+    { label: 'Ready To Depart', action: 'ready-to-depart', confirmMessage: 'Mark this shipment as Ready To Depart?' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? This cannot be undone.' },
   ],
-  ReadyToDepart: [{ label: 'Depart', action: 'depart' }],
-  Departed: [{ label: 'Arrive', action: 'arrive' }],
-  Arrived: [{ label: 'Close', action: 'close' }],
+  ReadyToDepart: [{ label: 'Depart', action: 'depart', confirmMessage: 'Mark this shipment as Departed? Ensure all packages have departure photos.' }],
+  Departed: [{ label: 'Arrive', action: 'arrive', confirmMessage: 'Mark this shipment as Arrived?' }],
+  Arrived: [{ label: 'Close', action: 'close', confirmMessage: 'Close this shipment? This is final.' }],
   Closed: [],
   Cancelled: [],
 };
@@ -73,6 +74,7 @@ const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
 ];
 
 const CAN_ADD_PACKAGE = new Set(['Draft', 'Scheduled']);
+const CAN_EDIT_SHIPMENT = new Set(['Draft', 'Scheduled']);
 
 const ShipmentDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
@@ -80,8 +82,8 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const qc = useQueryClient();
   const [gate, setGate] = useState<GateError | null>(null);
   const [trackingCode, setTrackingCode] = useState('');
-  const [tiiuDraft, setTiiuDraft] = useState('');
   const [addPkgOpen, setAddPkgOpen] = useState(false);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/shipments', id],
@@ -231,10 +233,21 @@ const ShipmentDetailPage = ({ id }: Props) => {
     },
   });
 
-  const updateTiiu = useMutation({
-    mutationFn: (code: string) => api.patch(`/api/shipments/${id}/tiiu`, { tiiuCode: code }).then((r) => r.data),
-    onSuccess: () => { toast.success('TIIU updated'); qc.invalidateQueries({ queryKey: ['/api/shipments', id] }); },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'TIIU update failed'),
+  const updateShipment = useMutation({
+    mutationFn: (values: Record<string, any>) =>
+      patchJson(`/api/shipments/${id}`, {
+        tiiuCode: values.tiiuCode || null,
+        plannedDepartureDate: values.plannedDepartureDate || null,
+        plannedArrivalDate: values.plannedArrivalDate || null,
+      }),
+    onSuccess: () => {
+      toast.success('Shipment info updated');
+      qc.invalidateQueries({ queryKey: ['/api/shipments', id] });
+      setEditDrawerOpen(false);
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message ?? 'Update failed');
+    },
   });
 
   const syncTracking = useMutation({
@@ -252,10 +265,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Bulk send failed'),
   });
 
-  useEffect(() => {
-    setTiiuDraft(data?.tiiuCode ?? '');
-  }, [data?.tiiuCode]);
-
   if (isLoading) {
     return <Loader />;
   }
@@ -270,100 +279,108 @@ const ShipmentDetailPage = ({ id }: Props) => {
     destinationWarehouse: warehousesMap[data.destinationWarehouseId] ?? `#${data.destinationWarehouseId}`,
   };
 
-  const transitionActions: PageAction[] = (ALLOWED_TRANSITIONS[data.status] ?? []).map(
-    ({ label, action, isCancel }) => ({
+  const editInfoActions = CAN_EDIT_SHIPMENT.has(data.status)
+    ? [{ key: 'edit', title: 'Edit Info', onClick: () => setEditDrawerOpen(true) }]
+    : [];
+
+  const editFields: Record<string, DynamicFieldTypes> = {
+    tiiuCode: {
+      type: DynamicField.TEXT,
+      name: 'tiiuCode',
+      title: 'TIIU Code',
+      required: false,
+      disabled: false,
+      value: data.tiiuCode ?? '',
+    },
+    plannedDepartureDate: {
+      type: DynamicField.DATE,
+      name: 'plannedDepartureDate',
+      title: 'Planned Departure Date',
+      required: true,
+      disabled: false,
+      value: data.plannedDepartureDate ?? null,
+    },
+    plannedArrivalDate: {
+      type: DynamicField.DATE,
+      name: 'plannedArrivalDate',
+      title: 'Planned Arrival Date',
+      required: true,
+      disabled: false,
+      value: data.plannedArrivalDate ?? null,
+    },
+  };
+
+  // Build title actions from transitions — all with confirmation
+  const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[data.status] ?? []).map(
+    ({ label, action, isCancel, confirmMessage }) => ({
       label,
-      action,
-      color: (isCancel ? 'error' : 'primary') as PageAction['color'],
-      onClick: isCancel
-        ? () =>
-            dispatch(
-              OpenConfirmation({
-                open: true,
-                title: 'Cancel Shipment',
-                message: 'Are you sure you want to cancel this shipment? This cannot be undone.',
-                onSubmit: () => move.mutate('cancel'),
-              }),
-            )
-        : () => move.mutate(action),
+      disabled: move.isPending,
+      ...(isCancel
+        ? { backgroundColor: '#d32f2f', color: '#fff' }
+        : {}),
+      onClick: () =>
+        dispatch(
+          OpenConfirmation({
+            open: true,
+            title: label,
+            message: confirmMessage,
+            onSubmit: () => move.mutate(action),
+          }),
+        ),
     }),
   );
 
+  const statusChip = (
+    <Chip
+      label={data.status}
+      size="small"
+      sx={{
+        backgroundColor: SHIPMENT_STATUS_CHIPS[data.status]?.backgroundColor ?? '#e0e0e0',
+        color: SHIPMENT_STATUS_CHIPS[data.status]?.color ?? '#333',
+      }}
+    />
+  );
+
   return (
-    <Box>
-      <PageTitleWrapper>
+    <>
+      <Box sx={{ px: 3, pt: 2 }}>
         <Button variant="text" size="small" startIcon={<ArrowBackIcon />}
-          onClick={() => navigate('/ops/shipments')} sx={{ mb: 1, color: 'text.secondary' }}>
+          onClick={() => navigate('/ops/shipments')} sx={{ color: 'text.secondary' }}>
           All Shipments
         </Button>
-        <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
-          <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: BRAND_TEAL }}>
-            Shipment {data.refCode}
-          </Typography>
-          <Chip
-            label={data.status}
-            size="small"
-            sx={{
-              backgroundColor: SHIPMENT_STATUS_CHIPS[data.status]?.backgroundColor ?? '#e0e0e0',
-              color: SHIPMENT_STATUS_CHIPS[data.status]?.color ?? '#333',
-            }}
-          />
-        </Stack>
-      </PageTitleWrapper>
-
-      <Box sx={{ px: 3, pb: 3 }}>
-        <InformationWidget title="Shipment Info" fields={SHIPMENT_INFO_FIELDS} data={shipmentDisplayData} />
-
-        <MainPageSection title="TIIU Code">
-          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-            <TextField
-              size="small"
-              label="TIIU"
-              value={tiiuDraft}
-              onChange={(e) => setTiiuDraft(e.target.value.toUpperCase())}
-              inputProps={{ maxLength: 4 }}
-              disabled={data.status !== 'Draft'}
-              helperText={data.status === 'Draft' ? 'Editable in Draft only. Required before Schedule/Depart.' : 'Locked after Draft.'}
-            />
-            {data.status === 'Draft' && (
-              <Button variant="outlined" onClick={() => updateTiiu.mutate(tiiuDraft)} disabled={!tiiuDraft.trim() || updateTiiu.isPending}>
-                Save TIIU
-              </Button>
-            )}
-          </Stack>
-        </MainPageSection>
-
-        <PageActionsSection
-          title="Status Transitions"
-          actions={transitionActions}
-          isPending={move.isPending}
-        >
-          {gate?.code === 'PHOTO_GATE_FAILED' && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {gate.message}
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Package</TableCell>
-                    <TableCell>Stage</TableCell>
+      </Box>
+      <DetailPageLayout
+        title={`Shipment ${data.refCode}`}
+        chips={statusChip}
+        actions={titleActions}
+      >
+        {gate?.code === 'PHOTO_GATE_FAILED' && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {gate.message}
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Package</TableCell>
+                  <TableCell>Stage</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(gate.missing ?? []).map((m) => (
+                  <TableRow key={`${m.packageId}-${m.stage}`}>
+                    <TableCell>
+                      <MuiLink component={RouterLink} to={`/ops/packages/${m.packageId}`}>
+                        #{m.packageId}
+                      </MuiLink>
+                    </TableCell>
+                    <TableCell>{m.stage}</TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(gate.missing ?? []).map((m) => (
-                    <TableRow key={`${m.packageId}-${m.stage}`}>
-                      <TableCell>
-                        <MuiLink component={RouterLink} to={`/ops/packages/${m.packageId}`}>
-                          #{m.packageId}
-                        </MuiLink>
-                      </TableCell>
-                      <TableCell>{m.stage}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Alert>
-          )}
-        </PageActionsSection>
+                ))}
+              </TableBody>
+            </Table>
+          </Alert>
+        )}
+
+        <InformationWidget title="Shipment Info" fields={SHIPMENT_INFO_FIELDS} data={shipmentDisplayData} actions={editInfoActions} />
 
         {(data.maxWeightKg > 0 || data.maxCbm > 0) && (
           <MainPageSection title="Container Capacity">
@@ -441,7 +458,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
         <MainPageSection title="Photos">
           <PhotoGallery media={mediaQuery.data ?? []} />
         </MainPageSection>
-      </Box>
+      </DetailPageLayout>
 
       <GenericDialog
         open={addPkgOpen}
@@ -462,7 +479,27 @@ const ShipmentDetailPage = ({ id }: Props) => {
           }}
         />
       </GenericDialog>
-    </Box>
+
+      <GenericDrawer
+        open={editDrawerOpen}
+        title="Edit Shipment Info"
+        onClose={() => setEditDrawerOpen(false)}
+      >
+        <DynamicFormWidget
+          title=""
+          drawerMode
+          fields={editFields}
+          onSubmit={async (values) => {
+            try {
+              await updateShipment.mutateAsync(values);
+              return true;
+            } catch {
+              return false;
+            }
+          }}
+        />
+      </GenericDrawer>
+    </>
   );
 };
 

@@ -29,10 +29,10 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
     [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
     [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
 
-    [HttpPatch("{id:int}/tiiu")]
-    public async Task<IActionResult> UpdateTiiu(int id, UpdateShipmentTiiuRequest req)
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdateShipmentRequest req)
     {
-        var (dto, err) = await business.UpdateTiiuAsync(id, req.TiiuCode);
+        var (dto, err) = await business.UpdateAsync(id, req);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
     }

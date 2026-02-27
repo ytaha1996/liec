@@ -7,12 +7,12 @@ import { Portal } from './Portal';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { LocalizationProvider } from '@mui/x-date-pickers';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 
 export const App = () => (
   <Provider store={store}>
     <ThemeProviderWrapper>
-      <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
         <BrowserRouter>
           <Portal />
           <ToastContainer position="top-right" autoClose={4000} />

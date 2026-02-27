@@ -34,8 +34,8 @@ import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
-import PageActionsSection, { PageAction } from '../../components/layout-components/main-layout/PageActionsSection';
 import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
+import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
 import { PhotoGallery } from '../../components/media/PhotoGallery';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
@@ -47,26 +47,27 @@ interface Props {
 }
 
 // Allowed next transitions per package status, based on TransitionRuleService
-const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean }[]> = {
+// requiredShipmentStatus: if set, the button is disabled unless the shipment is in one of these statuses
+const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean; confirmMessage: string; requiredShipmentStatus?: string[] }[]> = {
   Draft: [
-    { label: 'Receive', action: 'receive' },
-    { label: 'Cancel', action: 'cancel', isCancel: true },
+    { label: 'Receive', action: 'receive', confirmMessage: 'Receive this package into the warehouse?' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this package? This cannot be undone.' },
   ],
   Received: [
-    { label: 'Pack', action: 'pack' },
-    { label: 'Cancel', action: 'cancel', isCancel: true },
+    { label: 'Pack', action: 'pack', confirmMessage: 'Mark this package as Packed?' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this package? This cannot be undone.' },
   ],
   Packed: [
-    { label: 'Ready To Ship', action: 'ready-to-ship' },
-    { label: 'Cancel', action: 'cancel', isCancel: true },
+    { label: 'Ready To Ship', action: 'ready-to-ship', confirmMessage: 'Mark this package as Ready To Ship?', requiredShipmentStatus: ['Scheduled', 'ReadyToDepart', 'Departed', 'Arrived', 'Closed'] },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this package? This cannot be undone.' },
   ],
   ReadyToShip: [
-    { label: 'Ship', action: 'ship' },
-    { label: 'Cancel', action: 'cancel', isCancel: true },
+    { label: 'Ship', action: 'ship', confirmMessage: 'Ship this package? Departure photos are required.', requiredShipmentStatus: ['Departed', 'Arrived', 'Closed'] },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this package? This cannot be undone.' },
   ],
-  Shipped: [{ label: 'Arrive Destination', action: 'arrive-destination' }],
-  ArrivedAtDestination: [{ label: 'Ready For Handout', action: 'ready-for-handout' }],
-  ReadyForHandout: [{ label: 'Handout', action: 'handout' }],
+  Shipped: [{ label: 'Arrive Destination', action: 'arrive-destination', confirmMessage: 'Mark this package as Arrived at Destination?', requiredShipmentStatus: ['Arrived', 'Closed'] }],
+  ArrivedAtDestination: [{ label: 'Ready For Handout', action: 'ready-for-handout', confirmMessage: 'Mark this package as Ready For Handout?', requiredShipmentStatus: ['Arrived', 'Closed'] }],
+  ReadyForHandout: [{ label: 'Handout', action: 'handout', confirmMessage: 'Hand out this package? Arrival photos are required.', requiredShipmentStatus: ['Arrived', 'Closed'] }],
   HandedOut: [],
   Cancelled: [],
 };
@@ -147,6 +148,14 @@ const PackageDetailPage = ({ id }: Props) => {
     queryKey: ['/api/customers'],
     queryFn: () => getJson<any[]>('/api/customers'),
   });
+
+  const shipmentId = (data?.package ?? data)?.shipmentId;
+  const shipmentQuery = useQuery<any>({
+    queryKey: ['/api/shipments', shipmentId],
+    queryFn: () => getJson<any>(`/api/shipments/${shipmentId}`),
+    enabled: !!shipmentId,
+  });
+  const shipmentStatus: string | undefined = shipmentQuery.data?.status;
 
   const applyOverride = useMutation({
     mutationFn: (payload: { overrideType: string; newValue: number; reason: string }) =>
@@ -338,22 +347,23 @@ const PackageDetailPage = ({ id }: Props) => {
     { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } },
   ];
 
-  const transitionActions: PageAction[] = (ALLOWED_TRANSITIONS[pkg.status] ?? []).map(
-    ({ label, action, isCancel }) => ({
+  const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[pkg.status] ?? []).map(
+    ({ label, action, isCancel, confirmMessage, requiredShipmentStatus }) => ({
       label,
-      action,
-      color: (isCancel ? 'error' : 'primary') as PageAction['color'],
-      onClick: isCancel
-        ? () =>
-            dispatch(
-              OpenConfirmation({
-                open: true,
-                title: 'Cancel Package',
-                message: 'Are you sure you want to cancel this package? This cannot be undone.',
-                onSubmit: () => transition.mutate('cancel'),
-              }),
-            )
-        : () => transition.mutate(action),
+      disabled: transition.isPending
+        || (requiredShipmentStatus != null && (!shipmentStatus || !requiredShipmentStatus.includes(shipmentStatus))),
+      ...(isCancel
+        ? { backgroundColor: '#d32f2f', color: '#fff' }
+        : {}),
+      onClick: () =>
+        dispatch(
+          OpenConfirmation({
+            open: true,
+            title: label,
+            message: confirmMessage,
+            onSubmit: () => transition.mutate(action),
+          }),
+        ),
     }),
   );
 
@@ -379,40 +389,35 @@ const PackageDetailPage = ({ id }: Props) => {
           />
         )
       }
+      actions={titleActions}
     >
-        <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
-
-        <PageActionsSection
-          title="Status Transitions"
-          actions={transitionActions}
-          isPending={transition.isPending}
-        >
-          {gate?.code === 'PHOTO_GATE_FAILED' && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {gate.message}
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Package</TableCell>
-                    <TableCell>Stage</TableCell>
+        {gate?.code === 'PHOTO_GATE_FAILED' && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {gate.message}
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Package</TableCell>
+                  <TableCell>Stage</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(gate.missing ?? []).map((m) => (
+                  <TableRow key={`${m.packageId}-${m.stage}`}>
+                    <TableCell>
+                      <MuiLink component={RouterLink} to={`/ops/packages/${m.packageId}`}>
+                        #{m.packageId}
+                      </MuiLink>
+                    </TableCell>
+                    <TableCell>{m.stage}</TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(gate.missing ?? []).map((m) => (
-                    <TableRow key={`${m.packageId}-${m.stage}`}>
-                      <TableCell>
-                        <MuiLink component={RouterLink} to={`/ops/packages/${m.packageId}`}>
-                          #{m.packageId}
-                        </MuiLink>
-                      </TableCell>
-                      <TableCell>{m.stage}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Alert>
-          )}
-        </PageActionsSection>
+                ))}
+              </TableBody>
+            </Table>
+          </Alert>
+        )}
+
+        <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
 
         <InformationWidget
           title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}

@@ -12,14 +12,14 @@ public interface IShipmentBusiness
     Task<ShipmentDto?> GetAsync(int id);
     Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input);
     Task<(ShipmentDto? dto, object? error)> SetStatusAsync(int id, ShipmentStatus status);
-    Task<(ShipmentDto? dto, object? error)> UpdateTiiuAsync(int id, string tiiuCode);
+    Task<(ShipmentDto? dto, object? error)> UpdateAsync(int id, UpdateShipmentRequest req);
     Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id);
     Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id);
     Task<(ShipmentDto? dto, object? error)> SyncTrackingAsync(int id, string code, CancellationToken ct = default);
     Task<List<object>> MediaAsync(int id);
 }
 
-public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking) : IShipmentBusiness
+public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity) : IShipmentBusiness
 {
     public async Task<List<ShipmentDto>> ListAsync(ShipmentStatus? status)
     {
@@ -53,18 +53,29 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
     }
 
 
-    public async Task<(ShipmentDto? dto, object? error)> UpdateTiiuAsync(int id, string tiiuCode)
+    public async Task<(ShipmentDto? dto, object? error)> UpdateAsync(int id, UpdateShipmentRequest req)
     {
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null);
-        if (s.Status != ShipmentStatus.Draft)
-            return (null, new { code = "SHIPMENT_LOCKED", message = "TIIU can only be edited while shipment is Draft." });
-        if (string.IsNullOrWhiteSpace(tiiuCode))
-            return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required." });
-        var normalized = tiiuCode.Trim().ToUpperInvariant();
-        if (normalized.Length > 4)
-            return (null, new { code = "VALIDATION_ERROR", message = "TIIU code must be at most 4 characters." });
-        s.TiiuCode = normalized;
+        if (s.Status >= ShipmentStatus.Departed)
+            return (null, new { code = "SHIPMENT_LOCKED", message = "Shipment can only be edited while Draft or Scheduled." });
+
+        if (req.TiiuCode is not null)
+        {
+            var normalized = req.TiiuCode.Trim().ToUpperInvariant();
+            if (normalized.Length > 4)
+                return (null, new { code = "VALIDATION_ERROR", message = "TIIU code must be at most 4 characters." });
+            s.TiiuCode = normalized.Length == 0 ? null : normalized;
+        }
+
+        var departure = req.PlannedDepartureDate ?? s.PlannedDepartureDate;
+        var arrival = req.PlannedArrivalDate ?? s.PlannedArrivalDate;
+        if (arrival < departure)
+            return (null, new { code = "VALIDATION_ERROR", message = "Planned arrival must be on or after planned departure." });
+
+        if (req.PlannedDepartureDate.HasValue) s.PlannedDepartureDate = req.PlannedDepartureDate.Value;
+        if (req.PlannedArrivalDate.HasValue) s.PlannedArrivalDate = req.PlannedArrivalDate.Value;
+
         await db.SaveChangesAsync();
         return (s.ToDto(), null);
     }
@@ -75,6 +86,49 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (status == ShipmentStatus.Scheduled && string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling shipment." });
         if (!transitions.CanMove(s.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to {status}." });
         s.Status = status;
+
+        // Reassign unloaded packages (Draft/Received/Packed) to another Draft shipment on the same route
+        if (status == ShipmentStatus.ReadyToDepart)
+        {
+            var unloaded = await db.Packages
+                .Where(p => p.ShipmentId == id && p.Status <= PackageStatus.Packed && p.Status != PackageStatus.Cancelled)
+                .ToListAsync();
+
+            if (unloaded.Count > 0)
+            {
+                var target = await db.Shipments
+                    .Where(x => x.Id != id
+                        && x.OriginWarehouseId == s.OriginWarehouseId
+                        && x.DestinationWarehouseId == s.DestinationWarehouseId
+                        && x.Status == ShipmentStatus.Draft)
+                    .OrderBy(x => x.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                if (target is null)
+                {
+                    target = new Shipment
+                    {
+                        OriginWarehouseId = s.OriginWarehouseId,
+                        DestinationWarehouseId = s.DestinationWarehouseId,
+                        PlannedDepartureDate = DateTime.UtcNow.AddDays(30),
+                        PlannedArrivalDate = DateTime.UtcNow.AddDays(60),
+                        Status = ShipmentStatus.Draft,
+                        RefCode = await refs.GenerateAsync(s.OriginWarehouseId),
+                    };
+                    db.Shipments.Add(target);
+                    await db.SaveChangesAsync();
+                }
+
+                foreach (var p in unloaded)
+                    p.ShipmentId = target.Id;
+
+                await db.SaveChangesAsync();
+                await capacity.RecalculateAsync(id);
+                await capacity.RecalculateAsync(target.Id);
+                return (s.ToDto(), null);
+            }
+        }
+
         await db.SaveChangesAsync();
         return (s.ToDto(), null);
     }
@@ -209,6 +263,18 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return (null, null, null);
+
+        // Shipment-gated transitions: package transitions must respect parent shipment status
+        if (status != PackageStatus.Cancelled)
+        {
+            var shipment = await db.Shipments.FindAsync(p.ShipmentId);
+            if (status == PackageStatus.ReadyToShip && shipment!.Status < ShipmentStatus.Scheduled)
+                return (null, new { code = "SHIPMENT_NOT_READY", message = "Shipment must be at least Scheduled." }, null);
+            if (status == PackageStatus.Shipped && shipment!.Status < ShipmentStatus.Departed)
+                return (null, new { code = "SHIPMENT_NOT_DEPARTED", message = "Shipment must be Departed before shipping packages." }, null);
+            if (status >= PackageStatus.ArrivedAtDestination && shipment!.Status < ShipmentStatus.Arrived)
+                return (null, new { code = "SHIPMENT_NOT_ARRIVED", message = "Shipment must have Arrived before this transition." }, null);
+        }
 
         if (checkDepartureGate && !p.Media.Any(m => m.Stage == MediaStage.Departure))
             return (null, null, new GateFailure("PHOTO_GATE_FAILED", "Package cannot be shipped before departure photos are uploaded.", [new MissingGateItem(p.Id, p.Customer.Name, MediaStage.Departure)]));

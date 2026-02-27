@@ -1,23 +1,17 @@
 import React from 'react';
-import { Box, Stack, Typography } from '@mui/material';
-import PageTitleWrapper from '../../PageTitleWrapper';
+import { Box } from '@mui/material';
+import MainPageTitle, { MainPageAction } from './MainPageTitle';
 
 interface DetailPageLayoutProps {
   title: string;
   chips?: React.ReactNode;
+  actions?: MainPageAction[];
   children: React.ReactNode;
 }
 
-const DetailPageLayout: React.FC<DetailPageLayoutProps> = ({ title, chips, children }) => (
+const DetailPageLayout: React.FC<DetailPageLayoutProps> = ({ title, chips, actions, children }) => (
   <Box>
-    <PageTitleWrapper>
-      <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
-        <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: '#00A6A6' }}>
-          {title}
-        </Typography>
-        {chips}
-      </Stack>
-    </PageTitleWrapper>
+    <MainPageTitle title={title} chips={chips} actions={actions} />
     <Box sx={{ px: 3, pb: 3 }}>
       {children}
     </Box>

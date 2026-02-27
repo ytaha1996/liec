@@ -10,4 +10,4 @@ public record StatusRequest(string Status);
 public record ExportRequest(string Format);
 
 public record ShipmentTrackingSyncRequest(string Code);
-public record UpdateShipmentTiiuRequest(string TiiuCode);
+public record UpdateShipmentRequest(string? TiiuCode, DateTime? PlannedDepartureDate, DateTime? PlannedArrivalDate);
