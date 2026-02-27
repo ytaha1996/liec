@@ -17,6 +17,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { GateError, api, getJson, postJson } from '../../api/client';
@@ -35,32 +36,12 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
+import Loader from '../../components/Loader';
+import { BRAND_TEAL, BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
 
 interface Props {
   id: string;
 }
-
-const SHIPMENT_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
-  Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-  ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
-  Departed: { color: '#fff', backgroundColor: '#1565c0' },
-  Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-  Closed: { color: '#fff', backgroundColor: '#616161' },
-  Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-};
-
-const PKG_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
-  Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Received: { color: '#fff', backgroundColor: '#0288d1' },
-  Packed: { color: '#fff', backgroundColor: '#7b1fa2' },
-  ReadyToShip: { color: '#fff', backgroundColor: '#ed6c02' },
-  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
-  ArrivedAtDestination: { color: '#fff', backgroundColor: '#2e7d32' },
-  ReadyForHandout: { color: '#fff', backgroundColor: '#f57c00' },
-  HandedOut: { color: '#fff', backgroundColor: '#388e3c' },
-  Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-};
 
 // Allowed next transitions per shipment status, based on TransitionRuleService
 const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean }[]> = {
@@ -220,10 +201,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        true: { color: '#fff', backgroundColor: '#2e7d32' },
-        false: { color: '#fff', backgroundColor: '#c62828' },
-      },
+      chipColors: BOOL_CHIPS,
       chipLabels: { true: 'Yes', false: 'No' },
     },
     {
@@ -232,10 +210,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        true: { color: '#fff', backgroundColor: '#2e7d32' },
-        false: { color: '#fff', backgroundColor: '#c62828' },
-      },
+      chipColors: BOOL_CHIPS,
       chipLabels: { true: 'Yes', false: 'No' },
     },
   ];
@@ -282,7 +257,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
   }, [data?.tiiuCode]);
 
   if (isLoading) {
-    return <Box sx={{ p: 3 }}><Typography>Loading...</Typography></Box>;
+    return <Loader />;
   }
 
   if (isError || !data) {
@@ -317,8 +292,12 @@ const ShipmentDetailPage = ({ id }: Props) => {
   return (
     <Box>
       <PageTitleWrapper>
+        <Button variant="text" size="small" startIcon={<ArrowBackIcon />}
+          onClick={() => navigate('/ops/shipments')} sx={{ mb: 1, color: 'text.secondary' }}>
+          All Shipments
+        </Button>
         <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
-          <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: '#00A6A6' }}>
+          <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: BRAND_TEAL }}>
             Shipment {data.refCode}
           </Typography>
           <Chip

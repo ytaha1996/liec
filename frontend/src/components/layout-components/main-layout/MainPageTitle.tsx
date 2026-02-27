@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Grid, Typography } from '@mui/material';
 import PageTitleWrapper from '../../PageTitleWrapper';
 import { useTheme } from '@mui/material/styles';
+import { BRAND_TEAL } from '../../../constants/statusColors';
 
 interface IMainPageTitleProps {
   title: string;
@@ -20,7 +21,7 @@ const MainPageTitle: React.FC<IMainPageTitleProps> = ({ title, subtitle, action 
     <PageTitleWrapper>
       <Grid container justifyContent="space-between" alignItems="center" spacing={1}>
         <Grid>
-          <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 700, color: '#00A6A6' }}>
+          <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 700, color: BRAND_TEAL }}>
             {title}
           </Typography>
           {subtitle && (

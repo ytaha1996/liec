@@ -14,20 +14,9 @@ import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
+import { PKG_STATUS_CHIPS, BOOL_CHIPS } from '../../constants/statusColors';
 
 const ENDPOINT = '/api/packages';
-
-const PKG_STATUS_COLORS: Record<string, { color: string; backgroundColor: string }> = {
-  Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Received: { color: '#fff', backgroundColor: '#0288d1' },
-  Packed: { color: '#fff', backgroundColor: '#7b1fa2' },
-  ReadyToShip: { color: '#fff', backgroundColor: '#ed6c02' },
-  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
-  ArrivedAtDestination: { color: '#fff', backgroundColor: '#2e7d32' },
-  ReadyForHandout: { color: '#fff', backgroundColor: '#f57c00' },
-  HandedOut: { color: '#fff', backgroundColor: '#388e3c' },
-  Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-};
 
 const buildAutoAssignFields = (
   customersItems: Record<string, string>,
@@ -166,7 +155,7 @@ const PackagesPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: PKG_STATUS_COLORS,
+      chipColors: PKG_STATUS_CHIPS,
       chipLabels: {},
     },
     {
@@ -175,10 +164,7 @@ const PackagesPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        true: { color: '#fff', backgroundColor: '#2e7d32' },
-        false: { color: '#333', backgroundColor: '#e0e0e0' },
-      },
+      chipColors: BOOL_CHIPS,
       chipLabels: { true: 'Yes', false: 'No' },
     },
     {
@@ -187,10 +173,7 @@ const PackagesPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        true: { color: '#fff', backgroundColor: '#2e7d32' },
-        false: { color: '#333', backgroundColor: '#e0e0e0' },
-      },
+      chipColors: BOOL_CHIPS,
       chipLabels: { true: 'Yes', false: 'No' },
     },
   ];

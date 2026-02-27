@@ -14,6 +14,7 @@ import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
+import { SHIPMENT_STATUS_CHIPS, SHIPMENT_STATUS_FILTER_OPTIONS } from '../../constants/statusColors';
 
 const ENDPOINT = '/api/shipments';
 
@@ -128,15 +129,7 @@ const ShipmentsPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-        ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
-        Departed: { color: '#fff', backgroundColor: '#1565c0' },
-        Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-        Closed: { color: '#fff', backgroundColor: '#616161' },
-        Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-      },
+      chipColors: SHIPMENT_STATUS_CHIPS,
       chipLabels: {},
     },
     {
@@ -178,17 +171,7 @@ const ShipmentsPage = () => {
               name: 'status',
               title: 'Status',
               type: TableFilterTypes.SELECT,
-              options: {
-                Draft: 'Draft',
-                Pending: 'Pending',
-                NearlyFull: 'Nearly Full',
-                Loaded: 'Loaded',
-                Shipped: 'Shipped',
-                Arrived: 'Arrived',
-                Completed: 'Completed',
-                Closed: 'Closed',
-                Cancelled: 'Cancelled',
-              },
+              options: SHIPMENT_STATUS_FILTER_OPTIONS,
             } as ITableFilterType,
           ]}
         />

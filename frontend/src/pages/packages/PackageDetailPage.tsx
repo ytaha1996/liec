@@ -1,4 +1,5 @@
 import { ChangeEvent, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -23,6 +24,7 @@ import { GateError, api, getJson, postJson, putJson, uploadMultipart } from '../
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EditIcon from '@mui/icons-material/Edit';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -37,22 +39,12 @@ import DetailPageLayout from '../../components/layout-components/main-layout/Det
 import { PhotoGallery } from '../../components/media/PhotoGallery';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
+import Loader from '../../components/Loader';
+import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 
 interface Props {
   id: string;
 }
-
-const PKG_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
-  Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-  Received: { color: '#fff', backgroundColor: '#0288d1' },
-  Packed: { color: '#fff', backgroundColor: '#7b1fa2' },
-  ReadyToShip: { color: '#fff', backgroundColor: '#ed6c02' },
-  Shipped: { color: '#fff', backgroundColor: '#1565c0' },
-  ArrivedAtDestination: { color: '#fff', backgroundColor: '#2e7d32' },
-  ReadyForHandout: { color: '#fff', backgroundColor: '#f57c00' },
-  HandedOut: { color: '#fff', backgroundColor: '#388e3c' },
-  Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-};
 
 // Allowed next transitions per package status, based on TransitionRuleService
 const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean }[]> = {
@@ -81,7 +73,7 @@ const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCan
 
 const PKG_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'shipmentId', title: 'Shipment ID', width: 'third' },
-  { type: InformationWidgetFieldTypes.Text, name: 'customerId', title: 'Customer ID', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'customer', title: 'Customer', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'provisionMethod', title: 'Provision Method', width: 'third' },
   { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At', width: 'third' },
 ];
@@ -117,6 +109,7 @@ const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: R
 });
 
 const PackageDetailPage = ({ id }: Props) => {
+  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const qc = useQueryClient();
   const [gate, setGate] = useState<GateError | null>(null);
@@ -146,6 +139,11 @@ const PackageDetailPage = ({ id }: Props) => {
   const goodsQuery = useQuery<any[]>({
     queryKey: ['/api/good-types'],
     queryFn: () => getJson<any[]>('/api/good-types'),
+  });
+
+  const customersQuery = useQuery<any[]>({
+    queryKey: ['/api/customers'],
+    queryFn: () => getJson<any[]>('/api/customers'),
   });
 
   const applyOverride = useMutation({
@@ -252,6 +250,9 @@ const PackageDetailPage = ({ id }: Props) => {
   const goodsMap: Record<number, string> = (goodsQuery.data ?? []).reduce(
     (acc: Record<number, string>, g: any) => { acc[g.id] = g.nameEn; return acc; }, {},
   );
+  const customersMap: Record<number, string> = (customersQuery.data ?? []).reduce(
+    (acc: Record<number, string>, c: any) => { acc[c.id] = c.name; return acc; }, {},
+  );
 
   const items: any[] = data?.items ?? [];
   const itemsTableData = items.reduce((acc: Record<string, any>, item: any) => {
@@ -299,7 +300,7 @@ const PackageDetailPage = ({ id }: Props) => {
   ];
 
   if (isLoading) {
-    return <Box sx={{ p: 3 }}><Typography>Loading...</Typography></Box>;
+    return <Loader />;
   }
 
   if (isError || !data) {
@@ -307,6 +308,7 @@ const PackageDetailPage = ({ id }: Props) => {
   }
 
   const pkg = data.package ?? data;
+  const pkgDisplay = { ...pkg, customer: customersMap[pkg.customerId] ?? `#${pkg.customerId}` };
 
   const pricingFields: IInformationWidgetField[] = [
     { type: InformationWidgetFieldTypes.Text, name: 'totalWeightKg', title: 'Total Weight (Kg)', width: 'third' },
@@ -338,6 +340,12 @@ const PackageDetailPage = ({ id }: Props) => {
 
   return (
     <>
+    <Box sx={{ px: 3, pt: 2 }}>
+      <Button variant="text" size="small" startIcon={<ArrowBackIcon />}
+        onClick={() => navigate('/ops/packages')} sx={{ color: 'text.secondary' }}>
+        All Packages
+      </Button>
+    </Box>
     <DetailPageLayout
       title={`Package #${id}`}
       chips={
@@ -353,7 +361,7 @@ const PackageDetailPage = ({ id }: Props) => {
         )
       }
     >
-        <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkg} />
+        <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
 
         <PageActionsSection
           title="Status Transitions"

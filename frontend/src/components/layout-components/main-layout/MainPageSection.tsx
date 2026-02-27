@@ -6,6 +6,7 @@ import {
   Typography,
 } from "@mui/material";
 import CustomDropdown, { ICustomDropdownOption } from "../../CustomDropdown";
+import { BRAND_TEAL } from '../../../constants/statusColors';
 
 interface IMainPageSectionProps {
   title: string;
@@ -36,7 +37,7 @@ const useStyles = makeStyles()((theme) => {
       justifyItems: "center",
       alignContent: "center",
       flexDirection: "row",
-      backgroundColor: '#00A6A6',
+      backgroundColor: BRAND_TEAL,
       color: '#fff',
       borderRadius: '10px 10px 0 0'
     },
