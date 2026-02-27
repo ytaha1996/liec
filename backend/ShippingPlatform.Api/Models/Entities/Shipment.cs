@@ -17,9 +17,9 @@ public class Shipment
     public DateTime? ActualArrivalAt { get; set; }
     public ShipmentStatus Status { get; set; } = ShipmentStatus.Draft;
     public decimal MaxWeightKg { get; set; } = 0;
-    public decimal MaxVolumeM3 { get; set; } = 0;
+    public decimal MaxCbm { get; set; } = 0;
     public decimal TotalWeightKg { get; set; }
-    public decimal TotalVolumeM3 { get; set; }
+    public decimal TotalCbm { get; set; }
     public string? ExternalTrackingCode { get; set; }
     public string? ExternalCarrierName { get; set; }
     public string? ExternalOrigin { get; set; }

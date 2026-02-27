@@ -61,10 +61,10 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
     disabled: false,
     value: 0,
   },
-  maxVolumeM3: {
+  maxCbm: {
     type: DynamicField.NUMBER,
-    name: 'maxVolumeM3',
-    title: 'Max Volume (M3, 0 = unlimited)',
+    name: 'maxCbm',
+    title: 'Max CBM (0 = unlimited)',
     required: false,
     disabled: false,
     value: 0,

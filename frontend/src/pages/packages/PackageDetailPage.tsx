@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, api, getJson, postJson, putJson, uploadMultipart } from '../../api/client';
+import { GateError, api, getJson, postJson, putJson, patchJson, uploadMultipart } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EditIcon from '@mui/icons-material/Edit';
@@ -76,6 +76,7 @@ const PKG_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'customer', title: 'Customer', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'provisionMethod', title: 'Provision Method', width: 'third' },
   { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'note', title: 'Note', width: 'full' },
 ];
 
 const PHOTO_STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
@@ -90,21 +91,21 @@ const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: R
     items: goodsItems,
     value: String(initial?.goodTypeId ?? ''),
   },
-  weightKg: {
+  quantity: {
     type: DynamicField.NUMBER,
-    name: 'weightKg',
-    title: 'Weight (Kg)',
+    name: 'quantity',
+    title: 'Quantity',
     required: true,
     disabled: false,
-    value: initial?.weightKg ?? '',
+    value: initial?.quantity ?? 1,
   },
-  volumeM3: {
-    type: DynamicField.NUMBER,
-    name: 'volumeM3',
-    title: 'Volume (M3)',
-    required: true,
+  note: {
+    type: DynamicField.TEXT,
+    name: 'note',
+    title: 'Note',
+    required: false,
     disabled: false,
-    value: initial?.volumeM3 ?? '',
+    value: initial?.note ?? '',
   },
 });
 
@@ -117,7 +118,8 @@ const PackageDetailPage = ({ id }: Props) => {
   const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
   const [photoStage, setPhotoStage] = useState('Receiving');
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
-  const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerM3' | 'TotalCharge'>('RatePerKg');
+  const [editPkgOpen, setEditPkgOpen] = useState(false);
+  const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerCbm' | 'TotalCharge'>('RatePerKg');
   const [overrideValue, setOverrideValue] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
 
@@ -179,12 +181,30 @@ const PackageDetailPage = ({ id }: Props) => {
     },
   });
 
+  const updatePackage = useMutation({
+    mutationFn: (values: Record<string, any>) =>
+      patchJson(`/api/packages/${id}`, {
+        weightKg: values.weightKg !== undefined ? Number(values.weightKg) : undefined,
+        cbm: values.cbm !== undefined ? Number(values.cbm) : undefined,
+        note: values.note,
+      }),
+    onSuccess: () => {
+      toast.success('Package updated');
+      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
+      setEditPkgOpen(false);
+    },
+    onError: (e: any) => {
+      const payload = e?.response?.data ?? {};
+      toast.error(payload.message ?? 'Update failed');
+    },
+  });
+
   const addItem = useMutation({
     mutationFn: (values: Record<string, any>) =>
       postJson(`/api/packages/${id}/items`, {
         goodTypeId: Number(values.goodTypeId),
-        weightKg: Number(values.weightKg),
-        volumeM3: Number(values.volumeM3),
+        quantity: Number(values.quantity),
+        note: values.note || null,
       }),
     onSuccess: () => {
       toast.success('Item added');
@@ -207,8 +227,8 @@ const PackageDetailPage = ({ id }: Props) => {
     mutationFn: ({ itemId, values }: { itemId: number; values: Record<string, any> }) =>
       putJson(`/api/packages/${id}/items/${itemId}`, {
         goodTypeId: Number(values.goodTypeId),
-        weightKg: Number(values.weightKg),
-        volumeM3: Number(values.volumeM3),
+        quantity: Number(values.quantity),
+        note: values.note || null,
       }),
     onSuccess: () => {
       toast.success('Item updated');
@@ -262,9 +282,8 @@ const PackageDetailPage = ({ id }: Props) => {
 
   const itemHeaders: EnhanceTableHeaderTypes[] = [
     { id: 'goodName', label: 'Good', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
-    { id: 'weightKg', label: 'Weight (Kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
-    { id: 'volumeM3', label: 'Volume (M3)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
-    { id: 'lineCharge', label: 'Line Charge', type: EnhancedTableColumnType.CURRENCY, numeric: true, disablePadding: false },
+    { id: 'quantity', label: 'Quantity', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
+    { id: 'note', label: 'Note', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     {
       id: 'itemActions',
       label: 'Actions',
@@ -289,7 +308,7 @@ const PackageDetailPage = ({ id }: Props) => {
             if (item) dispatch(OpenConfirmation({
               open: true,
               title: 'Delete Item',
-              message: 'Delete this item? Package pricing will be recalculated.',
+              message: 'Delete this item?',
               onSubmit: () => deleteItem.mutate(item.id),
             }));
           },
@@ -311,11 +330,11 @@ const PackageDetailPage = ({ id }: Props) => {
   const pkgDisplay = { ...pkg, customer: customersMap[pkg.customerId] ?? `#${pkg.customerId}` };
 
   const pricingFields: IInformationWidgetField[] = [
-    { type: InformationWidgetFieldTypes.Text, name: 'totalWeightKg', title: 'Total Weight (Kg)', width: 'third' },
-    { type: InformationWidgetFieldTypes.Text, name: 'totalVolumeM3', title: 'Total Volume (M3)', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'weightKg', title: 'Weight (Kg)', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'cbm', title: 'CBM', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'currency', title: 'Currency', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } },
-    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerM3', title: 'Rate Per M3', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerM3'); setOverrideDialogOpen(true); } } },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } },
     { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } },
   ];
 
@@ -400,6 +419,13 @@ const PackageDetailPage = ({ id }: Props) => {
           fields={pricingFields}
           data={pkg}
         >
+          {['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
+            <Box sx={{ mt: 1 }}>
+              <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => setEditPkgOpen(true)}>
+                Edit Weight / CBM / Note
+              </Button>
+            </Box>
+          )}
           <PricingOverrideHistory overrides={overridesQuery.data ?? []} />
         </InformationWidget>
 
@@ -478,7 +504,7 @@ const PackageDetailPage = ({ id }: Props) => {
               onChange={(e) => setOverrideType(e.target.value as any)}
             >
               <MenuItem value="RatePerKg">Rate Per Kg</MenuItem>
-              <MenuItem value="RatePerM3">Rate Per M3</MenuItem>
+              <MenuItem value="RatePerCbm">Rate Per CBM</MenuItem>
               <MenuItem value="TotalCharge">Total Charge</MenuItem>
             </Select>
           </Box>
@@ -510,6 +536,51 @@ const PackageDetailPage = ({ id }: Props) => {
             </Button>
           </Stack>
         </Box>
+      </GenericDialog>
+
+      <GenericDialog
+        open={editPkgOpen}
+        title="Edit Package"
+        onClose={() => setEditPkgOpen(false)}
+      >
+        <DynamicFormWidget
+          title=""
+          drawerMode
+          fields={{
+            weightKg: {
+              type: DynamicField.NUMBER,
+              name: 'weightKg',
+              title: 'Weight (Kg)',
+              required: false,
+              disabled: false,
+              value: pkg.weightKg ?? 0,
+            },
+            cbm: {
+              type: DynamicField.NUMBER,
+              name: 'cbm',
+              title: 'CBM',
+              required: false,
+              disabled: false,
+              value: pkg.cbm ?? 0,
+            },
+            note: {
+              type: DynamicField.TEXT,
+              name: 'note',
+              title: 'Note',
+              required: false,
+              disabled: false,
+              value: pkg.note ?? '',
+            },
+          }}
+          onSubmit={async (values) => {
+            try {
+              await updatePackage.mutateAsync(values);
+              return true;
+            } catch {
+              return false;
+            }
+          }}
+        />
       </GenericDialog>
     </>
   );

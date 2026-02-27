@@ -8,13 +8,12 @@ import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhancedTableColumnType,
   IEnhancedTextHeader,
-  EnhancedTableNumberHeader,
   EnhancedTableColoredChipHeader,
   EnhancedTableActionHeader,
   EnhanceTableHeaderTypes,
 } from '../../components/enhanced-table';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
-import { DynamicField, IDynamicTextField, IDynamicNumberField, IDynamicCheckboxField } from '../../components/dynamic-widget';
+import { DynamicField, IDynamicTextField, IDynamicCheckboxField } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
@@ -65,8 +64,6 @@ const GoodTypesPage: React.FC = () => {
   const header: EnhanceTableHeaderTypes[] = [
     { id: 'nameEn', label: 'Name (EN)', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
     { id: 'nameAr', label: 'Name (AR)', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
-    { id: 'ratePerKg', label: 'Rate/Kg', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
-    { id: 'ratePerM3', label: 'Rate/M³', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
     {
       id: 'canBreak',
       label: 'Can Break',
@@ -137,22 +134,6 @@ const GoodTypesPage: React.FC = () => {
       disabled: false,
       value: formValues.nameAr || '',
     } as IDynamicTextField,
-    ratePerKg: {
-      type: DynamicField.NUMBER,
-      name: 'ratePerKg',
-      title: 'Rate per Kg',
-      required: false,
-      disabled: false,
-      value: formValues.ratePerKg ?? '',
-    } as IDynamicNumberField,
-    ratePerM3: {
-      type: DynamicField.NUMBER,
-      name: 'ratePerM3',
-      title: 'Rate per M³',
-      required: false,
-      disabled: false,
-      value: formValues.ratePerM3 ?? '',
-    } as IDynamicNumberField,
     canBreak: {
       type: DynamicField.CHECKBOX,
       name: 'canBreak',

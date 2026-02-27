@@ -33,7 +33,7 @@ const PricingOverrideHistory: React.FC<PricingOverrideHistoryProps> = ({ overrid
         <TableBody>
           {overrides.map((o) => (
             <TableRow key={o.id}>
-              <TableCell>{o.overrideType}</TableCell>
+              <TableCell>{{ RatePerKg: 'Rate Per Kg', RatePerCbm: 'Rate Per CBM', TotalCharge: 'Total Charge' }[o.overrideType] ?? o.overrideType}</TableCell>
               <TableCell>{o.originalValue}</TableCell>
               <TableCell>{o.newValue}</TableCell>
               <TableCell>{o.reason}</TableCell>

@@ -64,8 +64,6 @@ namespace ShippingPlatform.Api.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     NameAr = table.Column<string>(type: "longtext", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    RatePerKg = table.Column<decimal>(type: "decimal(65,30)", nullable: true),
-                    RatePerM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: true),
                     CanBreak = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     CanBurn = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
@@ -89,7 +87,7 @@ namespace ShippingPlatform.Api.Migrations
                     EffectiveFrom = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     EffectiveTo = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     DefaultRatePerKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    DefaultRatePerM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    DefaultRatePerCbm = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     Status = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
@@ -148,7 +146,7 @@ namespace ShippingPlatform.Api.Migrations
                     Country = table.Column<string>(type: "longtext", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     MaxWeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    MaxVolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    MaxCbm = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
                 },
                 constraints: table =>
@@ -252,9 +250,9 @@ namespace ShippingPlatform.Api.Migrations
                     ActualArrivalAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
                     MaxWeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    MaxVolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    MaxCbm = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     TotalWeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    TotalVolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    TotalCbm = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     ExternalTrackingCode = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     ExternalCarrierName = table.Column<string>(type: "longtext", nullable: true)
@@ -324,17 +322,19 @@ namespace ShippingPlatform.Api.Migrations
                     CustomerId = table.Column<int>(type: "int", nullable: false),
                     ProvisionMethod = table.Column<int>(type: "int", nullable: false),
                     Status = table.Column<int>(type: "int", nullable: false),
-                    TotalWeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    TotalVolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    WeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    Cbm = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     Currency = table.Column<string>(type: "longtext", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     AppliedRatePerKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    AppliedRatePerM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
+                    AppliedRatePerCbm = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     ChargeAmount = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
                     HasDeparturePhotos = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     HasArrivalPhotos = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     HasPricingOverride = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     SupplyOrderId = table.Column<int>(type: "int", nullable: true),
+                    Note = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
                     CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
@@ -395,9 +395,9 @@ namespace ShippingPlatform.Api.Migrations
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     PackageId = table.Column<int>(type: "int", nullable: false),
                     GoodTypeId = table.Column<int>(type: "int", nullable: false),
-                    WeightKg = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    VolumeM3 = table.Column<decimal>(type: "decimal(65,30)", nullable: false),
-                    LineCharge = table.Column<decimal>(type: "decimal(65,30)", nullable: false)
+                    Quantity = table.Column<int>(type: "int", nullable: false),
+                    Note = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4")
                 },
                 constraints: table =>
                 {

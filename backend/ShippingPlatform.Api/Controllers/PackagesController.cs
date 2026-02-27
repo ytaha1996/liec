@@ -30,6 +30,14 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpGet("api/packages/{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } p ? Ok(p) : NotFound();
 
+    [HttpPatch("api/packages/{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdatePackageRequest req)
+    {
+        var (dto, err) = await business.UpdatePackageAsync(id, req);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
     [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
     [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
     [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => Change(id, PackageStatus.ReadyToShip);

@@ -8,6 +8,6 @@ public class PricingConfig
     public DateTime EffectiveFrom { get; set; }
     public DateTime? EffectiveTo { get; set; }
     public decimal DefaultRatePerKg { get; set; }
-    public decimal DefaultRatePerM3 { get; set; }
+    public decimal DefaultRatePerCbm { get; set; }
     public PricingConfigStatus Status { get; set; } = PricingConfigStatus.Draft;
 }

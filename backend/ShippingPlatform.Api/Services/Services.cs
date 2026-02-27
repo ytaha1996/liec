@@ -73,13 +73,13 @@ public class CapacityService(AppDbContext db, IConfiguration cfg) : ICapacitySer
         var shipment = await db.Shipments.Include(x => x.Packages).FirstOrDefaultAsync(x => x.Id == shipmentId);
         if (shipment is null) return;
         var active = shipment.Packages.Where(p => p.Status != PackageStatus.Cancelled).ToList();
-        shipment.TotalWeightKg = active.Sum(p => p.TotalWeightKg);
-        shipment.TotalVolumeM3 = active.Sum(p => p.TotalVolumeM3);
+        shipment.TotalWeightKg = active.Sum(p => p.WeightKg);
+        shipment.TotalCbm = active.Sum(p => p.Cbm);
 
         var threshold = cfg.GetValue<decimal>("CapacityThresholdPct", 80) / 100m;
         bool overThreshold =
             (shipment.MaxWeightKg > 0 && shipment.TotalWeightKg / shipment.MaxWeightKg >= threshold) ||
-            (shipment.MaxVolumeM3 > 0 && shipment.TotalVolumeM3 / shipment.MaxVolumeM3 >= threshold);
+            (shipment.MaxCbm > 0 && shipment.TotalCbm / shipment.MaxCbm >= threshold);
 
         // Capacity percentage can be shown in UI; no automatic status switching in proposal lifecycle.
 
@@ -132,29 +132,17 @@ public class PricingService(AppDbContext db) : IPricingService
     public async Task RecalculateAsync(Package package)
     {
         if (package.Status >= PackageStatus.Shipped || package.HasPricingOverride) return;
-        await db.Entry(package).Collection(x => x.Items).LoadAsync();
-        var goodTypeIds = package.Items.Select(x => x.GoodTypeId).Distinct().ToList();
-        var goodTypes = await db.GoodTypes.Where(x => goodTypeIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
-        var active = await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active) ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerM3 = 1, Currency = "EUR" };
 
-        package.TotalWeightKg = package.Items.Sum(x => x.WeightKg);
-        package.TotalVolumeM3 = package.Items.Sum(x => x.VolumeM3);
+        var active = await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active)
+            ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerCbm = 1, Currency = "EUR" };
 
-        decimal rateKg = active.DefaultRatePerKg, rateM3 = active.DefaultRatePerM3;
-        foreach (var i in package.Items)
-        {
-            goodTypes.TryGetValue(i.GoodTypeId, out var gt);
-            var itemRateKg = gt?.RatePerKg ?? active.DefaultRatePerKg;
-            var itemRateM3 = gt?.RatePerM3 ?? active.DefaultRatePerM3;
-            i.LineCharge = Math.Max(i.WeightKg * itemRateKg, i.VolumeM3 * itemRateM3);
-            rateKg = itemRateKg;
-            rateM3 = itemRateM3;
-        }
+        decimal rateKg = active.DefaultRatePerKg;
+        decimal rateCbm = active.DefaultRatePerCbm;
 
         package.AppliedRatePerKg = rateKg;
-        package.AppliedRatePerM3 = rateM3;
+        package.AppliedRatePerCbm = rateCbm;
         package.Currency = active.Currency;
-        package.ChargeAmount = Math.Max(package.TotalWeightKg * rateKg, package.TotalVolumeM3 * rateM3);
+        package.ChargeAmount = Math.Max(package.WeightKg * rateKg, package.Cbm * rateCbm);
     }
 }
 

@@ -12,7 +12,7 @@ using ShippingPlatform.Api.Data;
 namespace ShippingPlatform.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260227073122_Initial")]
+    [Migration("20260227084834_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -108,12 +108,6 @@ namespace ShippingPlatform.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<decimal?>("RatePerKg")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal?>("RatePerM3")
-                        .HasColumnType("decimal(65,30)");
-
                     b.HasKey("Id");
 
                     b.ToTable("GoodTypes");
@@ -171,10 +165,13 @@ namespace ShippingPlatform.Api.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal>("AppliedRatePerCbm")
+                        .HasColumnType("decimal(65,30)");
+
                     b.Property<decimal>("AppliedRatePerKg")
                         .HasColumnType("decimal(65,30)");
 
-                    b.Property<decimal>("AppliedRatePerM3")
+                    b.Property<decimal>("Cbm")
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("ChargeAmount")
@@ -199,6 +196,10 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<bool>("HasPricingOverride")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<int>("ProvisionMethod")
                         .HasColumnType("int");
 
@@ -211,10 +212,7 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<int?>("SupplyOrderId")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("TotalVolumeM3")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal>("TotalWeightKg")
+                    b.Property<decimal>("WeightKg")
                         .HasColumnType("decimal(65,30)");
 
                     b.HasKey("Id");
@@ -237,17 +235,15 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<int>("GoodTypeId")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("LineCharge")
-                        .HasColumnType("decimal(65,30)");
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<int>("PackageId")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("VolumeM3")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<decimal>("WeightKg")
-                        .HasColumnType("decimal(65,30)");
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -308,10 +304,10 @@ namespace ShippingPlatform.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<decimal>("DefaultRatePerKg")
+                    b.Property<decimal>("DefaultRatePerCbm")
                         .HasColumnType("decimal(65,30)");
 
-                    b.Property<decimal>("DefaultRatePerM3")
+                    b.Property<decimal>("DefaultRatePerKg")
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<DateTime>("EffectiveFrom")
@@ -373,7 +369,7 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<string>("ExternalTrackingCode")
                         .HasColumnType("longtext");
 
-                    b.Property<decimal>("MaxVolumeM3")
+                    b.Property<decimal>("MaxCbm")
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("MaxWeightKg")
@@ -399,7 +395,7 @@ namespace ShippingPlatform.Api.Migrations
                         .HasMaxLength(4)
                         .HasColumnType("varchar(4)");
 
-                    b.Property<decimal>("TotalVolumeM3")
+                    b.Property<decimal>("TotalCbm")
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("TotalWeightKg")
@@ -536,7 +532,7 @@ namespace ShippingPlatform.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<decimal>("MaxVolumeM3")
+                    b.Property<decimal>("MaxCbm")
                         .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("MaxWeightKg")

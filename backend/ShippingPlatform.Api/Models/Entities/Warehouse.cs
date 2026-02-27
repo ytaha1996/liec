@@ -10,6 +10,6 @@ public class Warehouse
     public string City { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
     public decimal MaxWeightKg { get; set; }
-    public decimal MaxVolumeM3 { get; set; }
+    public decimal MaxCbm { get; set; }
     public bool IsActive { get; set; } = true;
 }

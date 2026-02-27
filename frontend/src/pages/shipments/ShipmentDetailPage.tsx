@@ -365,7 +365,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
           )}
         </PageActionsSection>
 
-        {(data.maxWeightKg > 0 || data.maxVolumeM3 > 0) && (
+        {(data.maxWeightKg > 0 || data.maxCbm > 0) && (
           <MainPageSection title="Container Capacity">
             {data.maxWeightKg > 0 && (() => {
               const pct = Math.min((data.totalWeightKg / data.maxWeightKg) * 100, 100);
@@ -382,12 +382,12 @@ const ShipmentDetailPage = ({ id }: Props) => {
                 </Box>
               );
             })()}
-            {data.maxVolumeM3 > 0 && (() => {
-              const pct = Math.min((data.totalVolumeM3 / data.maxVolumeM3) * 100, 100);
+            {data.maxCbm > 0 && (() => {
+              const pct = Math.min((data.totalCbm / data.maxCbm) * 100, 100);
               return (
                 <Box>
                   <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    Volume: {data.totalVolumeM3} / {data.maxVolumeM3} m³ ({pct.toFixed(1)}%)
+                    CBM: {data.totalCbm} / {data.maxCbm} ({pct.toFixed(1)}%)
                   </Typography>
                   <LinearProgress
                     variant="determinate"

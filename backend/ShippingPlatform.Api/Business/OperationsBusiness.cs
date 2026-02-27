@@ -42,7 +42,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
             PlannedDepartureDate = input.PlannedDepartureDate,
             PlannedArrivalDate = input.PlannedArrivalDate,
             MaxWeightKg = input.MaxWeightKg,
-            MaxVolumeM3 = input.MaxVolumeM3,
+            MaxCbm = input.MaxCbm,
             Status = ShipmentStatus.Draft,
             RefCode = await refs.GenerateAsync(input.OriginWarehouseId),
             TiiuCode = string.IsNullOrWhiteSpace(input.TiiuCode) ? null : input.TiiuCode!.Trim().ToUpperInvariant()
@@ -136,6 +136,7 @@ public interface IPackageBusiness
 {
     Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input);
     Task<(PackageDto? dto, object? error)> AutoAssignAsync(AutoAssignPackageRequest input);
+    Task<(PackageDto? dto, object? error)> UpdatePackageAsync(int id, UpdatePackageRequest req);
     Task<List<PackageDto>> ListAsync();
     Task<object?> GetAsync(int id);
     Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false);
@@ -226,30 +227,50 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         return (p.ToDto(), null, null);
     }
 
+    public async Task<(PackageDto? dto, object? error)> UpdatePackageAsync(int id, UpdatePackageRequest req)
+    {
+        var p = await db.Packages.FindAsync(id);
+        if (p is null) return (null, null);
+        if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
+
+        bool weightChanged = false;
+        if (req.WeightKg.HasValue) { if (req.WeightKg.Value < 0) return (null, new { code = "VALIDATION_ERROR", message = "Weight must be >= 0." }); p.WeightKg = req.WeightKg.Value; weightChanged = true; }
+        if (req.Cbm.HasValue) { if (req.Cbm.Value < 0) return (null, new { code = "VALIDATION_ERROR", message = "CBM must be >= 0." }); p.Cbm = req.Cbm.Value; weightChanged = true; }
+        if (req.Note is not null) p.Note = req.Note;
+
+        if (weightChanged)
+        {
+            var shipment = await db.Shipments.Include(s => s.Packages).FirstOrDefaultAsync(s => s.Id == p.ShipmentId);
+            if (shipment is not null)
+            {
+                var otherWeight = shipment.Packages.Where(x => x.Id != p.Id && x.Status != PackageStatus.Cancelled).Sum(x => x.WeightKg);
+                var otherCbm = shipment.Packages.Where(x => x.Id != p.Id && x.Status != PackageStatus.Cancelled).Sum(x => x.Cbm);
+                if (shipment.MaxWeightKg > 0 && otherWeight + p.WeightKg > shipment.MaxWeightKg)
+                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Update exceeds container weight capacity." });
+                if (shipment.MaxCbm > 0 && otherCbm + p.Cbm > shipment.MaxCbm)
+                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Update exceeds container CBM capacity." });
+            }
+            await pricing.RecalculateAsync(p);
+            await db.SaveChangesAsync();
+            await capacity.RecalculateAsync(p.ShipmentId);
+        }
+        else
+        {
+            await db.SaveChangesAsync();
+        }
+        return (p.ToDto(), null);
+    }
+
     public async Task<(PackageItemDto? dto, object? error)> AddItemAsync(int id, UpsertPackageItemRequest item)
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
         if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
 
-        var shipment = await db.Shipments.FindAsync(p.ShipmentId);
-        if (shipment is not null)
-        {
-            var newWeight = p.TotalWeightKg + item.WeightKg;
-            var newVolume = p.TotalVolumeM3 + item.VolumeM3;
-            if (shipment.MaxWeightKg > 0 && newWeight > shipment.MaxWeightKg)
-                return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container weight capacity." });
-            if (shipment.MaxVolumeM3 > 0 && newVolume > shipment.MaxVolumeM3)
-                return (null, new { code = "CAPACITY_EXCEEDED", message = "Adding this item exceeds container volume capacity." });
-        }
-
-        var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, WeightKg = item.WeightKg, VolumeM3 = item.VolumeM3 };
+        var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note };
         db.PackageItems.Add(entity);
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.GoodType).LoadAsync();
-        await pricing.RecalculateAsync(p);
-        await db.SaveChangesAsync();
-        await capacity.RecalculateAsync(p.ShipmentId);
         return (entity.ToDto(), null);
     }
 
@@ -261,23 +282,9 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId);
         if (i is null) return (null, null);
 
-        var shipment = await db.Shipments.FindAsync(p.ShipmentId);
-        if (shipment is not null)
-        {
-            var newWeight = p.TotalWeightKg - i.WeightKg + input.WeightKg;
-            var newVolume = p.TotalVolumeM3 - i.VolumeM3 + input.VolumeM3;
-            if (shipment.MaxWeightKg > 0 && newWeight > shipment.MaxWeightKg)
-                return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container weight capacity." });
-            if (shipment.MaxVolumeM3 > 0 && newVolume > shipment.MaxVolumeM3)
-                return (null, new { code = "CAPACITY_EXCEEDED", message = "Updating this item exceeds container volume capacity." });
-        }
-
-        i.GoodTypeId = input.GoodTypeId; i.WeightKg = input.WeightKg; i.VolumeM3 = input.VolumeM3;
+        i.GoodTypeId = input.GoodTypeId; i.Quantity = input.Quantity; i.Note = input.Note;
         await db.SaveChangesAsync();
         await db.Entry(i).Reference(x => x.GoodType).LoadAsync();
-        await pricing.RecalculateAsync(p);
-        await db.SaveChangesAsync();
-        await capacity.RecalculateAsync(p.ShipmentId);
         return (i.ToDto(), null);
     }
 
@@ -288,9 +295,6 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId); if (i is null) return null;
         db.PackageItems.Remove(i);
         await db.SaveChangesAsync();
-        await pricing.RecalculateAsync(p);
-        await db.SaveChangesAsync();
-        await capacity.RecalculateAsync(p.ShipmentId);
         return new { ok = true };
     }
 
@@ -326,7 +330,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var originalValue = req.OverrideType switch
         {
             PricingOverrideType.RatePerKg => p.AppliedRatePerKg,
-            PricingOverrideType.RatePerM3 => p.AppliedRatePerM3,
+            PricingOverrideType.RatePerCbm => p.AppliedRatePerCbm,
             _ => p.ChargeAmount
         };
 
@@ -334,11 +338,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         {
             case PricingOverrideType.RatePerKg:
                 p.AppliedRatePerKg = req.NewValue;
-                p.ChargeAmount = Math.Max(p.TotalWeightKg * req.NewValue, p.TotalVolumeM3 * p.AppliedRatePerM3);
+                p.ChargeAmount = Math.Max(p.WeightKg * req.NewValue, p.Cbm * p.AppliedRatePerCbm);
                 break;
-            case PricingOverrideType.RatePerM3:
-                p.AppliedRatePerM3 = req.NewValue;
-                p.ChargeAmount = Math.Max(p.TotalWeightKg * p.AppliedRatePerKg, p.TotalVolumeM3 * req.NewValue);
+            case PricingOverrideType.RatePerCbm:
+                p.AppliedRatePerCbm = req.NewValue;
+                p.ChargeAmount = Math.Max(p.WeightKg * p.AppliedRatePerKg, p.Cbm * req.NewValue);
                 break;
             case PricingOverrideType.TotalCharge:
                 p.ChargeAmount = req.NewValue;

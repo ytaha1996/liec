@@ -55,13 +55,13 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<WarehouseDto?> GetWarehouseAsync(int id) => (await db.Warehouses.FindAsync(id))?.ToDto();
     public async Task<WarehouseDto> CreateWarehouseAsync(UpsertWarehouseRequest req)
     {
-        var e = new Warehouse { Code = req.Code, Name = req.Name, City = req.City, Country = req.Country, MaxWeightKg = req.MaxWeightKg, MaxVolumeM3 = req.MaxVolumeM3, IsActive = req.IsActive };
+        var e = new Warehouse { Code = req.Code, Name = req.Name, City = req.City, Country = req.Country, MaxWeightKg = req.MaxWeightKg, MaxCbm = req.MaxCbm, IsActive = req.IsActive };
         db.Warehouses.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<WarehouseDto?> UpdateWarehouseAsync(int id, UpsertWarehouseRequest req)
     {
         var e = await db.Warehouses.FindAsync(id); if (e is null) return null;
-        e.Code = req.Code; e.Name = req.Name; e.City = req.City; e.Country = req.Country; e.MaxWeightKg = req.MaxWeightKg; e.MaxVolumeM3 = req.MaxVolumeM3; e.IsActive = req.IsActive;
+        e.Code = req.Code; e.Name = req.Name; e.City = req.City; e.Country = req.Country; e.MaxWeightKg = req.MaxWeightKg; e.MaxCbm = req.MaxCbm; e.IsActive = req.IsActive;
         await db.SaveChangesAsync(); return e.ToDto();
     }
 
@@ -69,13 +69,13 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<GoodTypeDto?> GetGoodTypeAsync(int id) => (await db.GoodTypes.FindAsync(id))?.ToDto();
     public async Task<GoodTypeDto> CreateGoodTypeAsync(UpsertGoodTypeRequest req)
     {
-        var e = new GoodType { NameEn = req.NameEn, NameAr = req.NameAr, RatePerKg = req.RatePerKg, RatePerM3 = req.RatePerM3, IsActive = req.IsActive };
+        var e = new GoodType { NameEn = req.NameEn, NameAr = req.NameAr, CanBreak = req.CanBreak, CanBurn = req.CanBurn, IsActive = req.IsActive };
         db.GoodTypes.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<GoodTypeDto?> UpdateGoodTypeAsync(int id, UpsertGoodTypeRequest req)
     {
         var e = await db.GoodTypes.FindAsync(id); if (e is null) return null;
-        e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.RatePerKg = req.RatePerKg; e.RatePerM3 = req.RatePerM3; e.IsActive = req.IsActive;
+        e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.CanBreak = req.CanBreak; e.CanBurn = req.CanBurn; e.IsActive = req.IsActive;
         await db.SaveChangesAsync(); return e.ToDto();
     }
 
@@ -97,13 +97,13 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<PricingConfigDto?> GetPricingConfigAsync(int id) => (await db.PricingConfigs.FindAsync(id))?.ToDto();
     public async Task<PricingConfigDto> CreatePricingConfigAsync(UpsertPricingConfigRequest req)
     {
-        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerM3 = req.DefaultRatePerM3, Status = req.Status };
+        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, Status = req.Status };
         db.PricingConfigs.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> UpdatePricingConfigAsync(int id, UpsertPricingConfigRequest req)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerM3 = req.DefaultRatePerM3; e.Status = req.Status;
+        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.Status = req.Status;
         await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> ActivatePricingConfigAsync(int id)
