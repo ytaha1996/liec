@@ -27,7 +27,7 @@ public record ShipmentDto(int Id, string RefCode, string? TiiuCode, int OriginWa
 public record CreateShipmentRequest(int OriginWarehouseId, int DestinationWarehouseId, DateTime PlannedDepartureDate, DateTime PlannedArrivalDate, decimal MaxWeightKg = 0, decimal MaxCbm = 0, string? TiiuCode = null);
 
 public record PackageDto(int Id, int ShipmentId, int CustomerId, ProvisionMethod ProvisionMethod, PackageStatus Status, decimal WeightKg, decimal Cbm, string Currency, decimal AppliedRatePerKg, decimal AppliedRatePerCbm, decimal ChargeAmount, bool HasDeparturePhotos, bool HasArrivalPhotos, bool HasPricingOverride, int? SupplyOrderId, string? Note, DateTime CreatedAt);
-public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId);
+public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, decimal? WeightKg = null, decimal? Cbm = null, string? Note = null, List<UpsertPackageItemRequest>? Items = null);
 public record AutoAssignPackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, int OriginWarehouseId, int DestinationWarehouseId);
 public record UpdatePackageRequest(decimal? WeightKg, decimal? Cbm, string? Note);
 public record PackageItemDto(int Id, int PackageId, int GoodTypeId, string GoodTypeName, int Quantity, string? Note);

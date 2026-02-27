@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Dtos;
@@ -17,6 +18,7 @@ public interface IShipmentBusiness
     Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id);
     Task<(ShipmentDto? dto, object? error)> SyncTrackingAsync(int id, string code, CancellationToken ct = default);
     Task<List<object>> MediaAsync(int id);
+    Task<object> PreviewReadyToDepartAsync(int id);
 }
 
 public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity) : IShipmentBusiness
@@ -35,6 +37,12 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (input.OriginWarehouseId == input.DestinationWarehouseId) return (null, "Origin and destination warehouse must be different.");
         var originExists = await db.Warehouses.AnyAsync(x => x.Id == input.OriginWarehouseId);
         if (!originExists) return (null, "Origin warehouse not found.");
+        if (!string.IsNullOrWhiteSpace(input.TiiuCode))
+        {
+            var normalized = input.TiiuCode.Trim().ToUpperInvariant();
+            if (!Regex.IsMatch(normalized, @"^[A-Z]{3,4}\d{4,7}$"))
+                return (null, "TIIU code must be 3-4 letters followed by 4-7 digits (e.g., MSCU1234567).");
+        }
         var shipment = new Shipment
         {
             OriginWarehouseId = input.OriginWarehouseId,
@@ -45,7 +53,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
             MaxCbm = input.MaxCbm,
             Status = ShipmentStatus.Draft,
             RefCode = await refs.GenerateAsync(input.OriginWarehouseId),
-            TiiuCode = string.IsNullOrWhiteSpace(input.TiiuCode) ? null : input.TiiuCode!.Trim().ToUpperInvariant()
+            TiiuCode = string.IsNullOrWhiteSpace(input.TiiuCode) ? null : input.TiiuCode!.Trim().ToUpperInvariant(),
         };
         db.Shipments.Add(shipment);
         await db.SaveChangesAsync();
@@ -63,8 +71,8 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (req.TiiuCode is not null)
         {
             var normalized = req.TiiuCode.Trim().ToUpperInvariant();
-            if (normalized.Length > 4)
-                return (null, new { code = "VALIDATION_ERROR", message = "TIIU code must be at most 4 characters." });
+            if (normalized.Length > 0 && !Regex.IsMatch(normalized, @"^[A-Z]{3,4}\d{4,7}$"))
+                return (null, new { code = "VALIDATION_ERROR", message = "TIIU code must be 3-4 letters followed by 4-7 digits (e.g., MSCU1234567)." });
             s.TiiuCode = normalized.Length == 0 ? null : normalized;
         }
 
@@ -85,6 +93,15 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (s is null) return (null, null);
         if (status == ShipmentStatus.Scheduled && string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling shipment." });
         if (!transitions.CanMove(s.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to {status}." });
+
+        if (status == ShipmentStatus.ReadyToDepart)
+        {
+            var hasReadyPkg = await db.Packages.AnyAsync(p =>
+                p.ShipmentId == id && p.Status >= PackageStatus.ReadyToShip && p.Status != PackageStatus.Cancelled);
+            if (!hasReadyPkg)
+                return (null, new { code = "NO_READY_PACKAGES", message = "At least one package must be ReadyToShip before marking shipment as Ready To Depart." });
+        }
+
         s.Status = status;
 
         // Reassign unloaded packages (Draft/Received/Packed) to another Draft shipment on the same route
@@ -184,11 +201,37 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
             .Select(x => (object)new { packageId = x.Id, customerId = x.CustomerId, media = x.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.CapturedAt }) })
             .ToListAsync();
     }
+
+    public async Task<object> PreviewReadyToDepartAsync(int id)
+    {
+        var packages = await db.Packages
+            .Where(p => p.ShipmentId == id && p.Status != PackageStatus.Cancelled)
+            .Include(p => p.Customer)
+            .ToListAsync();
+
+        var departing = packages
+            .Where(p => p.Status >= PackageStatus.ReadyToShip)
+            .Select(p => new { p.Id, customerName = p.Customer.Name, status = p.Status.ToString() })
+            .ToList();
+
+        var reassigning = packages
+            .Where(p => p.Status <= PackageStatus.Packed)
+            .Select(p => new { p.Id, customerName = p.Customer.Name, status = p.Status.ToString() })
+            .ToList();
+
+        return new
+        {
+            departingPackages = departing,
+            reassigningPackages = reassigning,
+            canProceed = departing.Count > 0,
+            message = departing.Count == 0 ? "No packages are ready to ship." : (string?)null,
+        };
+    }
 }
 
 public interface IPackageBusiness
 {
-    Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input);
+    Task<(PackageDto? dto, object? error)> CreateAsync(int shipmentId, CreatePackageRequest input);
     Task<(PackageDto? dto, object? error)> AutoAssignAsync(AutoAssignPackageRequest input);
     Task<(PackageDto? dto, object? error)> UpdatePackageAsync(int id, UpdatePackageRequest req);
     Task<List<PackageDto>> ListAsync();
@@ -205,10 +248,52 @@ public interface IPackageBusiness
 
 public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark, IRefCodeService refs) : IPackageBusiness
 {
-    public async Task<PackageDto> CreateAsync(int shipmentId, CreatePackageRequest input)
+    public async Task<(PackageDto? dto, object? error)> CreateAsync(int shipmentId, CreatePackageRequest input)
     {
-        var package = new Package { ShipmentId = shipmentId, CustomerId = input.CustomerId, ProvisionMethod = input.ProvisionMethod, SupplyOrderId = input.SupplyOrderId, Status = PackageStatus.Draft };
-        db.Packages.Add(package); await db.SaveChangesAsync(); return package.ToDto();
+        var package = new Package
+        {
+            ShipmentId = shipmentId,
+            CustomerId = input.CustomerId,
+            ProvisionMethod = input.ProvisionMethod,
+            SupplyOrderId = input.SupplyOrderId,
+            WeightKg = input.WeightKg ?? 0,
+            Cbm = input.Cbm ?? 0,
+            Note = input.Note,
+            Status = PackageStatus.Draft,
+        };
+
+        if (package.WeightKg > 0 || package.Cbm > 0)
+        {
+            var shipment = await db.Shipments.Include(s => s.Packages).FirstOrDefaultAsync(s => s.Id == shipmentId);
+            if (shipment is not null)
+            {
+                var currentWeight = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.WeightKg);
+                var currentCbm = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.Cbm);
+                if (shipment.MaxWeightKg > 0 && currentWeight + package.WeightKg > shipment.MaxWeightKg)
+                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Package weight exceeds shipment capacity." });
+                if (shipment.MaxCbm > 0 && currentCbm + package.Cbm > shipment.MaxCbm)
+                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Package CBM exceeds shipment capacity." });
+            }
+        }
+
+        db.Packages.Add(package);
+        await db.SaveChangesAsync();
+
+        if (input.Items is { Count: > 0 })
+        {
+            foreach (var item in input.Items)
+                db.PackageItems.Add(new PackageItem { PackageId = package.Id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
+            await db.SaveChangesAsync();
+        }
+
+        if (package.WeightKg > 0 || package.Cbm > 0)
+        {
+            await pricing.RecalculateAsync(package);
+            await db.SaveChangesAsync();
+            await capacity.RecalculateAsync(shipmentId);
+        }
+
+        return (package.ToDto(), null);
     }
 
     public async Task<(PackageDto? dto, object? error)> AutoAssignAsync(AutoAssignPackageRequest input)
@@ -246,8 +331,8 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         }
 
         var pkg = new CreatePackageRequest(input.CustomerId, input.ProvisionMethod, input.SupplyOrderId);
-        var dto = await CreateAsync(shipment.Id, pkg);
-        return (dto, null);
+        var (dto, err) = await CreateAsync(shipment.Id, pkg);
+        return err is not null ? (null, err) : (dto, null);
     }
 
     public async Task<List<PackageDto>> ListAsync() => (await db.Packages.ToListAsync()).Select(x => x.ToDto()).ToList();

@@ -18,40 +18,36 @@ import {
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, getJson, patchJson, postJson } from '../../api/client';
+import { GateError, getJson, postJson } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
-import {
-  EnhanceTableHeaderTypes,
-  EnhancedTableColumnType,
-} from '../../components/enhanced-table';
+import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
 import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
-import { PhotoGallery } from '../../components/media/PhotoGallery';
-import GenericDialog from '../../components/GenericDialog/GenericDialog';
-import GenericDrawer from '../../components/drawer/GenericDrawer';
-import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
-import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
+import PhotoGalleryModal from '../../components/media/PhotoGalleryModal';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import Loader from '../../components/Loader';
 import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
+import AddPackageDialog from './components/AddPackageDialog';
+import EditShipmentDrawer from './components/EditShipmentDrawer';
+import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
 
 interface Props {
   id: string;
 }
 
-// Allowed next transitions per shipment status, based on TransitionRuleService
-const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean; confirmMessage: string }[]> = {
+const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean; confirmMessage: string; useRtdPreview?: boolean }[]> = {
   Draft: [
     { label: 'Schedule', action: 'schedule', confirmMessage: 'Schedule this shipment? It will be locked for departure preparation.' },
     { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? This cannot be undone.' },
   ],
   Scheduled: [
-    { label: 'Ready To Depart', action: 'ready-to-depart', confirmMessage: 'Mark this shipment as Ready To Depart?' },
+    { label: 'Ready To Depart', action: 'ready-to-depart', confirmMessage: '', useRtdPreview: true },
     { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? This cannot be undone.' },
   ],
   ReadyToDepart: [{ label: 'Depart', action: 'depart', confirmMessage: 'Mark this shipment as Departed? Ensure all packages have departure photos.' }],
@@ -85,15 +81,12 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const [trackingCode, setTrackingCode] = useState('');
   const [addPkgOpen, setAddPkgOpen] = useState(false);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [photosPkgId, setPhotosPkgId] = useState<number | null>(null);
+  const [rtdPreview, setRtdPreview] = useState<any>(null);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/shipments', id],
     queryFn: () => getJson<any>(`/api/shipments/${id}`),
-  });
-
-  const mediaQuery = useQuery<any[]>({
-    queryKey: ['/api/shipments', id, 'media'],
-    queryFn: () => getJson<any[]>(`/api/shipments/${id}/media`),
   });
 
   const packagesQuery = useQuery<any[]>({
@@ -116,54 +109,10 @@ const ShipmentDetailPage = ({ id }: Props) => {
     return acc;
   }, {});
 
-  const customersItems = (customersQuery.data ?? []).reduce((acc: Record<string, string>, c: any) => {
-    acc[String(c.id)] = `${c.name} (#${c.id})`;
-    return acc;
-  }, {});
-
   const warehousesMap = (warehousesQuery.data ?? []).reduce((acc: Record<number, string>, w: any) => {
     acc[w.id] = `${w.name} (${w.code})`;
     return acc;
   }, {});
-
-  const addPackageFields: Record<string, DynamicFieldTypes> = {
-    customerId: {
-      type: DynamicField.SELECT,
-      name: 'customerId',
-      title: 'Customer',
-      required: true,
-      disabled: false,
-      items: customersItems,
-      value: '',
-    },
-    provisionMethod: {
-      type: DynamicField.SELECT,
-      name: 'provisionMethod',
-      title: 'Provision Method',
-      required: true,
-      disabled: false,
-      items: { CustomerProvided: 'Customer Provided', ProcuredForCustomer: 'Procured For Customer' },
-      value: 'CustomerProvided',
-    },
-  };
-
-  const createPackage = useMutation({
-    mutationFn: (payload: Record<string, any>) =>
-      postJson<any>(`/api/shipments/${id}/packages`, {
-        customerId: Number(payload.customerId),
-        provisionMethod: payload.provisionMethod,
-        supplyOrderId: null,
-      }),
-    onSuccess: (result: any) => {
-      toast.success('Package created');
-      qc.invalidateQueries({ queryKey: ['/api/packages'] });
-      setAddPkgOpen(false);
-      navigate(`/ops/packages/${result.id}`);
-    },
-    onError: (e: any) => {
-      toast.error(e?.response?.data?.message ?? 'Failed to create package');
-    },
-  });
 
   const shipmentPackages = (packagesQuery.data ?? []).filter(
     (p) => String(p.shipmentId) === String(id),
@@ -216,6 +165,19 @@ const ShipmentDetailPage = ({ id }: Props) => {
       chipColors: BOOL_CHIPS,
       chipLabels: { true: 'Yes', false: 'No' },
     },
+    {
+      id: 'actions',
+      label: '',
+      type: EnhancedTableColumnType.Action,
+      numeric: false,
+      disablePadding: false,
+      actions: [{
+        icon: <PhotoLibraryIcon fontSize="small" />,
+        label: 'View Photos',
+        onClick: (rowId: string) => setPhotosPkgId(Number(rowId)),
+        hidden: () => false,
+      }],
+    },
   ];
 
   const move = useMutation({
@@ -231,23 +193,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
         setGate(payload as GateError);
       }
       toast.error(payload.message ?? 'Transition failed');
-    },
-  });
-
-  const updateShipment = useMutation({
-    mutationFn: (values: Record<string, any>) =>
-      patchJson(`/api/shipments/${id}`, {
-        tiiuCode: values.tiiuCode || null,
-        plannedDepartureDate: values.plannedDepartureDate || null,
-        plannedArrivalDate: values.plannedArrivalDate || null,
-      }),
-    onSuccess: () => {
-      toast.success('Shipment info updated');
-      qc.invalidateQueries({ queryKey: ['/api/shipments', id] });
-      setEditDrawerOpen(false);
-    },
-    onError: (e: any) => {
-      toast.error(e?.response?.data?.message ?? 'Update failed');
     },
   });
 
@@ -302,50 +247,30 @@ const ShipmentDetailPage = ({ id }: Props) => {
     ? [{ key: 'edit', title: 'Edit Info', onClick: () => setEditDrawerOpen(true) }]
     : [];
 
-  const editFields: Record<string, DynamicFieldTypes> = {
-    tiiuCode: {
-      type: DynamicField.TEXT,
-      name: 'tiiuCode',
-      title: 'TIIU Code',
-      required: false,
-      disabled: false,
-      value: data.tiiuCode ?? '',
-    },
-    plannedDepartureDate: {
-      type: DynamicField.DATE,
-      name: 'plannedDepartureDate',
-      title: 'Planned Departure Date',
-      required: true,
-      disabled: false,
-      value: data.plannedDepartureDate ?? null,
-    },
-    plannedArrivalDate: {
-      type: DynamicField.DATE,
-      name: 'plannedArrivalDate',
-      title: 'Planned Arrival Date',
-      required: true,
-      disabled: false,
-      value: data.plannedArrivalDate ?? null,
-    },
-  };
-
-  // Build title actions from transitions — all with confirmation
   const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[data.status] ?? []).map(
-    ({ label, action, isCancel, confirmMessage }) => ({
+    ({ label, action, isCancel, confirmMessage, useRtdPreview }) => ({
       label,
       disabled: move.isPending,
       ...(isCancel
         ? { backgroundColor: '#d32f2f', color: '#fff' }
         : {}),
-      onClick: () =>
-        dispatch(
-          OpenConfirmation({
-            open: true,
-            title: label,
-            message: confirmMessage,
-            onSubmit: () => move.mutate(action),
-          }),
-        ),
+      onClick: useRtdPreview
+        ? async () => {
+            try {
+              const preview = await getJson<any>(`/api/shipments/${id}/ready-to-depart/preview`);
+              if (!preview.canProceed) { toast.error(preview.message); return; }
+              setRtdPreview(preview);
+            } catch { toast.error('Failed to load preview'); }
+          }
+        : () =>
+            dispatch(
+              OpenConfirmation({
+                open: true,
+                title: label,
+                message: confirmMessage,
+                onSubmit: () => move.mutate(action),
+              }),
+            ),
     }),
   );
 
@@ -410,11 +335,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
                   <Typography variant="body2" sx={{ mb: 0.5 }}>
                     Weight: {data.totalWeightKg} / {data.maxWeightKg} kg ({pct.toFixed(1)}%)
                   </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={pct}
-                    color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'}
-                  />
+                  <LinearProgress variant="determinate" value={pct} color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'} />
                 </Box>
               );
             })()}
@@ -425,11 +346,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
                   <Typography variant="body2" sx={{ mb: 0.5 }}>
                     CBM: {data.totalCbm} / {data.maxCbm} ({pct.toFixed(1)}%)
                   </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={pct}
-                    color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'}
-                  />
+                  <LinearProgress variant="determinate" value={pct} color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'} />
                 </Box>
               );
             })()}
@@ -446,91 +363,49 @@ const ShipmentDetailPage = ({ id }: Props) => {
 
         <MainPageSection title="WhatsApp Bulk Actions">
           <Stack direction="row" gap={1} flexWrap="wrap">
-            <Button variant="outlined" onClick={() => sendBulk.mutate('status')} disabled={sendBulk.isPending}>
-              Status Bulk
-            </Button>
-            <Button variant="outlined" onClick={() => sendBulk.mutate('departure')} disabled={sendBulk.isPending}>
-              Departure Bulk
-            </Button>
-            <Button variant="outlined" onClick={() => sendBulk.mutate('arrival')} disabled={sendBulk.isPending}>
-              Arrival Bulk
-            </Button>
+            <Button variant="outlined" onClick={() => sendBulk.mutate('status')} disabled={sendBulk.isPending}>Status Bulk</Button>
+            <Button variant="outlined" onClick={() => sendBulk.mutate('departure')} disabled={sendBulk.isPending}>Departure Bulk</Button>
+            <Button variant="outlined" onClick={() => sendBulk.mutate('arrival')} disabled={sendBulk.isPending}>Arrival Bulk</Button>
           </Stack>
         </MainPageSection>
 
         {EXPORTABLE_STATUSES.has(data.status) && (
           <MainPageSection title="Shipment Reports">
             <Stack direction="row" gap={1} flexWrap="wrap">
-              <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>
-                BOL report
-              </Button>
-              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>
-                customer-invoices-excel
-              </Button>
+              <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>BOL report</Button>
+              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>customer-invoices-excel</Button>
             </Stack>
           </MainPageSection>
         )}
 
-        <MainPageSection title="Packages">
-          {CAN_ADD_PACKAGE.has(data.status) && (
-            <Box sx={{ mb: 2 }}>
-              <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>
-                + Add Package
-              </Button>
-            </Box>
-          )}
-          <EnhancedTable
-            title="Packages in Shipment"
-            header={packageHeadersWithNav}
-            data={packageTableData}
-            defaultOrder="id"
-          />
-        </MainPageSection>
-
-        <MainPageSection title="Photos">
-          <PhotoGallery media={mediaQuery.data ?? []} />
-        </MainPageSection>
+        {CAN_ADD_PACKAGE.has(data.status) && (
+          <Box sx={{ mb: 2 }}>
+            <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>+ Add Package</Button>
+          </Box>
+        )}
+        <EnhancedTable title="Packages in Shipment" header={packageHeadersWithNav} data={packageTableData} defaultOrder="id" />
       </DetailPageLayout>
 
-      <GenericDialog
-        open={addPkgOpen}
-        title="Add Package to Shipment"
-        onClose={() => setAddPkgOpen(false)}
-      >
-        <DynamicFormWidget
-          title=""
-          drawerMode
-          fields={addPackageFields}
-          onSubmit={async (values) => {
-            try {
-              await createPackage.mutateAsync(values);
-              return true;
-            } catch {
-              return false;
-            }
-          }}
-        />
-      </GenericDialog>
+      <AddPackageDialog open={addPkgOpen} onClose={() => setAddPkgOpen(false)} shipmentId={id} />
 
-      <GenericDrawer
+      <EditShipmentDrawer
         open={editDrawerOpen}
-        title="Edit Shipment Info"
         onClose={() => setEditDrawerOpen(false)}
-      >
-        <DynamicFormWidget
-          title=""
-          drawerMode
-          fields={editFields}
-          onSubmit={async (values) => {
-            try {
-              await updateShipment.mutateAsync(values);
-              return true;
-            } catch {
-              return false;
-            }
-          }}
-        />
-      </GenericDrawer>
+        shipmentId={id}
+        shipmentData={{ tiiuCode: data.tiiuCode, plannedDepartureDate: data.plannedDepartureDate, plannedArrivalDate: data.plannedArrivalDate }}
+      />
+
+      {photosPkgId !== null && (
+        <PhotoGalleryModal open onClose={() => setPhotosPkgId(null)} packageId={photosPkgId} />
+      )}
+
+      <ReadyToDepartPreviewDialog
+        open={!!rtdPreview}
+        onClose={() => setRtdPreview(null)}
+        previewData={rtdPreview}
+        onConfirm={() => { move.mutate('ready-to-depart'); setRtdPreview(null); }}
+        isConfirming={move.isPending}
+      />
     </>
   );
 };

@@ -12,8 +12,9 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpPost("api/shipments/{shipmentId:int}/packages")]
     public async Task<IActionResult> Create(int shipmentId, CreatePackageRequest input)
     {
-        var p = await business.CreateAsync(shipmentId, input);
-        return Created($"/api/packages/{p.Id}", p);
+        var (dto, err) = await business.CreateAsync(shipmentId, input);
+        if (err is not null) return Conflict(err);
+        return Created($"/api/packages/{dto!.Id}", dto);
     }
 
     [HttpPost("api/packages/auto-assign")]

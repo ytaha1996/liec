@@ -8,7 +8,6 @@ import {
   Chip,
   Link as MuiLink,
   MenuItem,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -16,23 +15,16 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, api, getJson, postJson, putJson, patchJson, uploadMultipart } from '../../api/client';
+import { GateError, api, getJson, postJson, uploadMultipart } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
-import {
-  EnhanceTableHeaderTypes,
-  EnhancedTableColumnType,
-} from '../../components/enhanced-table';
-import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
-import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
-import GenericDialog from '../../components/GenericDialog/GenericDialog';
+import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
 import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
@@ -41,13 +33,14 @@ import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 import Loader from '../../components/Loader';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
+import ItemDialog from './components/ItemDialog';
+import PricingOverrideDialog from './components/PricingOverrideDialog';
+import EditPackageDialog from './components/EditPackageDialog';
 
 interface Props {
   id: string;
 }
 
-// Allowed next transitions per package status, based on TransitionRuleService
-// requiredShipmentStatus: if set, the button is disabled unless the shipment is in one of these statuses
 const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCancel?: boolean; confirmMessage: string; requiredShipmentStatus?: string[] }[]> = {
   Draft: [
     { label: 'Receive', action: 'receive', confirmMessage: 'Receive this package into the warehouse?' },
@@ -82,34 +75,6 @@ const PKG_INFO_FIELDS: IInformationWidgetField[] = [
 
 const PHOTO_STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
 
-const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
-  goodTypeId: {
-    type: DynamicField.SELECT,
-    name: 'goodTypeId',
-    title: 'Good Type',
-    required: true,
-    disabled: false,
-    items: goodsItems,
-    value: String(initial?.goodTypeId ?? ''),
-  },
-  quantity: {
-    type: DynamicField.NUMBER,
-    name: 'quantity',
-    title: 'Quantity',
-    required: true,
-    disabled: false,
-    value: initial?.quantity ?? 1,
-  },
-  note: {
-    type: DynamicField.TEXT,
-    name: 'note',
-    title: 'Note',
-    required: false,
-    disabled: false,
-    value: initial?.note ?? '',
-  },
-});
-
 const PackageDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -119,10 +84,8 @@ const PackageDetailPage = ({ id }: Props) => {
   const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
   const [photoStage, setPhotoStage] = useState('Receiving');
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
-  const [editPkgOpen, setEditPkgOpen] = useState(false);
   const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerCbm' | 'TotalCharge'>('RatePerKg');
-  const [overrideValue, setOverrideValue] = useState('');
-  const [overrideReason, setOverrideReason] = useState('');
+  const [editPkgOpen, setEditPkgOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/packages', id],
@@ -139,14 +102,14 @@ const PackageDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any[]>(`/api/packages/${id}/pricing-overrides`),
   });
 
-  const goodsQuery = useQuery<any[]>({
-    queryKey: ['/api/good-types'],
-    queryFn: () => getJson<any[]>('/api/good-types'),
-  });
-
   const customersQuery = useQuery<any[]>({
     queryKey: ['/api/customers'],
     queryFn: () => getJson<any[]>('/api/customers'),
+  });
+
+  const goodsQuery = useQuery<any[]>({
+    queryKey: ['/api/good-types'],
+    queryFn: () => getJson<any[]>('/api/good-types'),
   });
 
   const shipmentId = (data?.package ?? data)?.shipmentId;
@@ -156,23 +119,6 @@ const PackageDetailPage = ({ id }: Props) => {
     enabled: !!shipmentId,
   });
   const shipmentStatus: string | undefined = shipmentQuery.data?.status;
-
-  const applyOverride = useMutation({
-    mutationFn: (payload: { overrideType: string; newValue: number; reason: string }) =>
-      postJson(`/api/packages/${id}/pricing-override`, payload),
-    onSuccess: () => {
-      toast.success('Pricing override applied');
-      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
-      qc.invalidateQueries({ queryKey: ['/api/packages', id, 'pricing-overrides'] });
-      setOverrideDialogOpen(false);
-      setOverrideValue('');
-      setOverrideReason('');
-    },
-    onError: (e: any) => {
-      const payload = e?.response?.data ?? {};
-      toast.error(payload.message ?? 'Override failed');
-    },
-  });
 
   const transition = useMutation({
     mutationFn: (action: string) => postJson(`/api/packages/${id}/${action}`),
@@ -190,39 +136,6 @@ const PackageDetailPage = ({ id }: Props) => {
     },
   });
 
-  const updatePackage = useMutation({
-    mutationFn: (values: Record<string, any>) =>
-      patchJson(`/api/packages/${id}`, {
-        weightKg: values.weightKg !== undefined ? Number(values.weightKg) : undefined,
-        cbm: values.cbm !== undefined ? Number(values.cbm) : undefined,
-        note: values.note,
-      }),
-    onSuccess: () => {
-      toast.success('Package updated');
-      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
-      setEditPkgOpen(false);
-    },
-    onError: (e: any) => {
-      const payload = e?.response?.data ?? {};
-      toast.error(payload.message ?? 'Update failed');
-    },
-  });
-
-  const addItem = useMutation({
-    mutationFn: (values: Record<string, any>) =>
-      postJson(`/api/packages/${id}/items`, {
-        goodTypeId: Number(values.goodTypeId),
-        quantity: Number(values.quantity),
-        note: values.note || null,
-      }),
-    onSuccess: () => {
-      toast.success('Item added');
-      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
-      setAddItemOpen(false);
-    },
-    onError: () => toast.error('Add item failed'),
-  });
-
   const deleteItem = useMutation({
     mutationFn: (itemId: number) => api.delete(`/api/packages/${id}/items/${itemId}`).then((r) => r.data),
     onSuccess: () => {
@@ -230,22 +143,6 @@ const PackageDetailPage = ({ id }: Props) => {
       qc.invalidateQueries({ queryKey: ['/api/packages', id] });
     },
     onError: () => toast.error('Delete failed'),
-  });
-
-  const putItem = useMutation({
-    mutationFn: ({ itemId, values }: { itemId: number; values: Record<string, any> }) =>
-      putJson(`/api/packages/${id}/items/${itemId}`, {
-        goodTypeId: Number(values.goodTypeId),
-        quantity: Number(values.quantity),
-        note: values.note || null,
-      }),
-    onSuccess: () => {
-      toast.success('Item updated');
-      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
-      setAddItemOpen(false);
-      setEditingItem(null);
-    },
-    onError: () => toast.error('Update failed'),
   });
 
   const upload = useMutation({
@@ -263,19 +160,6 @@ const PackageDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Upload failed'),
   });
 
-  const handleAddItemSubmit = async (values: Record<string, any>): Promise<boolean> => {
-    try {
-      if (editingItem) await putItem.mutateAsync({ itemId: editingItem.id, values });
-      else await addItem.mutateAsync(values);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const goodsItems: Record<string, string> = (goodsQuery.data ?? []).reduce(
-    (acc: Record<string, string>, g: any) => { acc[String(g.id)] = g.nameEn; return acc; }, {},
-  );
   const goodsMap: Record<number, string> = (goodsQuery.data ?? []).reduce(
     (acc: Record<number, string>, g: any) => { acc[g.id] = g.nameEn; return acc; }, {},
   );
@@ -440,12 +324,7 @@ const PackageDetailPage = ({ id }: Props) => {
               Add Item
             </Button>
           </Box>
-          <EnhancedTable
-            title="Package Items"
-            header={itemHeaders}
-            data={itemsTableData}
-            defaultOrder="goodName"
-          />
+          <EnhancedTable title="Package Items" header={itemHeaders} data={itemsTableData} defaultOrder="goodName" />
         </MainPageSection>
 
         <MainPageSection title="Upload Photo">
@@ -481,112 +360,26 @@ const PackageDetailPage = ({ id }: Props) => {
         </MainPageSection>
     </DetailPageLayout>
 
-      <GenericDialog
+      <ItemDialog
         open={addItemOpen}
-        title={editingItem ? 'Edit Item' : 'Add Item'}
         onClose={() => { setAddItemOpen(false); setEditingItem(null); }}
-      >
-        <DynamicFormWidget
-          title=""
-          drawerMode
-          fields={buildItemFields(editingItem ?? undefined, goodsItems)}
-          onSubmit={handleAddItemSubmit}
-        />
-      </GenericDialog>
+        packageId={id}
+        editingItem={editingItem}
+      />
 
-      <GenericDialog
+      <PricingOverrideDialog
         open={overrideDialogOpen}
-        title="Override Pricing"
-        onClose={() => { setOverrideDialogOpen(false); setOverrideValue(''); setOverrideReason(''); }}
-      >
-        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box>
-            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Override Type</Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={overrideType}
-              onChange={(e) => setOverrideType(e.target.value as any)}
-            >
-              <MenuItem value="RatePerKg">Rate Per Kg</MenuItem>
-              <MenuItem value="RatePerCbm">Rate Per CBM</MenuItem>
-              <MenuItem value="TotalCharge">Total Charge</MenuItem>
-            </Select>
-          </Box>
-          <TextField
-            label="New Value"
-            type="number"
-            fullWidth
-            size="small"
-            value={overrideValue}
-            onChange={(e) => setOverrideValue(e.target.value)}
-          />
-          <TextField
-            label="Reason (required)"
-            fullWidth
-            multiline
-            rows={3}
-            size="small"
-            value={overrideReason}
-            onChange={(e) => setOverrideReason(e.target.value)}
-          />
-          <Stack direction="row" justifyContent="flex-end" gap={1}>
-            <Button onClick={() => { setOverrideDialogOpen(false); setOverrideValue(''); setOverrideReason(''); }}>Cancel</Button>
-            <Button
-              variant="contained"
-              disabled={!overrideValue || !overrideReason || applyOverride.isPending}
-              onClick={() => applyOverride.mutate({ overrideType, newValue: Number(overrideValue), reason: overrideReason })}
-            >
-              Apply Override
-            </Button>
-          </Stack>
-        </Box>
-      </GenericDialog>
+        onClose={() => setOverrideDialogOpen(false)}
+        packageId={id}
+        initialOverrideType={overrideType}
+      />
 
-      <GenericDialog
+      <EditPackageDialog
         open={editPkgOpen}
-        title="Edit Package"
         onClose={() => setEditPkgOpen(false)}
-      >
-        <DynamicFormWidget
-          title=""
-          drawerMode
-          fields={{
-            weightKg: {
-              type: DynamicField.NUMBER,
-              name: 'weightKg',
-              title: 'Weight (Kg)',
-              required: false,
-              disabled: false,
-              value: pkg.weightKg ?? 0,
-            },
-            cbm: {
-              type: DynamicField.NUMBER,
-              name: 'cbm',
-              title: 'CBM',
-              required: false,
-              disabled: false,
-              value: pkg.cbm ?? 0,
-            },
-            note: {
-              type: DynamicField.TEXT,
-              name: 'note',
-              title: 'Note',
-              required: false,
-              disabled: false,
-              value: pkg.note ?? '',
-            },
-          }}
-          onSubmit={async (values) => {
-            try {
-              await updatePackage.mutateAsync(values);
-              return true;
-            } catch {
-              return false;
-            }
-          }}
-        />
-      </GenericDialog>
+        packageId={id}
+        packageData={{ weightKg: pkg.weightKg, cbm: pkg.cbm, note: pkg.note }}
+      />
     </>
   );
 };

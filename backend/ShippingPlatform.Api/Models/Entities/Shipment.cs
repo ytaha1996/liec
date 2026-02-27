@@ -6,7 +6,7 @@ public class Shipment
 {
     public int Id { get; set; }
     public string RefCode { get; set; } = string.Empty;
-    [MaxLength(4)] public string? TiiuCode { get; set; }
+    [MaxLength(11)] public string? TiiuCode { get; set; }
     public int OriginWarehouseId { get; set; }
     public int DestinationWarehouseId { get; set; }
     public Warehouse OriginWarehouse { get; set; } = null!;

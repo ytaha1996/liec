@@ -28,7 +28,7 @@ public class CreateShipmentRequestValidator : AbstractValidator<CreateShipmentRe
         RuleFor(x => x.OriginWarehouseId).GreaterThan(0);
         RuleFor(x => x.DestinationWarehouseId).GreaterThan(0);
         RuleFor(x => x).Must(x => x.OriginWarehouseId != x.DestinationWarehouseId).WithMessage("Origin and destination must be different.");
-        RuleFor(x => x.TiiuCode).MaximumLength(4).When(x => !string.IsNullOrWhiteSpace(x.TiiuCode));
+        RuleFor(x => x.TiiuCode).Matches(@"^[A-Z]{3,4}\d{4,7}$").WithMessage("TIIU code must be 3-4 letters followed by 4-7 digits (e.g., MSCU1234567).").When(x => !string.IsNullOrWhiteSpace(x.TiiuCode));
     }
 }
 
