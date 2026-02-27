@@ -60,6 +60,8 @@ public class WhatsAppBusiness(AppDbContext db, IWhatsAppSender sender) : IWhatsA
 public interface IExportBusiness
 {
     Task<object> GroupHelperAsync(string format);
+    Task<object> ShipmentBolReportAsync(int shipmentId);
+    Task<object> ShipmentCustomerInvoicesExcelAsync(int shipmentId);
 }
 
 public class ExportBusiness(IExportService exports) : IExportBusiness
@@ -68,5 +70,17 @@ public class ExportBusiness(IExportService exports) : IExportBusiness
     {
         var url = await exports.GenerateGroupHelperAsync(format);
         return new { publicUrl = url, warning = "WhatsApp groups reveal phone numbers to all members." };
+    }
+
+    public async Task<object> ShipmentBolReportAsync(int shipmentId)
+    {
+        var url = await exports.GenerateShipmentBolReportAsync(shipmentId);
+        return new { publicUrl = url };
+    }
+
+    public async Task<object> ShipmentCustomerInvoicesExcelAsync(int shipmentId)
+    {
+        var url = await exports.GenerateShipmentCustomerInvoicesExcelAsync(shipmentId);
+        return new { publicUrl = url };
     }
 }
