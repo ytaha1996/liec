@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Azure.Storage.Blobs;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Dtos;
@@ -173,8 +174,14 @@ public class PhotoComplianceService(AppDbContext db) : IPhotoComplianceService
 public interface IWhatsAppSender { Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null); }
 public class StubWhatsAppSender : IWhatsAppSender { public Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null) => Task.FromResult<(bool, string?)>((true, null)); }
 
-public interface IExportService { Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default); }
-public class ExportService(AppDbContext db, IBlobStorageService blob, IConfiguration cfg) : IExportService
+public interface IExportService
+{
+    Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default);
+    Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default);
+    Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default);
+}
+
+public class ExportService(AppDbContext db, IBlobStorageService blob, IConfiguration cfg, IWebHostEnvironment env) : IExportService
 {
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
@@ -192,6 +199,176 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, $"group-helper.{ext}", ms, "text/plain", key, ct);
         return url;
+    }
+
+    public async Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default)
+    {
+        var shipment = await LoadShipmentExportData(shipmentId, ct);
+        using var workbook = new XLWorkbook(GetTemplatePath("bol-report-template.xlsx"));
+        var ws = workbook.Worksheet(1);
+
+        ws.Cell("F2").Value = $"CONTAINER    {shipment.RefCode}";
+        ws.Cell("C3").Value = $"CONTAINER : {shipment.TiiuCode ?? shipment.RefCode}";
+        ws.Cell("F3").Value = shipment.RefCode;
+        ws.Cell("C4").Value = "DEPARTURE EXW";
+        ws.Cell("D4").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("C5").Value = "DEPARTURE POL";
+        ws.Cell("D5").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("C6").Value = "ARRIVAL POD";
+        ws.Cell("D6").Value = ":" + shipment.PlannedArrivalDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("C7").Value = "BL NO";
+        ws.Cell("D7").Value = shipment.RefCode;
+
+        var grouped = shipment.Packages
+            .Where(p => p.Status != PackageStatus.Cancelled)
+            .GroupBy(p => p.Customer)
+            .Select((g, i) => new
+            {
+                No = i + 1,
+                CustomerName = g.Key.Name,
+                Cbm = g.Sum(x => x.Cbm),
+                WeightKg = g.Sum(x => x.WeightKg),
+                Rate = g.Any() ? g.Average(x => Math.Max(x.AppliedRatePerKg, x.AppliedRatePerCbm)) : 0,
+                Price = g.Sum(x => x.ChargeAmount),
+                Fees = 0m,
+            })
+            .ToList();
+
+        ws.Range("A10:J200").Clear(XLClearOptions.Contents);
+
+        var row = 10;
+        foreach (var g in grouped)
+        {
+            ws.Cell(row, 1).Value = g.No;
+            ws.Cell(row, 2).Value = g.No;
+            ws.Cell(row, 3).Value = g.CustomerName;
+            ws.Cell(row, 4).Value = Math.Round(g.Cbm, 3);
+            ws.Cell(row, 5).Value = Math.Round(g.WeightKg / 1000m, 3);
+            ws.Cell(row, 6).Value = Math.Round(g.Rate, 2);
+            ws.Cell(row, 7).Value = Math.Round(g.Price, 2);
+            ws.Cell(row, 8).Value = g.Fees;
+            ws.Cell(row, 9).Value = Math.Round(g.Price + g.Fees, 2);
+            ws.Cell(row, 10).Value = string.Empty;
+            row++;
+        }
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        var fileName = $"BOL report - {shipment.RefCode}.xlsx";
+        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
+        var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
+        return url;
+    }
+
+    public async Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default)
+    {
+        var shipment = await LoadShipmentExportData(shipmentId, ct);
+        using var workbook = new XLWorkbook(GetTemplatePath("customer-invoices-template.xlsx"));
+
+        while (workbook.Worksheets.Count > 1)
+            workbook.Worksheet(workbook.Worksheets.Count).Delete();
+
+        var template = workbook.Worksheet(1);
+
+        var grouped = shipment.Packages
+            .Where(p => p.Status != PackageStatus.Cancelled)
+            .GroupBy(p => p.Customer)
+            .OrderBy(g => g.Key.Name)
+            .ToList();
+
+        if (grouped.Count == 0)
+            throw new InvalidOperationException("Shipment has no active packages to export.");
+
+        for (var i = 0; i < grouped.Count; i++)
+        {
+            var g = grouped[i];
+            var ws = i == 0 ? template : template.CopyTo(SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1));
+            FillCustomerInvoiceSheet(ws, shipment, g);
+        }
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        var fileName = $"customer-invoices-excel - {shipment.RefCode}.xlsx";
+        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
+        var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
+        return url;
+    }
+
+    private static string SafeSheetName(string input, int index)
+    {
+        var invalid = new[] { ':', '\\', '/', '?', '*', '[', ']' };
+        var clean = new string(input.Select(c => invalid.Contains(c) ? '-' : c).ToArray()).Trim();
+        if (string.IsNullOrWhiteSpace(clean)) clean = $"Customer {index}";
+        return clean.Length <= 31 ? clean : clean[..31];
+    }
+
+    private void FillCustomerInvoiceSheet(IXLWorksheet ws, Shipment shipment, IGrouping<Customer, Package> group)
+    {
+        for (var r = 16; r <= 250; r++)
+            ws.Range(r, 1, r, 4).Clear(XLClearOptions.Contents);
+
+        var customer = group.Key;
+        var totalCbm = group.Sum(x => x.Cbm);
+        var totalWeight = group.Sum(x => x.WeightKg);
+        var totalFreight = group.Sum(x => x.ChargeAmount);
+
+        ws.Cell("D1").Value = shipment.RefCode;
+        ws.Cell("A3").Value = $"CLIENT NAME : {customer.Name.ToUpperInvariant()}";
+        ws.Cell("A4").Value = $"CLIENT CODE :  {customer.Id}";
+        ws.Cell("C6").Value = $"{Math.Round(totalCbm, 3)} mᵌ";
+        ws.Cell("D6").Value = $"{Math.Round(totalWeight, 0):N0} KG";
+        ws.Cell("A8").Value = customer.PrimaryPhone;
+        ws.Cell("C8").Value = totalFreight <= 0 ? "FOR FREE" : $"FREIGHT = {Math.Round(totalFreight, 0):N0} {group.FirstOrDefault()?.Currency ?? "EUR"}";
+
+        var row = 16;
+        var lines = group.SelectMany(p => p.Items.Select(i => new { Item = i, PackageNote = p.Note })).ToList();
+        if (lines.Count == 0)
+        {
+            ws.Cell(row, 1).Value = "N/A";
+            ws.Cell(row, 2).Value = 1;
+            ws.Cell(row, 3).Value = "UNIT";
+            ws.Cell(row, 4).Value = "No items recorded";
+            return;
+        }
+
+        foreach (var line in lines)
+        {
+            ws.Cell(row, 1).Value = line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}";
+            ws.Cell(row, 2).Value = line.Item.Quantity;
+            ws.Cell(row, 3).Value = "UNIT";
+            ws.Cell(row, 4).Value = string.IsNullOrWhiteSpace(line.Item.Note) ? (line.PackageNote ?? string.Empty) : line.Item.Note;
+            row++;
+        }
+    }
+
+    private async Task<Shipment> LoadShipmentExportData(int shipmentId, CancellationToken ct)
+    {
+        var shipment = await db.Shipments
+            .Include(s => s.OriginWarehouse)
+            .Include(s => s.DestinationWarehouse)
+            .Include(s => s.Packages)
+                .ThenInclude(p => p.Customer)
+            .Include(s => s.Packages)
+                .ThenInclude(p => p.Items)
+                    .ThenInclude(i => i.GoodType)
+            .FirstOrDefaultAsync(x => x.Id == shipmentId, ct);
+
+        if (shipment is null)
+            throw new KeyNotFoundException("Shipment not found.");
+
+        return shipment;
+    }
+
+    private string GetTemplatePath(string fileName)
+    {
+        var path = Path.Combine(env.ContentRootPath, "Templates", fileName);
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Template not found: {fileName}", path);
+        return path;
     }
 }
 
