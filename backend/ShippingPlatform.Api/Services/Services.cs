@@ -207,13 +207,17 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         using var workbook = new XLWorkbook(GetTemplatePath("bol-report-template.xlsx"));
         var ws = workbook.Worksheet(1);
 
-        ws.Cell("A1").Value = $"CONTAINER    {shipment.RefCode}";
-        ws.Cell("A2").Value = $"CONTAINER : {shipment.TiiuCode ?? shipment.RefCode}";
-        ws.Cell("B2").Value = shipment.RefCode;
-        ws.Cell("A3").Value = "DEPARTURE EXW";
-        ws.Cell("B3").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
-        ws.Cell("A4").Value = "ARRIVAL POD";
-        ws.Cell("B4").Value = ":" + shipment.PlannedArrivalDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("F2").Value = $"CONTAINER    {shipment.RefCode}";
+        ws.Cell("C3").Value = $"CONTAINER : {shipment.TiiuCode ?? shipment.RefCode}";
+        ws.Cell("F3").Value = shipment.RefCode;
+        ws.Cell("C4").Value = "DEPARTURE EXW";
+        ws.Cell("D4").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("C5").Value = "DEPARTURE POL";
+        ws.Cell("D5").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("C6").Value = "ARRIVAL POD";
+        ws.Cell("D6").Value = ":" + shipment.PlannedArrivalDate.ToString("ddd.dd,MMM.yyyy");
+        ws.Cell("C7").Value = "BL NO";
+        ws.Cell("D7").Value = shipment.RefCode;
 
         var grouped = shipment.Packages
             .Where(p => p.Status != PackageStatus.Cancelled)
@@ -230,7 +234,9 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             })
             .ToList();
 
-        var row = 8;
+        ws.Range("A10:J200").Clear(XLClearOptions.Contents);
+
+        var row = 10;
         foreach (var g in grouped)
         {
             ws.Cell(row, 1).Value = g.No;
@@ -265,6 +271,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             workbook.Worksheet(workbook.Worksheets.Count).Delete();
 
         var template = workbook.Worksheet(1);
+        var sourceTemplate = template.CopyTo("_template_source");
 
         var grouped = shipment.Packages
             .Where(p => p.Status != PackageStatus.Cancelled)
@@ -278,9 +285,13 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         for (var i = 0; i < grouped.Count; i++)
         {
             var g = grouped[i];
-            var ws = i == 0 ? template : template.CopyTo(SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1));
+            var name = SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1);
+            var ws = i == 0 ? template : sourceTemplate.CopyTo(name);
+            if (i == 0) ws.Name = name;
             FillCustomerInvoiceSheet(ws, shipment, g);
         }
+
+        sourceTemplate.Delete();
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
@@ -302,7 +313,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
 
     private void FillCustomerInvoiceSheet(IXLWorksheet ws, Shipment shipment, IGrouping<Customer, Package> group)
     {
-        for (var r = 9; r <= 200; r++)
+        for (var r = 16; r <= 250; r++)
             ws.Range(r, 1, r, 4).Clear(XLClearOptions.Contents);
 
         var customer = group.Key;
@@ -310,15 +321,15 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         var totalWeight = group.Sum(x => x.WeightKg);
         var totalFreight = group.Sum(x => x.ChargeAmount);
 
-        ws.Cell("B1").Value = shipment.RefCode;
-        ws.Cell("A2").Value = $"CLIENT NAME : {customer.Name.ToUpperInvariant()}";
-        ws.Cell("A3").Value = $"CLIENT CODE : {customer.Id}";
-        ws.Cell("A5").Value = $"{Math.Round(totalCbm, 3)} mᵌ";
-        ws.Cell("B5").Value = $"{Math.Round(totalWeight, 0)} KG";
-        ws.Cell("A7").Value = customer.PrimaryPhone;
-        ws.Cell("B7").Value = totalFreight <= 0 ? "FOR FREE" : $"FREIGHT = {Math.Round(totalFreight, 2):N2} {group.FirstOrDefault()?.Currency ?? "EUR"}";
+        ws.Cell("D1").Value = shipment.RefCode;
+        ws.Cell("A3").Value = $"CLIENT NAME : {customer.Name.ToUpperInvariant()}";
+        ws.Cell("A4").Value = $"CLIENT CODE :  {customer.Id}";
+        ws.Cell("C6").Value = $"{Math.Round(totalCbm, 3)} mᵌ";
+        ws.Cell("D6").Value = $"{Math.Round(totalWeight, 0):N0} KG";
+        ws.Cell("A8").Value = customer.PrimaryPhone;
+        ws.Cell("C8").Value = totalFreight <= 0 ? "FOR FREE" : $"FREIGHT = {Math.Round(totalFreight, 0):N0} {group.FirstOrDefault()?.Currency ?? "EUR"}";
 
-        var row = 9;
+        var row = 16;
         var lines = group.SelectMany(p => p.Items.Select(i => new { Item = i, PackageNote = p.Note })).ToList();
         if (lines.Count == 0)
         {
