@@ -373,6 +373,9 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
         if (!transitions.CanMove(p.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {p.Status} to {status}." }, null);
 
+        if (status == PackageStatus.Packed && (p.WeightKg <= 0 || p.Cbm <= 0))
+            return (null, new { code = "VALIDATION_ERROR", message = "Weight and CBM must both be greater than 0 before packing." }, null);
+
         p.Status = status;
         if (status == PackageStatus.Packed) await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
@@ -386,8 +389,8 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
 
         bool weightChanged = false;
-        if (req.WeightKg.HasValue) { if (req.WeightKg.Value < 0) return (null, new { code = "VALIDATION_ERROR", message = "Weight must be >= 0." }); p.WeightKg = req.WeightKg.Value; weightChanged = true; }
-        if (req.Cbm.HasValue) { if (req.Cbm.Value < 0) return (null, new { code = "VALIDATION_ERROR", message = "CBM must be >= 0." }); p.Cbm = req.Cbm.Value; weightChanged = true; }
+        if (req.WeightKg.HasValue) { if (req.WeightKg.Value <= 0) return (null, new { code = "VALIDATION_ERROR", message = "Weight must be greater than 0." }); p.WeightKg = req.WeightKg.Value; weightChanged = true; }
+        if (req.Cbm.HasValue) { if (req.Cbm.Value <= 0) return (null, new { code = "VALIDATION_ERROR", message = "CBM must be greater than 0." }); p.Cbm = req.Cbm.Value; weightChanged = true; }
         if (req.Note is not null) p.Note = req.Note;
 
         if (weightChanged)

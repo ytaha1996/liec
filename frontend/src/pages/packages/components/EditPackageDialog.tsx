@@ -38,8 +38,8 @@ const EditPackageDialog = ({ open, onClose, packageId, packageData }: EditPackag
         title=""
         drawerMode
         fields={{
-          weightKg: { type: DynamicField.NUMBER, name: 'weightKg', title: 'Weight (Kg)', required: false, disabled: false, value: packageData.weightKg ?? 0 },
-          cbm: { type: DynamicField.NUMBER, name: 'cbm', title: 'CBM', required: false, disabled: false, value: packageData.cbm ?? 0 },
+          weightKg: { type: DynamicField.NUMBER, name: 'weightKg', title: 'Weight (Kg)', required: true, disabled: false, value: packageData.weightKg ?? 0, min: 0.01 },
+          cbm: { type: DynamicField.NUMBER, name: 'cbm', title: 'CBM', required: true, disabled: false, value: packageData.cbm ?? 0, min: 0.01 },
           note: { type: DynamicField.TEXT, name: 'note', title: 'Note', required: false, disabled: false, value: packageData.note ?? '' },
         }}
         onSubmit={async (values) => {

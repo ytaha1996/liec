@@ -36,6 +36,7 @@ import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../const
 import AddPackageDialog from './components/AddPackageDialog';
 import EditShipmentDrawer from './components/EditShipmentDrawer';
 import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
+import WhatsAppCampaignCards from './components/WhatsAppCampaignCards';
 
 interface Props {
   id: string;
@@ -202,14 +203,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Tracking sync failed'),
   });
 
-  const sendBulk = useMutation({
-    mutationFn: (kind: 'status' | 'departure' | 'arrival') => {
-      if (kind === 'status') return postJson(`/api/shipments/${id}/whatsapp/status/bulk`);
-      return postJson(`/api/shipments/${id}/whatsapp/photos/${kind}/bulk`);
-    },
-    onSuccess: () => toast.success('Bulk campaign created'),
-    onError: () => toast.error('Bulk send failed'),
-  });
+  const uniqueCustomerCount = new Set(shipmentPackages.map((p: any) => p.customerId)).size;
 
   const exportBol = useMutation({
     mutationFn: () => postJson<{ publicUrl: string }>(`/api/exports/shipments/${id}/bol-report`),
@@ -243,8 +237,9 @@ const ShipmentDetailPage = ({ id }: Props) => {
   });
 
   const CANCELLABLE = new Set(['Draft', 'Received', 'Packed', 'ReadyToShip']);
+  const presentStatuses = new Set(Object.values(packageTableData).map((p: any) => p.status));
 
-  const packageActions: ITableMenuAction[] = [
+  const allBulkActions: ITableMenuAction[] = [
     {
       key: 'ready-to-ship',
       title: 'Mark Ready to Ship',
@@ -294,6 +289,15 @@ const ShipmentDetailPage = ({ id }: Props) => {
       })),
     },
   ];
+
+  const ACTION_VISIBILITY: Record<string, (statuses: Set<string>) => boolean> = {
+    'ready-to-ship': (s) => s.has('Packed'),
+    'cancel': (s) => [...s].some(st => CANCELLABLE.has(st)),
+    'arrive-destination': (s) => s.has('Shipped'),
+    'ready-for-handout': (s) => s.has('ArrivedAtDestination'),
+  };
+
+  const packageActions = allBulkActions.filter(a => ACTION_VISIBILITY[a.key]?.(presentStatuses));
 
   if (isLoading) {
     return <Loader />;
@@ -427,13 +431,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </Stack>
         </MainPageSection>
 
-        <MainPageSection title="WhatsApp Bulk Actions">
-          <Stack direction="row" gap={1} flexWrap="wrap">
-            <Button variant="outlined" onClick={() => sendBulk.mutate('status')} disabled={sendBulk.isPending}>Status Bulk</Button>
-            <Button variant="outlined" onClick={() => sendBulk.mutate('departure')} disabled={sendBulk.isPending}>Departure Bulk</Button>
-            <Button variant="outlined" onClick={() => sendBulk.mutate('arrival')} disabled={sendBulk.isPending}>Arrival Bulk</Button>
-          </Stack>
-        </MainPageSection>
+        <WhatsAppCampaignCards shipmentId={id} shipmentStatus={data.status} customerCount={uniqueCustomerCount} />
 
         {EXPORTABLE_STATUSES.has(data.status) && (
           <MainPageSection title="Shipment Reports">
