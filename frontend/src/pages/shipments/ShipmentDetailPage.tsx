@@ -25,7 +25,7 @@ import { GateError, getJson, postJson } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
-import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
+import { EnhanceTableHeaderTypes, EnhancedTableColumnType, ITableMenuAction } from '../../components/enhanced-table';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
 import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
@@ -229,6 +229,72 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Customer invoices export failed'),
   });
 
+  const bulkTransition = useMutation({
+    mutationFn: (payload: { packageIds: number[]; action: string }) =>
+      postJson(`/api/shipments/${id}/packages/bulk-transition`, payload),
+    onSuccess: (_data, variables) => {
+      toast.success(`${variables.packageIds.length} package(s) updated successfully`);
+      qc.invalidateQueries({ queryKey: ['/api/packages'] });
+      qc.invalidateQueries({ queryKey: ['/api/shipments', id] });
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message ?? 'Bulk transition failed');
+    },
+  });
+
+  const CANCELLABLE = new Set(['Draft', 'Received', 'Packed', 'ReadyToShip']);
+
+  const packageActions: ITableMenuAction[] = [
+    {
+      key: 'ready-to-ship',
+      title: 'Mark Ready to Ship',
+      disabled: (selected: string[]) =>
+        selected.length === 0 || bulkTransition.isPending ||
+        selected.some(sid => packageTableData[sid]?.status !== 'Packed'),
+      onClick: (selected: string[]) => dispatch(OpenConfirmation({
+        open: true, title: 'Mark Ready to Ship',
+        message: `Mark ${selected.length} package(s) as Ready to Ship?`,
+        onSubmit: () => bulkTransition.mutate({ packageIds: selected.map(Number), action: 'ready-to-ship' }),
+      })),
+    },
+    {
+      key: 'cancel',
+      title: 'Cancel Packages',
+      disabled: (selected: string[]) =>
+        selected.length === 0 || bulkTransition.isPending ||
+        selected.some(sid => !CANCELLABLE.has(packageTableData[sid]?.status)),
+      onClick: (selected: string[]) => dispatch(OpenConfirmation({
+        open: true, title: 'Cancel Packages',
+        message: `Cancel ${selected.length} package(s)? This cannot be undone.`,
+        onSubmit: () => bulkTransition.mutate({ packageIds: selected.map(Number), action: 'cancel' }),
+      })),
+    },
+    {
+      key: 'arrive-destination',
+      title: 'Mark Arrived',
+      disabled: (selected: string[]) =>
+        selected.length === 0 || bulkTransition.isPending ||
+        selected.some(sid => packageTableData[sid]?.status !== 'Shipped'),
+      onClick: (selected: string[]) => dispatch(OpenConfirmation({
+        open: true, title: 'Mark Arrived at Destination',
+        message: `Mark ${selected.length} package(s) as Arrived at Destination?`,
+        onSubmit: () => bulkTransition.mutate({ packageIds: selected.map(Number), action: 'arrive-destination' }),
+      })),
+    },
+    {
+      key: 'ready-for-handout',
+      title: 'Mark Ready for Handout',
+      disabled: (selected: string[]) =>
+        selected.length === 0 || bulkTransition.isPending ||
+        selected.some(sid => packageTableData[sid]?.status !== 'ArrivedAtDestination'),
+      onClick: (selected: string[]) => dispatch(OpenConfirmation({
+        open: true, title: 'Mark Ready for Handout',
+        message: `Mark ${selected.length} package(s) as Ready for Handout?`,
+        onSubmit: () => bulkTransition.mutate({ packageIds: selected.map(Number), action: 'ready-for-handout' }),
+      })),
+    },
+  ];
+
   if (isLoading) {
     return <Loader />;
   }
@@ -383,7 +449,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
             <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>+ Add Package</Button>
           </Box>
         )}
-        <EnhancedTable title="Packages in Shipment" header={packageHeadersWithNav} data={packageTableData} defaultOrder="id" />
+        <EnhancedTable title="Packages in Shipment" header={packageHeadersWithNav} data={packageTableData} defaultOrder="id" actions={packageActions} />
       </DetailPageLayout>
 
       <AddPackageDialog open={addPkgOpen} onClose={() => setAddPkgOpen(false)} shipmentId={id} />

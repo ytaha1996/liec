@@ -11,3 +11,6 @@ public record ExportRequest(string Format);
 
 public record ShipmentTrackingSyncRequest(string Code);
 public record UpdateShipmentRequest(string? TiiuCode, DateTime? PlannedDepartureDate, DateTime? PlannedArrivalDate);
+
+public record BulkTransitionRequest(int[] PackageIds, string Action);
+public record BulkTransitionError(int PackageId, string Reason);

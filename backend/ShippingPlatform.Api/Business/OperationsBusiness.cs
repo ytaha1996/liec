@@ -244,6 +244,7 @@ public interface IPackageBusiness
     Task<List<object>> ListMediaAsync(int id);
     Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId);
     Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id);
+    Task<(int transitioned, object? error)> BulkTransitionAsync(int shipmentId, BulkTransitionRequest request);
 }
 
 public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark, IRefCodeService refs) : IPackageBusiness
@@ -518,6 +519,59 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         => await db.PricingOverrides.Where(x => x.PackageId == id).OrderByDescending(x => x.CreatedAt)
             .Select(x => new PricingOverrideDto(x.Id, x.OverrideType, x.OriginalValue, x.NewValue, x.Reason, x.CreatedAt))
             .ToListAsync();
+
+    public async Task<(int transitioned, object? error)> BulkTransitionAsync(int shipmentId, BulkTransitionRequest request)
+    {
+        var targetStatus = request.Action.ToLowerInvariant() switch
+        {
+            "receive" => PackageStatus.Received,
+            "pack" => PackageStatus.Packed,
+            "ready-to-ship" => PackageStatus.ReadyToShip,
+            "cancel" => PackageStatus.Cancelled,
+            "arrive-destination" => PackageStatus.ArrivedAtDestination,
+            "ready-for-handout" => PackageStatus.ReadyForHandout,
+            _ => throw new ArgumentException($"Unknown bulk action: {request.Action}")
+        };
+
+        var shipment = await db.Shipments.FindAsync(shipmentId);
+        if (shipment is null) return (0, new { code = "NOT_FOUND", message = "Shipment not found." });
+
+        var packages = await db.Packages.Where(p => request.PackageIds.Contains(p.Id)).ToListAsync();
+
+        // Validation pass — check every package before executing any transitions
+        var errors = new List<BulkTransitionError>();
+        foreach (var pkgId in request.PackageIds)
+        {
+            var p = packages.FirstOrDefault(x => x.Id == pkgId);
+            if (p is null) { errors.Add(new BulkTransitionError(pkgId, "Package not found.")); continue; }
+            if (p.ShipmentId != shipmentId) { errors.Add(new BulkTransitionError(pkgId, "Package does not belong to this shipment.")); continue; }
+            if (!transitions.CanMove(p.Status, targetStatus)) { errors.Add(new BulkTransitionError(pkgId, $"Cannot move from {p.Status} to {targetStatus}.")); continue; }
+
+            if (targetStatus != PackageStatus.Cancelled)
+            {
+                if (targetStatus == PackageStatus.ReadyToShip && shipment.Status < ShipmentStatus.Scheduled)
+                    { errors.Add(new BulkTransitionError(pkgId, "Shipment must be at least Scheduled.")); continue; }
+                if (targetStatus >= PackageStatus.ArrivedAtDestination && shipment.Status < ShipmentStatus.Arrived)
+                    { errors.Add(new BulkTransitionError(pkgId, "Shipment must have Arrived.")); continue; }
+            }
+        }
+
+        if (errors.Count > 0)
+            return (0, new { code = "BULK_VALIDATION_FAILED", message = $"{errors.Count} package(s) cannot be transitioned.", errors });
+
+        // All validated — execute transitions
+        foreach (var pkgId in request.PackageIds)
+        {
+            var (dto, err, gate) = await ChangeStatusAsync(pkgId, targetStatus);
+            if (dto is null)
+            {
+                var msg = gate?.Message ?? err?.GetType().GetProperty("message")?.GetValue(err)?.ToString() ?? "Transition failed.";
+                return (0, new { code = "TRANSITION_FAILED", message = $"Package #{pkgId}: {msg}" });
+            }
+        }
+
+        return (request.PackageIds.Length, null);
+    }
 }
 
 public interface ISupplyOrderBusiness

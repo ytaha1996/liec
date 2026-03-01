@@ -7,7 +7,7 @@ namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/shipments")]
-public class ShipmentsController(IShipmentBusiness business) : ControllerBase
+public class ShipmentsController(IShipmentBusiness business, IPackageBusiness packageBusiness) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] ShipmentStatus? status = null) => Ok(await business.ListAsync(status));
@@ -76,6 +76,20 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
 
     [HttpGet("{id:int}/media")]
     public async Task<IActionResult> Media(int id) => Ok(await business.MediaAsync(id));
+
+    [HttpPost("{shipmentId:int}/packages/bulk-transition")]
+    public async Task<IActionResult> BulkTransition(int shipmentId, BulkTransitionRequest request)
+    {
+        try
+        {
+            var (transitioned, err) = await packageBusiness.BulkTransitionAsync(shipmentId, request);
+            return err is null ? Ok(new { transitioned }) : BadRequest(err);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { code = "INVALID_ACTION", message = ex.Message });
+        }
+    }
 
     private async Task<IActionResult> SetStatus(int id, ShipmentStatus status)
     {

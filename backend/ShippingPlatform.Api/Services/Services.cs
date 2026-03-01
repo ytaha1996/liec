@@ -228,7 +228,8 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
                 CustomerName = g.Key.Name,
                 Cbm = g.Sum(x => x.Cbm),
                 WeightKg = g.Sum(x => x.WeightKg),
-                Rate = g.Any() ? g.Average(x => Math.Max(x.AppliedRatePerKg, x.AppliedRatePerCbm)) : 0,
+                Rate = g.Average(x => x.WeightKg * x.AppliedRatePerKg >= x.Cbm * x.AppliedRatePerCbm
+                    ? x.AppliedRatePerKg : x.AppliedRatePerCbm),
                 Price = g.Sum(x => x.ChargeAmount),
                 Fees = 0m,
             })
