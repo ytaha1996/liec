@@ -7,7 +7,7 @@ namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/shipments")]
-public class ShipmentsController(IShipmentBusiness business) : ControllerBase
+public class ShipmentsController(IShipmentBusiness business, IPackageBusiness packageBusiness) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] ShipmentStatus? status = null) => Ok(await business.ListAsync(status));
@@ -24,8 +24,19 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
     }
 
     [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
+    [HttpPost("{id:int}/activate")] public Task<IActionResult> Activate(int id) => SetStatus(id, ShipmentStatus.Scheduled);
+    [HttpGet("{id:int}/ready-to-depart/preview")] public async Task<IActionResult> ReadyToDepartPreview(int id) => Ok(await business.PreviewReadyToDepartAsync(id));
     [HttpPost("{id:int}/ready-to-depart")] public Task<IActionResult> ReadyToDepart(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
+    [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
     [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
+
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdateShipmentRequest req)
+    {
+        var (dto, err) = await business.UpdateAsync(id, req);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
 
     [HttpPost("{id:int}/arrive")]
     public async Task<IActionResult> Arrive(int id)
@@ -36,6 +47,7 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
     }
 
     [HttpPost("{id:int}/depart")]
+    [HttpPost("{id:int}/ship")]
     public async Task<IActionResult> Depart(int id)
     {
         var (dto, gate, err) = await business.DepartAsync(id);
@@ -45,6 +57,7 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
     }
 
     [HttpPost("{id:int}/close")]
+    [HttpPost("{id:int}/complete")]
     public async Task<IActionResult> Close(int id)
     {
         var (dto, gate, err) = await business.CloseAsync(id);
@@ -53,8 +66,30 @@ public class ShipmentsController(IShipmentBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [HttpPost("{id:int}/tracking/sync")]
+    public async Task<IActionResult> SyncTracking(int id, ShipmentTrackingSyncRequest req, CancellationToken ct)
+    {
+        var (dto, err) = await business.SyncTrackingAsync(id, req.Code, ct);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
     [HttpGet("{id:int}/media")]
     public async Task<IActionResult> Media(int id) => Ok(await business.MediaAsync(id));
+
+    [HttpPost("{shipmentId:int}/packages/bulk-transition")]
+    public async Task<IActionResult> BulkTransition(int shipmentId, BulkTransitionRequest request)
+    {
+        try
+        {
+            var (transitioned, err) = await packageBusiness.BulkTransitionAsync(shipmentId, request);
+            return err is null ? Ok(new { transitioned }) : BadRequest(err);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { code = "INVALID_ACTION", message = ex.Message });
+        }
+    }
 
     private async Task<IActionResult> SetStatus(int id, ShipmentStatus status)
     {

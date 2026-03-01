@@ -58,7 +58,7 @@ const AppLauncherModules: React.FC<IAppLauncherModulesProps> = ({
                 .includes(searchKey.toLowerCase())) && (
               <NavLink
                 key={moduleName}
-                to={app.route + app.modules[moduleName].route}
+                to={app.modules[moduleName].route}
                 className={({ isActive }) =>
                   cx(classes.moduleLink, { [classes.activeLink]: isActive })
                 }

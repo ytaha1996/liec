@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Box, Button, Stack, TextField } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -26,7 +26,12 @@ const LIFECYCLE_ACTIONS: { label: string; action: string }[] = [
   { label: 'Cancel', action: 'cancel' },
 ];
 
-const buildFields = (initial: Record<string, any> | undefined, customersItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
+const buildFields = (
+  initial: Record<string, any> | undefined,
+  customersItems: Record<string, string>,
+  suppliersItems: Record<string, string>,
+  packagesItems: Record<string, string>,
+): Record<string, DynamicFieldTypes> => ({
   customerId: {
     type: DynamicField.SELECT,
     name: 'customerId',
@@ -37,20 +42,22 @@ const buildFields = (initial: Record<string, any> | undefined, customersItems: R
     value: String(initial?.customerId ?? ''),
   },
   supplierId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'supplierId',
-    title: 'Supplier ID',
+    title: 'Supplier',
     required: true,
     disabled: false,
-    value: initial?.supplierId ?? '',
+    items: suppliersItems,
+    value: String(initial?.supplierId ?? ''),
   },
   packageId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'packageId',
-    title: 'Package ID',
+    title: 'Package',
     required: false,
     disabled: false,
-    value: initial?.packageId ?? '',
+    items: packagesItems,
+    value: String(initial?.packageId ?? ''),
   },
   name: {
     type: DynamicField.TEXT,
@@ -82,6 +89,9 @@ const SupplyOrdersPage = () => {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   const { data = [] } = useQuery<any[]>({
     queryKey: [ENDPOINT],
@@ -93,6 +103,16 @@ const SupplyOrdersPage = () => {
     queryFn: () => getJson<any[]>('/api/customers'),
   });
 
+  const { data: suppliers = [] } = useQuery<any[]>({
+    queryKey: ['/api/suppliers'],
+    queryFn: () => getJson<any[]>('/api/suppliers'),
+  });
+
+  const { data: packages = [] } = useQuery<any[]>({
+    queryKey: ['/api/packages'],
+    queryFn: () => getJson<any[]>('/api/packages'),
+  });
+
   const customersItems = (customers as any[]).reduce((acc: Record<string, string>, c: any) => {
     acc[String(c.id)] = `${c.name} (#${c.id})`;
     return acc;
@@ -102,6 +122,18 @@ const SupplyOrdersPage = () => {
     acc[c.id] = `${c.name} (#${c.id})`;
     return acc;
   }, {});
+
+  const suppliersItems = (suppliers as any[]).reduce((acc: Record<string, string>, s: any) => {
+    acc[String(s.id)] = s.name;
+    return acc;
+  }, {});
+
+  const packagesItems = (packages as any[])
+    .filter((p: any) => p.status !== 'Cancelled' && p.status !== 'HandedOut')
+    .reduce((acc: Record<string, string>, p: any) => {
+      acc[String(p.id)] = `Package #${p.id}`;
+      return acc;
+    }, {});
 
   const save = useMutation({
     mutationFn: (payload: Record<string, any>) =>
@@ -116,8 +148,8 @@ const SupplyOrdersPage = () => {
   });
 
   const lifecycleMut = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) => {
-      const body = action === 'cancel' ? { status: 'Cancelled', cancelReason: 'Cancelled from UI' } : undefined;
+    mutationFn: ({ id, action, cancelReason }: { id: string; action: string; cancelReason?: string }) => {
+      const body = action === 'cancel' ? { status: 'Cancelled', cancelReason: cancelReason || '' } : undefined;
       return postJson(`${ENDPOINT}/${id}/${action}`, body);
     },
     onSuccess: () => {
@@ -135,7 +167,15 @@ const SupplyOrdersPage = () => {
   const lifecycleActionDefs = LIFECYCLE_ACTIONS.map(({ label, action }) => ({
     icon: <PlayArrowIcon fontSize="small" />,
     label,
-    onClick: (id: string) => lifecycleMut.mutate({ id, action }),
+    onClick: (id: string) => {
+      if (action === 'cancel') {
+        setCancelTargetId(id);
+        setCancelReason('');
+        setCancelDialogOpen(true);
+      } else {
+        lifecycleMut.mutate({ id, action });
+      }
+    },
     hidden: () => false,
   }));
 
@@ -211,9 +251,39 @@ const SupplyOrdersPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined, customersItems)}
+          fields={buildFields(editing ?? undefined, customersItems, suppliersItems, packagesItems)}
           onSubmit={handleSubmit}
         />
+      </GenericDialog>
+
+      <GenericDialog
+        open={cancelDialogOpen}
+        title="Cancel Supply Order"
+        onClose={() => setCancelDialogOpen(false)}
+      >
+        <Box sx={{ p: 2 }}>
+          <TextField
+            label="Reason for cancellation"
+            fullWidth
+            multiline
+            rows={3}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+          />
+          <Stack direction="row" justifyContent="flex-end" gap={1} sx={{ mt: 2 }}>
+            <Button onClick={() => setCancelDialogOpen(false)}>Back</Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={() => {
+                if (cancelTargetId) lifecycleMut.mutate({ id: cancelTargetId, action: 'cancel', cancelReason });
+                setCancelDialogOpen(false);
+              }}
+            >
+              Confirm Cancel
+            </Button>
+          </Stack>
+        </Box>
       </GenericDialog>
     </Box>
   );

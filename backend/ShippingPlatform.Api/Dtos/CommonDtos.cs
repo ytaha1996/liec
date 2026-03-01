@@ -8,3 +8,9 @@ public record GateFailure(string Code, string Message, List<MissingGateItem> Mis
 public record MissingGateItem(int PackageId, string CustomerName, MediaStage Stage);
 public record StatusRequest(string Status);
 public record ExportRequest(string Format);
+
+public record ShipmentTrackingSyncRequest(string Code);
+public record UpdateShipmentRequest(string? TiiuCode, DateTime? PlannedDepartureDate, DateTime? PlannedArrivalDate);
+
+public record BulkTransitionRequest(int[] PackageIds, string Action);
+public record BulkTransitionError(int PackageId, string Reason);

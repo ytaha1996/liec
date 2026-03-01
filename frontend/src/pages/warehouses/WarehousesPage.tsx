@@ -68,7 +68,7 @@ const WarehousesPage: React.FC = () => {
     { id: 'city', label: 'City', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
     { id: 'country', label: 'Country', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
     { id: 'maxWeightKg', label: 'Max Weight (kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
-    { id: 'maxVolumeM3', label: 'Max Volume (m³)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
+    { id: 'maxCbm', label: 'Max CBM', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
     {
       id: 'isActive',
       label: 'Active',
@@ -139,13 +139,13 @@ const WarehousesPage: React.FC = () => {
       disabled: false,
       value: formValues.maxWeightKg ?? '',
     } as IDynamicNumberField,
-    maxVolumeM3: {
+    maxCbm: {
       type: DynamicField.NUMBER,
-      name: 'maxVolumeM3',
-      title: 'Max Volume (m³)',
+      name: 'maxCbm',
+      title: 'Max CBM',
       required: true,
       disabled: false,
-      value: formValues.maxVolumeM3 ?? '',
+      value: formValues.maxCbm ?? '',
     } as IDynamicNumberField,
     isActive: {
       type: DynamicField.CHECKBOX,

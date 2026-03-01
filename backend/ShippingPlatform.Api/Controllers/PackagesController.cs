@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -11,8 +12,17 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpPost("api/shipments/{shipmentId:int}/packages")]
     public async Task<IActionResult> Create(int shipmentId, CreatePackageRequest input)
     {
-        var p = await business.CreateAsync(shipmentId, input);
-        return Created($"/api/packages/{p.Id}", p);
+        var (dto, err) = await business.CreateAsync(shipmentId, input);
+        if (err is not null) return Conflict(err);
+        return Created($"/api/packages/{dto!.Id}", dto);
+    }
+
+    [HttpPost("api/packages/auto-assign")]
+    public async Task<IActionResult> AutoAssign(AutoAssignPackageRequest input)
+    {
+        var (dto, err) = await business.AutoAssignAsync(input);
+        if (err is not null) return Conflict(err);
+        return Created($"/api/packages/{dto!.Id}", dto);
     }
 
     [HttpGet("api/packages")]
@@ -20,6 +30,14 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
 
     [HttpGet("api/packages/{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } p ? Ok(p) : NotFound();
+
+    [HttpPatch("api/packages/{id:int}")]
+    public async Task<IActionResult> Update(int id, UpdatePackageRequest req)
+    {
+        var (dto, err) = await business.UpdatePackageAsync(id, req);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
 
     [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
     [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
@@ -66,6 +84,18 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
 
     [HttpGet("api/packages/{id:int}/media")]
     public async Task<IActionResult> ListMedia(int id) => Ok(await business.ListMediaAsync(id));
+
+    [HttpPost("api/packages/{id:int}/pricing-override")]
+    public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)
+    {
+        var adminId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : 1;
+        var (dto, err) = await business.ApplyPricingOverrideAsync(id, req, adminId);
+        if (dto is null && err is null) return NotFound();
+        return err is null ? Ok(dto) : Conflict(err);
+    }
+
+    [HttpGet("api/packages/{id:int}/pricing-overrides")]
+    public async Task<IActionResult> GetPricingOverrides(int id) => Ok(await business.GetPricingOverridesAsync(id));
 
     private async Task<IActionResult> Change(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
     {

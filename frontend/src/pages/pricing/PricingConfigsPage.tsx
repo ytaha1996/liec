@@ -59,13 +59,13 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     disabled: false,
     value: initial?.defaultRatePerKg ?? '',
   },
-  defaultRatePerM3: {
+  defaultRatePerCbm: {
     type: DynamicField.NUMBER,
-    name: 'defaultRatePerM3',
-    title: 'Default Rate Per M3',
+    name: 'defaultRatePerCbm',
+    title: 'Default Rate Per CBM',
     required: true,
     disabled: false,
-    value: initial?.defaultRatePerM3 ?? '',
+    value: initial?.defaultRatePerCbm ?? '',
   },
 });
 

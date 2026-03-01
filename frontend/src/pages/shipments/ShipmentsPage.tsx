@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
+import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -13,24 +14,27 @@ import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
+import { SHIPMENT_STATUS_CHIPS, SHIPMENT_STATUS_FILTER_OPTIONS } from '../../constants/statusColors';
 
 const ENDPOINT = '/api/shipments';
 
-const buildFields = (): Record<string, DynamicFieldTypes> => ({
+const buildFields = (warehousesItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
   originWarehouseId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'originWarehouseId',
-    title: 'Origin Warehouse ID',
+    title: 'Origin Warehouse',
     required: true,
     disabled: false,
+    items: warehousesItems,
     value: '',
   },
   destinationWarehouseId: {
-    type: DynamicField.NUMBER,
+    type: DynamicField.SELECT,
     name: 'destinationWarehouseId',
-    title: 'Destination Warehouse ID',
+    title: 'Destination Warehouse',
     required: true,
     disabled: false,
+    items: warehousesItems,
     value: '',
   },
   plannedDepartureDate: {
@@ -49,6 +53,31 @@ const buildFields = (): Record<string, DynamicFieldTypes> => ({
     disabled: false,
     value: null,
   },
+  maxWeightKg: {
+    type: DynamicField.NUMBER,
+    name: 'maxWeightKg',
+    title: 'Max Weight (Kg, 0 = unlimited)',
+    required: false,
+    disabled: false,
+    value: 0,
+  },
+  maxCbm: {
+    type: DynamicField.NUMBER,
+    name: 'maxCbm',
+    title: 'Max CBM (0 = unlimited)',
+    required: false,
+    disabled: false,
+    value: 0,
+  },
+  tiiuCode: {
+    type: DynamicField.TEXT,
+    name: 'tiiuCode',
+    title: 'TIIU Code (e.g., MSCU1234567)',
+    required: false,
+    disabled: false,
+    value: '',
+    regex: /^[A-Za-z]{3,4}\d{4,7}$/,
+  },
 });
 
 const ShipmentsPage = () => {
@@ -60,6 +89,16 @@ const ShipmentsPage = () => {
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
+
+  const { data: warehouses = [] } = useQuery<any[]>({
+    queryKey: ['/api/warehouses'],
+    queryFn: () => getJson<any[]>('/api/warehouses'),
+  });
+
+  const warehousesItems = (warehouses as any[]).reduce((acc: Record<string, string>, w: any) => {
+    acc[String(w.id)] = `${w.name} (${w.code})`;
+    return acc;
+  }, {});
 
   const create = useMutation({
     mutationFn: (payload: Record<string, any>) => postJson(ENDPOINT, payload),
@@ -83,7 +122,7 @@ const ShipmentsPage = () => {
       type: EnhancedTableColumnType.Clickable,
       numeric: false,
       disablePadding: false,
-      onClick: (_id: string, row: Record<string, any>) => navigate(`/shipments/${row.id}`),
+      onClick: (_id: string, row: Record<string, any>) => navigate(`/ops/shipments/${row.id}`),
     },
     {
       id: 'status',
@@ -91,15 +130,7 @@ const ShipmentsPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-        ReadyToDepart: { color: '#fff', backgroundColor: '#ed6c02' },
-        Departed: { color: '#fff', backgroundColor: '#1565c0' },
-        Arrived: { color: '#fff', backgroundColor: '#2e7d32' },
-        Closed: { color: '#fff', backgroundColor: '#616161' },
-        Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-      },
+      chipColors: SHIPMENT_STATUS_CHIPS,
       chipLabels: {},
     },
     {
@@ -131,7 +162,20 @@ const ShipmentsPage = () => {
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <EnhancedTable title="Shipments" header={tableHeaders} data={tableData} defaultOrder="plannedDepartureDate" />
+        <EnhancedTable
+          title="Shipments"
+          header={tableHeaders}
+          data={tableData}
+          defaultOrder="plannedDepartureDate"
+          filters={[
+            {
+              name: 'status',
+              title: 'Status',
+              type: TableFilterTypes.SELECT,
+              options: SHIPMENT_STATUS_FILTER_OPTIONS,
+            } as ITableFilterType,
+          ]}
+        />
       </Box>
 
       <GenericDialog
@@ -142,7 +186,7 @@ const ShipmentsPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields()}
+          fields={buildFields(warehousesItems)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>
