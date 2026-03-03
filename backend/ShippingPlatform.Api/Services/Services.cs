@@ -25,7 +25,11 @@ public class TokenService(IConfiguration cfg) : ITokenService
     }
 }
 
-public interface IBlobStorageService { Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default); }
+public interface IBlobStorageService
+{
+    Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default);
+    Task DeleteAsync(string container, string blobKey, CancellationToken ct = default);
+}
 public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
 {
     public async Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default)
@@ -47,6 +51,16 @@ public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
         var blob = c.GetBlobClient(blobKey);
         await blob.UploadAsync(stream, new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType }, cancellationToken: ct);
         return (blobKey, blob.Uri.ToString());
+    }
+
+    public async Task DeleteAsync(string container, string blobKey, CancellationToken ct = default)
+    {
+        var conn = cfg["AzureBlob:ConnectionString"];
+        if (string.IsNullOrWhiteSpace(conn)) return;
+        var service = new BlobServiceClient(conn);
+        var c = service.GetBlobContainerClient(container);
+        var blob = c.GetBlobClient(blobKey);
+        await blob.DeleteIfExistsAsync(cancellationToken: ct);
     }
 }
 

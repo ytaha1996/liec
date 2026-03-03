@@ -242,6 +242,7 @@ public interface IPackageBusiness
     Task<object?> DeleteItemAsync(int id, int itemId);
     Task<object?> UploadMediaAsync(int id, MediaUploadRequest req);
     Task<List<object>> ListMediaAsync(int id);
+    Task<object?> DeleteMediaAsync(int packageId, int mediaId);
     Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId);
     Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id);
     Task<(int transitioned, object? error)> BulkTransitionAsync(int shipmentId, BulkTransitionRequest request);
@@ -347,7 +348,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
     public async Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
     {
-        var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return (null, null, null);
 
         // Shipment-gated transitions: package transitions must respect parent shipment status
@@ -373,8 +374,13 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
         if (!transitions.CanMove(p.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {p.Status} to {status}." }, null);
 
-        if (status == PackageStatus.Packed && (p.WeightKg <= 0 || p.Cbm <= 0))
-            return (null, new { code = "VALIDATION_ERROR", message = "Weight and CBM must both be greater than 0 before packing." }, null);
+        if (status == PackageStatus.Packed)
+        {
+            if (p.WeightKg <= 0 || p.Cbm <= 0)
+                return (null, new { code = "VALIDATION_ERROR", message = "Weight and CBM must both be greater than 0 before packing." }, null);
+            if (p.Items.Count == 0)
+                return (null, new { code = "VALIDATION_ERROR", message = "Package must have at least one item before packing." }, null);
+        }
 
         p.Status = status;
         if (status == PackageStatus.Packed) await pricing.RecalculateAsync(p);
@@ -474,6 +480,22 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
     public async Task<List<object>> ListMediaAsync(int id)
         => await db.Media.Where(x => x.PackageId == id).Select(m => (object)new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes }).ToListAsync();
+
+    public async Task<object?> DeleteMediaAsync(int packageId, int mediaId)
+    {
+        var p = await db.Packages.FindAsync(packageId);
+        if (p is null) return null;
+        if (p.Status >= PackageStatus.Shipped) return new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." };
+        var m = await db.Media.FirstOrDefaultAsync(x => x.Id == mediaId && x.PackageId == packageId);
+        if (m is null) return null;
+        await blob.DeleteAsync(cfg["AzureBlob:MediaContainer"] ?? "media", m.BlobKey);
+        db.Media.Remove(m);
+        await db.SaveChangesAsync();
+        p.HasDeparturePhotos = await db.Media.AnyAsync(x => x.PackageId == packageId && x.Stage == MediaStage.Departure);
+        p.HasArrivalPhotos = await db.Media.AnyAsync(x => x.PackageId == packageId && x.Stage == MediaStage.Arrival);
+        await db.SaveChangesAsync();
+        return new { ok = true };
+    }
 
     public async Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId)
     {

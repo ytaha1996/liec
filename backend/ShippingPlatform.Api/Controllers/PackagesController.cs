@@ -85,6 +85,15 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpGet("api/packages/{id:int}/media")]
     public async Task<IActionResult> ListMedia(int id) => Ok(await business.ListMediaAsync(id));
 
+    [HttpDelete("api/packages/{id:int}/media/{mediaId:int}")]
+    public async Task<IActionResult> DeleteMedia(int id, int mediaId)
+    {
+        var result = await business.DeleteMediaAsync(id, mediaId);
+        if (result is null) return NotFound();
+        if (result.GetType().GetProperty("code") is not null) return BadRequest(result);
+        return Ok(result);
+    }
+
     [HttpPost("api/packages/{id:int}/pricing-override")]
     public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)
     {

@@ -30,6 +30,13 @@ export const BOOL_CHIPS: Record<string, { color: string; backgroundColor: string
   false: { color: '#333', backgroundColor: '#e0e0e0' },
 };
 
+export const MEDIA_STAGE_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
+  Receiving:  { color: '#fff', backgroundColor: '#0288d1' },
+  Departure:  { color: '#fff', backgroundColor: '#ed6c02' },
+  Arrival:    { color: '#fff', backgroundColor: '#2e7d32' },
+  Other:      { color: '#333', backgroundColor: '#e0e0e0' },
+};
+
 export const SHIPMENT_STATUS_FILTER_OPTIONS: Record<string, string> = {
   Draft: 'Draft',
   Scheduled: 'Scheduled',

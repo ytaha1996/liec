@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,18 +7,18 @@ import {
   Button,
   Chip,
   Link as MuiLink,
-  MenuItem,
+
   Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  TextField,
+
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, api, getJson, postJson, uploadMultipart } from '../../api/client';
+import { GateError, api, getJson, postJson } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EditIcon from '@mui/icons-material/Edit';
@@ -28,7 +28,7 @@ import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../componen
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
 import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
-import { PhotoGallery } from '../../components/media/PhotoGallery';
+import MediaStageCards from '../../components/media/MediaStageCards';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 import Loader from '../../components/Loader';
@@ -66,14 +66,22 @@ const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCan
 };
 
 const PKG_INFO_FIELDS: IInformationWidgetField[] = [
-  { type: InformationWidgetFieldTypes.Text, name: 'shipmentId', title: 'Shipment ID', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'shipmentRef', title: 'Shipment', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'customer', title: 'Customer', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'provisionMethod', title: 'Provision Method', width: 'third' },
   { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'note', title: 'Note', width: 'full' },
 ];
 
-const PHOTO_STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
+const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
+  { type: InformationWidgetFieldTypes.Text, name: 'refCode', title: 'Ref Code', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'status', title: 'Status', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'originWarehouse', title: 'Origin', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'destinationWarehouse', title: 'Destination', width: 'third' },
+  { type: InformationWidgetFieldTypes.Date, name: 'plannedDepartureDate', title: 'Planned Departure', width: 'third' },
+  { type: InformationWidgetFieldTypes.Date, name: 'plannedArrivalDate', title: 'Planned Arrival', width: 'third' },
+];
+
 
 const PackageDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
@@ -82,7 +90,7 @@ const PackageDetailPage = ({ id }: Props) => {
   const [gate, setGate] = useState<GateError | null>(null);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
-  const [photoStage, setPhotoStage] = useState('Receiving');
+
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerCbm' | 'TotalCharge'>('RatePerKg');
   const [editPkgOpen, setEditPkgOpen] = useState(false);
@@ -120,6 +128,14 @@ const PackageDetailPage = ({ id }: Props) => {
   });
   const shipmentStatus: string | undefined = shipmentQuery.data?.status;
 
+  const warehousesQuery = useQuery<any[]>({
+    queryKey: ['/api/warehouses'],
+    queryFn: () => getJson<any[]>('/api/warehouses'),
+  });
+  const warehousesMap = (warehousesQuery.data ?? []).reduce(
+    (acc: Record<number, string>, w: any) => { acc[w.id] = w.name; return acc; }, {},
+  );
+
   const transition = useMutation({
     mutationFn: (action: string) => postJson(`/api/packages/${id}/${action}`),
     onSuccess: () => {
@@ -145,20 +161,6 @@ const PackageDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Delete failed'),
   });
 
-  const upload = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append('stage', photoStage);
-      fd.append('file', file);
-      return uploadMultipart(`/api/packages/${id}/media`, fd);
-    },
-    onSuccess: () => {
-      toast.success('Photo uploaded');
-      qc.invalidateQueries({ queryKey: ['/api/packages', id, 'media'] });
-      qc.invalidateQueries({ queryKey: ['/api/packages', id] });
-    },
-    onError: () => toast.error('Upload failed'),
-  });
 
   const goodsMap: Record<number, string> = (goodsQuery.data ?? []).reduce(
     (acc: Record<number, string>, g: any) => { acc[g.id] = g.nameEn; return acc; }, {},
@@ -220,7 +222,17 @@ const PackageDetailPage = ({ id }: Props) => {
   }
 
   const pkg = data.package ?? data;
-  const pkgDisplay = { ...pkg, customer: customersMap[pkg.customerId] ?? `#${pkg.customerId}` };
+  const pkgDisplay = {
+    ...pkg,
+    customer: customersMap[pkg.customerId] ?? `#${pkg.customerId}`,
+    shipmentRef: shipmentQuery.data?.refCode ?? `#${shipmentId}`,
+  };
+
+  const shipmentDisplayData = shipmentQuery.data ? {
+    ...shipmentQuery.data,
+    originWarehouse: warehousesMap[shipmentQuery.data.originWarehouseId] ?? `#${shipmentQuery.data.originWarehouseId}`,
+    destinationWarehouse: warehousesMap[shipmentQuery.data.destinationWarehouseId] ?? `#${shipmentQuery.data.destinationWarehouseId}`,
+  } : {};
 
   const pricingFields: IInformationWidgetField[] = [
     { type: InformationWidgetFieldTypes.Text, name: 'weightKg', title: 'Weight (Kg)', width: 'third' },
@@ -255,8 +267,8 @@ const PackageDetailPage = ({ id }: Props) => {
     <>
     <Box sx={{ px: 3, pt: 2 }}>
       <Button variant="text" size="small" startIcon={<ArrowBackIcon />}
-        onClick={() => navigate('/ops/packages')} sx={{ color: 'text.secondary' }}>
-        All Packages
+        onClick={() => navigate(shipmentId ? `/ops/shipments/${shipmentId}` : '/ops/packages')} sx={{ color: 'text.secondary' }}>
+        {shipmentId ? 'Back to Shipment' : 'All Packages'}
       </Button>
     </Box>
     <DetailPageLayout
@@ -301,6 +313,10 @@ const PackageDetailPage = ({ id }: Props) => {
           </Alert>
         )}
 
+        {shipmentQuery.data && (
+          <InformationWidget title="Shipment Info" fields={SHIPMENT_INFO_FIELDS} data={shipmentDisplayData} />
+        )}
+
         <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
 
         <InformationWidget
@@ -327,36 +343,8 @@ const PackageDetailPage = ({ id }: Props) => {
           <EnhancedTable title="Package Items" header={itemHeaders} data={itemsTableData} defaultOrder="goodName" />
         </MainPageSection>
 
-        <MainPageSection title="Upload Photo">
-          <Stack direction="row" gap={2} alignItems="center" flexWrap="wrap">
-            <TextField
-              select
-              label="Stage"
-              size="small"
-              value={photoStage}
-              onChange={(e) => setPhotoStage(e.target.value)}
-              sx={{ minWidth: 160 }}
-            >
-              {PHOTO_STAGES.map((s) => (
-                <MenuItem key={s} value={s}>{s}</MenuItem>
-              ))}
-            </TextField>
-            <Button component="label" variant="outlined">
-              Upload Photo
-              <input
-                hidden
-                type="file"
-                onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                  const file = e.target.files?.[0];
-                  if (file) upload.mutate(file);
-                }}
-              />
-            </Button>
-          </Stack>
-        </MainPageSection>
-
-        <MainPageSection title="Photo Gallery">
-          <PhotoGallery media={mediaQuery.data ?? []} />
+        <MainPageSection title="Photos">
+          <MediaStageCards packageId={id} media={mediaQuery.data ?? []} />
         </MainPageSection>
     </DetailPageLayout>
 
