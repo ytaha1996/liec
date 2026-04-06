@@ -20,6 +20,7 @@ interface AddPackageDialogProps {
 const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) => {
   const qc = useQueryClient();
   const [newPkgItems, setNewPkgItems] = useState<{ goodTypeId: string; quantity: string; note: string }[]>([]);
+  const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
 
   const customersQuery = useQuery<any[]>({
     queryKey: ['/api/customers'],
@@ -31,6 +32,11 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
     queryFn: () => getJson<any[]>('/api/good-types'),
   });
 
+  const suppliersQuery = useQuery<any[]>({
+    queryKey: ['/api/suppliers'],
+    queryFn: () => getJson<any[]>('/api/suppliers'),
+  });
+
   const customersItems = (customersQuery.data ?? []).reduce(
     (acc: Record<string, string>, c: any) => { acc[String(c.id)] = `${c.name} (#${c.id})`; return acc; }, {},
   );
@@ -39,14 +45,21 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
     (acc: Record<string, string>, g: any) => { acc[String(g.id)] = g.nameEn; return acc; }, {},
   );
 
+  const suppliersItems = (suppliersQuery.data ?? []).reduce(
+    (acc: Record<string, string>, s: any) => { acc[String(s.id)] = s.name; return acc; }, {},
+  );
+
+  const isProcured = provisionMethod === 'ProcuredForCustomer';
+
   const handleClose = () => {
     onClose();
     setNewPkgItems([]);
+    setProvisionMethod('CustomerProvided');
   };
 
   const handleSubmit = async (values: Record<string, any>): Promise<boolean> => {
     try {
-      await postJson(`/api/shipments/${shipmentId}/packages`, {
+      const body: Record<string, any> = {
         customerId: Number(values.customerId),
         provisionMethod: values.provisionMethod,
         supplyOrderId: null,
@@ -58,7 +71,16 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
           quantity: Number(i.quantity) || 1,
           note: i.note || null,
         })),
-      });
+      };
+      if (values.provisionMethod === 'ProcuredForCustomer') {
+        body.supplyOrder = {
+          supplierId: Number(values.soSupplierId),
+          name: values.soName,
+          purchasePrice: Number(values.soPurchasePrice),
+          details: values.soDetails || null,
+        };
+      }
+      await postJson(`/api/shipments/${shipmentId}/packages`, body);
       toast.success('Package created');
       qc.invalidateQueries({ queryKey: ['/api/packages'] });
       qc.invalidateQueries({ queryKey: ['/api/shipments', shipmentId] });
@@ -81,8 +103,15 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
           weightKg: { type: DynamicField.NUMBER, name: 'weightKg', title: 'Weight (kg)', required: false, disabled: false, value: '', min: 0, grid: { xs: 6 } },
           cbm: { type: DynamicField.NUMBER, name: 'cbm', title: 'CBM', required: false, disabled: false, value: '', min: 0, grid: { xs: 6 } },
           note: { type: DynamicField.TEXT, name: 'note', title: 'Note', required: false, disabled: false, value: '' },
+          ...(isProcured ? {
+            soSupplierId: { type: DynamicField.SELECT, name: 'soSupplierId', title: 'Supplier', required: true, disabled: false, value: '', items: suppliersItems, grid: { xs: 6 } },
+            soName: { type: DynamicField.TEXT, name: 'soName', title: 'Item / Order Name', required: true, disabled: false, value: '', grid: { xs: 6 } },
+            soPurchasePrice: { type: DynamicField.NUMBER, name: 'soPurchasePrice', title: 'Purchase Price', required: true, disabled: false, value: '', min: 0, grid: { xs: 6 } },
+            soDetails: { type: DynamicField.TEXT, name: 'soDetails', title: 'Details', required: false, disabled: false, value: '', grid: { xs: 6 } },
+          } : {}),
         }}
         onSubmit={handleSubmit}
+        onFieldChange={(name, value) => { if (name === 'provisionMethod') setProvisionMethod(value as string); }}
       >
         <Divider />
         <Typography variant="subtitle1">Items (optional)</Typography>

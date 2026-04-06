@@ -22,6 +22,8 @@ const ENDPOINT = '/api/packages';
 const buildAutoAssignFields = (
   customersItems: Record<string, string>,
   warehousesItems: Record<string, string>,
+  suppliersItems: Record<string, string>,
+  isProcured: boolean,
 ): Record<string, DynamicFieldTypes> => ({
   customerId: {
     type: DynamicField.SELECT,
@@ -59,12 +61,19 @@ const buildAutoAssignFields = (
     items: warehousesItems,
     value: '',
   },
+  ...(isProcured ? {
+    soSupplierId: { type: DynamicField.SELECT, name: 'soSupplierId', title: 'Supplier', required: true, disabled: false, value: '', items: suppliersItems },
+    soName: { type: DynamicField.TEXT, name: 'soName', title: 'Item / Order Name', required: true, disabled: false, value: '' },
+    soPurchasePrice: { type: DynamicField.NUMBER, name: 'soPurchasePrice', title: 'Purchase Price', required: true, disabled: false, value: '', min: 0 },
+    soDetails: { type: DynamicField.TEXT, name: 'soDetails', title: 'Details', required: false, disabled: false, value: '' },
+  } : {}),
 });
 
 const PackagesPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
+  const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT],
@@ -79,6 +88,11 @@ const PackagesPage = () => {
   const { data: warehouses = [] } = useQuery<any[]>({
     queryKey: ['/api/warehouses'],
     queryFn: () => getJson<any[]>('/api/warehouses'),
+  });
+
+  const { data: suppliers = [] } = useQuery<any[]>({
+    queryKey: ['/api/suppliers'],
+    queryFn: () => getJson<any[]>('/api/suppliers'),
   });
 
   const customersMap = (customers as any[]).reduce((acc: Record<number, string>, c: any) => {
@@ -96,19 +110,35 @@ const PackagesPage = () => {
     return acc;
   }, {});
 
+  const suppliersItems = (suppliers as any[]).reduce((acc: Record<string, string>, s: any) => {
+    acc[String(s.id)] = s.name;
+    return acc;
+  }, {});
+
   const autoAssign = useMutation({
-    mutationFn: (payload: Record<string, any>) =>
-      postJson<any>(`${ENDPOINT}/auto-assign`, {
+    mutationFn: (payload: Record<string, any>) => {
+      const body: Record<string, any> = {
         customerId: Number(payload.customerId),
         provisionMethod: payload.provisionMethod,
         supplyOrderId: null,
         originWarehouseId: Number(payload.originWarehouseId),
         destinationWarehouseId: Number(payload.destinationWarehouseId),
-      }),
+      };
+      if (payload.provisionMethod === 'ProcuredForCustomer') {
+        body.supplyOrder = {
+          supplierId: Number(payload.soSupplierId),
+          name: payload.soName,
+          purchasePrice: Number(payload.soPurchasePrice),
+          details: payload.soDetails || null,
+        };
+      }
+      return postJson<any>(`${ENDPOINT}/auto-assign`, body);
+    },
     onSuccess: (result: any) => {
       toast.success('Package auto-assigned to container');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
       setAutoAssignOpen(false);
+      setProvisionMethod('CustomerProvided');
       navigate(`/ops/packages/${result.id}`);
     },
     onError: (e: any) => {
@@ -233,13 +263,14 @@ const PackagesPage = () => {
       <GenericDialog
         open={autoAssignOpen}
         title="New Package (Auto-Assign to Oldest Pending Container)"
-        onClose={() => setAutoAssignOpen(false)}
+        onClose={() => { setAutoAssignOpen(false); setProvisionMethod('CustomerProvided'); }}
       >
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildAutoAssignFields(customersItems, warehousesItems)}
+          fields={buildAutoAssignFields(customersItems, warehousesItems, suppliersItems, provisionMethod === 'ProcuredForCustomer')}
           onSubmit={handleAutoAssignSubmit}
+          onFieldChange={(name, value) => { if (name === 'provisionMethod') setProvisionMethod(value as string); }}
         />
       </GenericDialog>
     </Box>

@@ -269,6 +269,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (customer is null) return (null, new { code = "VALIDATION_ERROR", message = "Customer not found." });
         if (!customer.IsActive) return (null, new { code = "VALIDATION_ERROR", message = "Customer is inactive." });
 
+        // ProcuredForCustomer requires supply order info
+        if (input.ProvisionMethod == ProvisionMethod.ProcuredForCustomer && input.SupplyOrder is null && input.SupplyOrderId is null)
+            return (null, new { code = "VALIDATION_ERROR", message = "A supply order is required for procured packages." });
+
         var package = new Package
         {
             ShipmentId = shipmentId,
@@ -313,6 +317,25 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 await pricing.RecalculateAsync(package);
                 await db.SaveChangesAsync();
                 await capacity.RecalculateAsync(shipmentId);
+            }
+
+            // Auto-create supply order for ProcuredForCustomer packages
+            if (input.SupplyOrder is not null)
+            {
+                var so = new SupplyOrder
+                {
+                    CustomerId = input.CustomerId,
+                    SupplierId = input.SupplyOrder.SupplierId,
+                    PackageId = package.Id,
+                    Name = input.SupplyOrder.Name,
+                    PurchasePrice = input.SupplyOrder.PurchasePrice,
+                    Details = input.SupplyOrder.Details,
+                    Status = SupplyOrderStatus.Draft,
+                };
+                db.SupplyOrders.Add(so);
+                await db.SaveChangesAsync();
+                package.SupplyOrderId = so.Id;
+                await db.SaveChangesAsync();
             }
 
             await tx.CommitAsync();
@@ -360,7 +383,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             await db.SaveChangesAsync();
         }
 
-        var pkg = new CreatePackageRequest(input.CustomerId, input.ProvisionMethod, input.SupplyOrderId);
+        var pkg = new CreatePackageRequest(input.CustomerId, input.ProvisionMethod, input.SupplyOrderId, SupplyOrder: input.SupplyOrder);
         var (dto, err) = await CreateAsync(shipment.Id, pkg);
         return err is not null ? (null, err) : (dto, null);
     }
@@ -416,7 +439,12 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
         // Recalculate shipment capacity when a package is cancelled
         if (status == PackageStatus.Cancelled)
+        {
             await capacity.RecalculateAsync(p.ShipmentId);
+            // Cancel cascade: unlink supply order
+            var linkedSo = await db.SupplyOrders.FirstOrDefaultAsync(x => x.PackageId == id);
+            if (linkedSo is not null) { linkedSo.PackageId = null; await db.SaveChangesAsync(); }
+        }
 
         return (p.ToDto(), null, null);
     }
@@ -664,7 +692,32 @@ public class SupplyOrderBusiness(AppDbContext db, ITransitionRuleService transit
     {
         var e = await db.SupplyOrders.FindAsync(id); if (e is null) return (null, null);
         if (!transitions.CanMove(e.Status, req.Status, req.CancelReason, out var message)) return (null, new { code = "INVALID_STATUS_TRANSITION", message });
+
+        // Validate PackedIntoPackage requires a linked package
+        if (req.Status == SupplyOrderStatus.PackedIntoPackage && e.PackageId is null)
+            return (null, new { code = "VALIDATION_ERROR", message = "A package must be linked before marking as packed." });
+
         e.Status = req.Status; e.CancelReason = req.Status == SupplyOrderStatus.Cancelled ? req.CancelReason : null;
-        await db.SaveChangesAsync(); return (e.ToDto(), null);
+        await db.SaveChangesAsync();
+
+        // Auto-receive the linked package when SO arrives at warehouse
+        if (req.Status == SupplyOrderStatus.DeliveredToWarehouse && e.PackageId is not null)
+        {
+            var pkg = await db.Packages.FindAsync(e.PackageId);
+            if (pkg is not null && pkg.Status == PackageStatus.Draft)
+            {
+                pkg.Status = PackageStatus.Received;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // Cancel cascade: clear package link
+        if (req.Status == SupplyOrderStatus.Cancelled && e.PackageId is not null)
+        {
+            var pkg = await db.Packages.FindAsync(e.PackageId);
+            if (pkg is not null) { pkg.SupplyOrderId = null; await db.SaveChangesAsync(); }
+        }
+
+        return (e.ToDto(), null);
     }
 }

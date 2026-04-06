@@ -33,7 +33,7 @@ import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 import Loader from '../../components/Loader';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
-import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
+import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
 import ItemDialog from './components/ItemDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
@@ -70,6 +70,7 @@ const PKG_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'shipmentRef', title: 'Shipment', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'customer', title: 'Customer', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'provisionMethod', title: 'Provision Method', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'supplyOrderInfo', title: 'Supply Order', width: 'third' },
   { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'note', title: 'Note', width: 'full' },
 ];
@@ -120,6 +121,13 @@ const PackageDetailPage = ({ id }: Props) => {
     enabled: !!shipmentId,
   });
   const shipmentStatus: string | undefined = shipmentQuery.data?.status;
+
+  const supplyOrderId = (data?.package ?? data)?.supplyOrderId;
+  const soQuery = useQuery<any>({
+    queryKey: ['/api/supply-orders', supplyOrderId],
+    queryFn: () => getJson<any>(`/api/supply-orders/${supplyOrderId}`),
+    enabled: !!supplyOrderId,
+  });
 
   const warehousesQuery = useQuery<any[]>({
     queryKey: ['/api/warehouses'],
@@ -215,10 +223,13 @@ const PackageDetailPage = ({ id }: Props) => {
   }
 
   const pkg = data.package ?? data;
+  const soData = soQuery.data;
   const pkgDisplay = {
     ...pkg,
     customer: customersMap[pkg.customerId] ?? `#${pkg.customerId}`,
     shipmentRef: shipmentQuery.data?.refCode ?? `#${shipmentId}`,
+    provisionMethod: pkg.provisionMethod === 'ProcuredForCustomer' ? 'Procured For Customer' : 'Customer Provided',
+    supplyOrderInfo: soData ? `#${soData.id} — ${SUPPLY_ORDER_STATUS_LABELS[soData.status] ?? soData.status}` : (pkg.supplyOrderId ? `#${pkg.supplyOrderId}` : '—'),
   };
 
   const shipmentDisplayData = shipmentQuery.data ? {
