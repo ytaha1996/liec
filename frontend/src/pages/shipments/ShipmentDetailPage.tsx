@@ -33,6 +33,7 @@ import PhotoGalleryModal from '../../components/media/PhotoGalleryModal';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import Loader from '../../components/Loader';
 import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
+import { SHIPMENT_STATUS_LABELS, PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import AddPackageDialog from './components/AddPackageDialog';
 import EditShipmentDrawer from './components/EditShipmentDrawer';
 import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
@@ -150,7 +151,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       numeric: false,
       disablePadding: false,
       chipColors: PKG_STATUS_CHIPS,
-      chipLabels: {},
+      chipLabels: PKG_STATUS_LABELS,
     },
     {
       id: 'hasDeparturePhotos',
@@ -373,7 +374,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
 
   const statusChip = (
     <Chip
-      label={data.status}
+      label={SHIPMENT_STATUS_LABELS[data.status] ?? data.status}
       size="small"
       sx={{
         backgroundColor: SHIPMENT_STATUS_CHIPS[data.status]?.backgroundColor ?? '#e0e0e0',

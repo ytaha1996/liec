@@ -15,6 +15,7 @@ import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import { PKG_STATUS_CHIPS, BOOL_CHIPS } from '../../constants/statusColors';
+import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
 
 const ENDPOINT = '/api/packages';
 
@@ -156,7 +157,7 @@ const PackagesPage = () => {
       numeric: false,
       disablePadding: false,
       chipColors: PKG_STATUS_CHIPS,
-      chipLabels: {},
+      chipLabels: PKG_STATUS_LABELS,
     },
     {
       id: 'hasDeparturePhotos',
@@ -211,17 +212,7 @@ const PackagesPage = () => {
               name: 'status',
               title: 'Status',
               type: TableFilterTypes.SELECT,
-              options: {
-                Draft: 'Draft',
-                Received: 'Received',
-                Packed: 'Packed',
-                ReadyToShip: 'Ready To Ship',
-                Shipped: 'Shipped',
-                ArrivedAtDestination: 'Arrived',
-                ReadyForHandout: 'Ready For Handout',
-                HandedOut: 'Handed Out',
-                Cancelled: 'Cancelled',
-              },
+              options: PKG_STATUS_LABELS,
             } as ITableFilterType,
             {
               name: 'hasDeparturePhotos',

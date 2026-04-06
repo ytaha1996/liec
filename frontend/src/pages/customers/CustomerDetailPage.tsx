@@ -25,6 +25,9 @@ const CUSTOMER_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'name', title: 'Name', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'primaryPhone', title: 'Primary Phone', width: 'third' },
   { type: InformationWidgetFieldTypes.Text, name: 'email', title: 'Email', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'companyName', title: 'Company Name', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'taxId', title: 'Tax ID', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'billingAddress', title: 'Billing Address', width: 'third' },
   { type: InformationWidgetFieldTypes.Boolean, name: 'isActive', title: 'Active', width: 'third' },
 ];
 

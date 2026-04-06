@@ -37,12 +37,4 @@ export const MEDIA_STAGE_CHIPS: Record<string, { color: string; backgroundColor:
   Other:      { color: '#333', backgroundColor: '#e0e0e0' },
 };
 
-export const SHIPMENT_STATUS_FILTER_OPTIONS: Record<string, string> = {
-  Draft: 'Draft',
-  Scheduled: 'Scheduled',
-  ReadyToDepart: 'Ready To Depart',
-  Departed: 'Departed',
-  Arrived: 'Arrived',
-  Closed: 'Closed',
-  Cancelled: 'Cancelled',
-};
+// Status filter options moved to constants/statusLabels.ts

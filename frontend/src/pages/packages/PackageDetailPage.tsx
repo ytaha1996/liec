@@ -33,6 +33,7 @@ import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 import Loader from '../../components/Loader';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
+import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import ItemDialog from './components/ItemDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
@@ -277,7 +278,7 @@ const PackageDetailPage = ({ id }: Props) => {
       chips={
         pkg.status && (
           <Chip
-            label={pkg.status}
+            label={PKG_STATUS_LABELS[pkg.status] ?? pkg.status}
             size="small"
             sx={{
               backgroundColor: PKG_STATUS_CHIPS[pkg.status]?.backgroundColor ?? '#e0e0e0',

@@ -14,7 +14,8 @@ import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
-import { SHIPMENT_STATUS_CHIPS, SHIPMENT_STATUS_FILTER_OPTIONS } from '../../constants/statusColors';
+import { SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
+import { SHIPMENT_STATUS_LABELS } from '../../constants/statusLabels';
 
 const ENDPOINT = '/api/shipments';
 
@@ -111,7 +112,18 @@ const ShipmentsPage = () => {
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
-    acc[item.id] = item;
+    const weightPct = item.maxWeightKg > 0 ? Math.round((item.totalWeightKg / item.maxWeightKg) * 100) : -1;
+    const cbmPct = item.maxCbm > 0 ? Math.round((item.totalCbm / item.maxCbm) * 100) : -1;
+    const capLabel = (pct: number, used: number, max: number, unit: string) =>
+      pct < 0 ? '—' : `${used}/${max} ${unit} (${pct}%)`;
+    const capLevel = (pct: number) => pct < 0 ? 'none' : pct > 95 ? 'danger' : pct >= 80 ? 'warning' : 'ok';
+    acc[item.id] = {
+      ...item,
+      weightCapacity: capLabel(weightPct, item.totalWeightKg, item.maxWeightKg, 'kg'),
+      weightCapacityLevel: capLevel(weightPct),
+      cbmCapacity: capLabel(cbmPct, item.totalCbm, item.maxCbm, ''),
+      cbmCapacityLevel: capLevel(cbmPct),
+    };
     return acc;
   }, {});
 
@@ -131,7 +143,7 @@ const ShipmentsPage = () => {
       numeric: false,
       disablePadding: false,
       chipColors: SHIPMENT_STATUS_CHIPS,
-      chipLabels: {},
+      chipLabels: SHIPMENT_STATUS_LABELS,
     },
     {
       id: 'plannedDepartureDate',
@@ -140,6 +152,36 @@ const ShipmentsPage = () => {
       numeric: false,
       disablePadding: false,
     },
+    {
+      id: 'weightCapacity',
+      label: 'Weight',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        ok: { color: '#fff', backgroundColor: '#2e7d32' },
+        warning: { color: '#fff', backgroundColor: '#ed6c02' },
+        danger: { color: '#fff', backgroundColor: '#c62828' },
+        none: { color: '#999', backgroundColor: '#f5f5f5' },
+      },
+      chipLabels: {},
+      chipValueKey: 'weightCapacityLevel',
+    } as any,
+    {
+      id: 'cbmCapacity',
+      label: 'CBM',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        ok: { color: '#fff', backgroundColor: '#2e7d32' },
+        warning: { color: '#fff', backgroundColor: '#ed6c02' },
+        danger: { color: '#fff', backgroundColor: '#c62828' },
+        none: { color: '#999', backgroundColor: '#f5f5f5' },
+      },
+      chipLabels: {},
+      chipValueKey: 'cbmCapacityLevel',
+    } as any,
   ];
 
   const handleSubmit = async (values: Record<string, any>): Promise<boolean> => {
@@ -175,7 +217,7 @@ const ShipmentsPage = () => {
               name: 'status',
               title: 'Status',
               type: TableFilterTypes.SELECT,
-              options: SHIPMENT_STATUS_FILTER_OPTIONS,
+              options: SHIPMENT_STATUS_LABELS,
             } as ITableFilterType,
           ]}
         />

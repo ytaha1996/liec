@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Stack, TextField } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
+import { SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -197,7 +198,7 @@ const SupplyOrdersPage = () => {
         Closed: { color: '#fff', backgroundColor: '#2e7d32' },
         Cancelled: { color: '#fff', backgroundColor: '#c62828' },
       },
-      chipLabels: {},
+      chipLabels: SUPPLY_ORDER_STATUS_LABELS,
     },
     {
       id: 'actions',

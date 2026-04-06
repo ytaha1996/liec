@@ -13,6 +13,7 @@ import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
+import { PRICING_CONFIG_STATUS_LABELS } from '../../constants/statusLabels';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
 
@@ -66,6 +67,14 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     required: true,
     disabled: false,
     value: initial?.defaultRatePerCbm ?? '',
+  },
+  minimumCharge: {
+    type: DynamicField.NUMBER,
+    name: 'minimumCharge',
+    title: 'Minimum Charge (0 = none)',
+    required: false,
+    disabled: false,
+    value: initial?.minimumCharge ?? 0,
   },
 });
 
@@ -131,7 +140,7 @@ const PricingConfigsPage = () => {
         Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
         Retired: { color: '#fff', backgroundColor: '#616161' },
       },
-      chipLabels: {},
+      chipLabels: PRICING_CONFIG_STATUS_LABELS,
     },
     {
       id: 'actions',
