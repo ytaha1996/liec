@@ -7,27 +7,27 @@ namespace ShippingPlatform.Api.Business;
 
 public interface IWhatsAppBusiness
 {
-    Task<object> SendBulkAsync(int shipmentId, CampaignType type);
-    Task<object> SendIndividualAsync(int customerId, int shipmentId, CampaignType type);
+    Task<object> SendBulkAsync(int shipmentId, CampaignType type, int adminUserId = 1);
+    Task<object> SendIndividualAsync(int customerId, int shipmentId, CampaignType type, int adminUserId = 1);
     Task<List<object>> CampaignsAsync();
     Task<List<object>> CampaignAsync(int id);
 }
 
 public class WhatsAppBusiness(AppDbContext db, IWhatsAppSender sender) : IWhatsAppBusiness
 {
-    public async Task<object> SendBulkAsync(int shipmentId, CampaignType type)
+    public async Task<object> SendBulkAsync(int shipmentId, CampaignType type, int adminUserId = 1)
     {
         var customers = await db.Packages.Include(x => x.Customer).ThenInclude(x => x.WhatsAppConsent).Where(x => x.ShipmentId == shipmentId).Select(x => x.Customer).Distinct().ToListAsync();
-        var camp = new WhatsAppCampaign { ShipmentId = shipmentId, Type = type, TriggeredByAdminUserId = 1, RecipientCount = customers.Count };
+        var camp = new WhatsAppCampaign { ShipmentId = shipmentId, Type = type, TriggeredByAdminUserId = adminUserId, RecipientCount = customers.Count };
         db.WhatsAppCampaigns.Add(camp); await db.SaveChangesAsync();
         foreach (var c in customers) await TrySend(camp.Id, c, shipmentId, type);
         camp.Completed = true; await db.SaveChangesAsync();
         return new { camp.Id, camp.Type, camp.ShipmentId, camp.CreatedAt, camp.RecipientCount, camp.Completed };
     }
 
-    public async Task<object> SendIndividualAsync(int customerId, int shipmentId, CampaignType type)
+    public async Task<object> SendIndividualAsync(int customerId, int shipmentId, CampaignType type, int adminUserId = 1)
     {
-        var camp = new WhatsAppCampaign { ShipmentId = shipmentId, Type = type, TriggeredByAdminUserId = 1, RecipientCount = 1 };
+        var camp = new WhatsAppCampaign { ShipmentId = shipmentId, Type = type, TriggeredByAdminUserId = adminUserId, RecipientCount = 1 };
         db.WhatsAppCampaigns.Add(camp); await db.SaveChangesAsync();
         var c = await db.Customers.Include(x => x.WhatsAppConsent).FirstAsync(x => x.Id == customerId);
         await TrySend(camp.Id, c, shipmentId, type); camp.Completed = true; await db.SaveChangesAsync();

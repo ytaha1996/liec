@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Alert, Box, CircularProgress } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
@@ -65,7 +65,7 @@ const PackagesPage = () => {
   const qc = useQueryClient();
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
 
-  const { data = [] } = useQuery<any[]>({
+  const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
@@ -186,6 +186,9 @@ const PackagesPage = () => {
       return false;
     }
   };
+
+  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load packages.</Alert></Box>;
 
   return (
     <Box>

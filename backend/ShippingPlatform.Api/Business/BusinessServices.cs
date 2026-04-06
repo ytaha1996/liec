@@ -97,13 +97,13 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<PricingConfigDto?> GetPricingConfigAsync(int id) => (await db.PricingConfigs.FindAsync(id))?.ToDto();
     public async Task<PricingConfigDto> CreatePricingConfigAsync(UpsertPricingConfigRequest req)
     {
-        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, Status = req.Status };
+        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, MinimumCharge = req.MinimumCharge, Status = req.Status };
         db.PricingConfigs.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> UpdatePricingConfigAsync(int id, UpsertPricingConfigRequest req)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.Status = req.Status;
+        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.MinimumCharge = req.MinimumCharge; e.Status = req.Status;
         await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> ActivatePricingConfigAsync(int id)
@@ -141,7 +141,7 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
 
     public async Task<CustomerDto> CreateAsync(CreateCustomerRequest req)
     {
-        var entity = new Customer { Name = req.Name, PrimaryPhone = req.PrimaryPhone, Email = req.Email, IsActive = req.IsActive };
+        var entity = new Customer { Name = req.Name, PrimaryPhone = req.PrimaryPhone, Email = req.Email, CompanyName = req.CompanyName, TaxId = req.TaxId, BillingAddress = req.BillingAddress, IsActive = req.IsActive };
         db.Customers.Add(entity);
         await db.SaveChangesAsync();
         db.WhatsAppConsents.Add(new WhatsAppConsent { CustomerId = entity.Id, OptInStatusUpdates = true, OptInDeparturePhotos = true, OptInArrivalPhotos = true });
@@ -154,7 +154,7 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
     {
         var e = await db.Customers.Include(x => x.WhatsAppConsent).FirstOrDefaultAsync(x => x.Id == id);
         if (e is null) return null;
-        e.Name = req.Name; e.PrimaryPhone = req.PrimaryPhone; e.Email = req.Email; e.IsActive = req.IsActive;
+        e.Name = req.Name; e.PrimaryPhone = req.PrimaryPhone; e.Email = req.Email; e.CompanyName = req.CompanyName; e.TaxId = req.TaxId; e.BillingAddress = req.BillingAddress; e.IsActive = req.IsActive;
         await db.SaveChangesAsync();
         return e.ToDto();
     }

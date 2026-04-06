@@ -1,6 +1,8 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ShippingPlatform.Api.Data;
@@ -53,7 +55,10 @@ builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<IPhotoComplianceService, PhotoComplianceService>();
 builder.Services.AddScoped<ICapacityService, CapacityService>();
 builder.Services.AddScoped<IImageWatermarkService, ImageWatermarkService>();
-builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
+if (!string.IsNullOrEmpty(builder.Configuration["Twilio:AccountSid"]))
+    builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
+else
+    builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
 builder.Services.AddHttpClient<IShipmentTrackingLookupService, ShipmentTrackingLookupService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
@@ -66,10 +71,21 @@ builder.Services.AddScoped<ISupplyOrderBusiness, SupplyOrderBusiness>();
 builder.Services.AddScoped<IWhatsAppBusiness, WhatsAppBusiness>();
 builder.Services.AddScoped<IExportBusiness, ExportBusiness>();
 
+builder.Services.AddRateLimiter(o =>
+{
+    o.AddFixedWindowLimiter("auth", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 10;
+        opt.QueueLimit = 0;
+    });
+});
+
 var app = builder.Build();
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers().RequireAuthorization();

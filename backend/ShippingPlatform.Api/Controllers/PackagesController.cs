@@ -76,6 +76,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpPost("api/packages/{id:int}/media")]
     public async Task<IActionResult> UploadMedia(int id, [FromForm] MediaUploadRequest req)
     {
+        req.AdminUserId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : 1;
         var result = await business.UploadMediaAsync(id, req);
         if (result is null) return NotFound();
         if (result.GetType().GetProperty("code") is not null) return BadRequest(result);

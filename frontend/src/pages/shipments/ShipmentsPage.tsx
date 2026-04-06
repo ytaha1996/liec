@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Alert, Box, CircularProgress } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
@@ -85,7 +85,7 @@ const ShipmentsPage = () => {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { data = [] } = useQuery<any[]>({
+  const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
@@ -150,6 +150,9 @@ const ShipmentsPage = () => {
       return false;
     }
   };
+
+  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load shipments.</Alert></Box>;
 
   return (
     <Box>

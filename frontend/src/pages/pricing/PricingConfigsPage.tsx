@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Alert, Box, CircularProgress } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -74,7 +74,7 @@ const PricingConfigsPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
-  const { data = [] } = useQuery<any[]>({
+  const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
@@ -173,6 +173,9 @@ const PricingConfigsPage = () => {
       return false;
     }
   };
+
+  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load pricing configs.</Alert></Box>;
 
   return (
     <Box>

@@ -30,7 +30,7 @@ public interface IBlobStorageService
     Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default);
     Task DeleteAsync(string container, string blobKey, CancellationToken ct = default);
 }
-public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
+public class BlobStorageService(IConfiguration cfg, ILogger<BlobStorageService> logger) : IBlobStorageService
 {
     public async Task<(string blobKey, string publicUrl)> UploadAsync(string container, string fileName, Stream stream, string contentType, string? forcedBlobKey = null, CancellationToken ct = default)
     {
@@ -42,7 +42,10 @@ public class BlobStorageService(IConfiguration cfg) : IBlobStorageService
         var blobKey = forcedBlobKey ?? $"{defaultFolder}/{Guid.NewGuid()}{ext}";
 
         if (string.IsNullOrWhiteSpace(conn))
+        {
+            logger.LogWarning("AzureBlob:ConnectionString is not configured. Returning placeholder URL for blob key: {BlobKey}", blobKey);
             return (blobKey, $"https://public.local/{blobKey}");
+        }
 
         var service = new BlobServiceClient(conn);
         var c = service.GetBlobContainerClient(container);
@@ -148,7 +151,10 @@ public class PricingService(AppDbContext db) : IPricingService
     {
         if (package.Status >= PackageStatus.Shipped || package.HasPricingOverride) return;
 
-        var active = await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active)
+        var now = DateTime.UtcNow;
+        var active = await db.PricingConfigs.FirstOrDefaultAsync(x =>
+                x.Status == PricingConfigStatus.Active && x.EffectiveFrom <= now && (x.EffectiveTo == null || x.EffectiveTo >= now))
+            ?? await db.PricingConfigs.FirstOrDefaultAsync(x => x.Status == PricingConfigStatus.Active)
             ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerCbm = 1, Currency = "EUR" };
 
         decimal rateKg = active.DefaultRatePerKg;
@@ -157,7 +163,8 @@ public class PricingService(AppDbContext db) : IPricingService
         package.AppliedRatePerKg = rateKg;
         package.AppliedRatePerCbm = rateCbm;
         package.Currency = active.Currency;
-        package.ChargeAmount = Math.Max(package.WeightKg * rateKg, package.Cbm * rateCbm);
+        var calculated = Math.Max(package.WeightKg * rateKg, package.Cbm * rateCbm);
+        package.ChargeAmount = active.MinimumCharge > 0 ? Math.Max(calculated, active.MinimumCharge) : calculated;
     }
 }
 
@@ -188,6 +195,49 @@ public class PhotoComplianceService(AppDbContext db) : IPhotoComplianceService
 public interface IWhatsAppSender { Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null); }
 public class StubWhatsAppSender : IWhatsAppSender { public Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null) => Task.FromResult<(bool, string?)>((true, null)); }
 
+public class TwilioWhatsAppSender(IConfiguration cfg, ILogger<TwilioWhatsAppSender> logger) : IWhatsAppSender
+{
+    public async Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null)
+    {
+        try
+        {
+            Twilio.TwilioClient.Init(cfg["Twilio:AccountSid"], cfg["Twilio:AuthToken"]);
+
+            var options = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
+                new Twilio.Types.PhoneNumber($"whatsapp:{phone}"))
+            {
+                From = new Twilio.Types.PhoneNumber($"whatsapp:{cfg["Twilio:WhatsAppFrom"]}"),
+                Body = text,
+            };
+
+            if (mediaUrls?.Any() == true)
+                options.MediaUrl = mediaUrls.Select(u => new Uri(u)).ToList();
+
+            var msg = await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(options);
+
+            if (msg.ErrorCode != null)
+            {
+                var errMsg = $"Twilio error {msg.ErrorCode}: {msg.ErrorMessage}";
+                logger.LogWarning(errMsg);
+                return (false, errMsg);
+            }
+            return (true, null);
+        }
+        catch (Twilio.Exceptions.ApiException ex)
+        {
+            var errMsg = $"Twilio API exception: {ex.Message}";
+            logger.LogError(ex, errMsg);
+            return (false, errMsg);
+        }
+        catch (Exception ex)
+        {
+            var errMsg = $"WhatsApp send failed: {ex.Message}";
+            logger.LogError(ex, errMsg);
+            return (false, errMsg);
+        }
+    }
+}
+
 public interface IExportService
 {
     Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default);
@@ -195,7 +245,7 @@ public interface IExportService
     Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default);
 }
 
-public class ExportService(AppDbContext db, IBlobStorageService blob, IConfiguration cfg, IWebHostEnvironment env) : IExportService
+public class ExportService(AppDbContext db, IBlobStorageService blob, IConfiguration cfg) : IExportService
 {
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
@@ -215,24 +265,52 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         return url;
     }
 
+    // ── Shared styling constants ──
+    private static readonly XLColor BrandTeal = XLColor.FromHtml("#00796B");
+    private static readonly XLColor HeaderGray = XLColor.FromHtml("#F5F5F5");
+    private static readonly XLColor AltRowColor = XLColor.FromHtml("#F9F9F9");
+
     public async Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default)
     {
         var shipment = await LoadShipmentExportData(shipmentId, ct);
-        using var workbook = new XLWorkbook(GetTemplatePath("bol-report-template.xlsx"));
-        var ws = workbook.Worksheet(1);
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("BOL Report");
 
-        ws.Cell("F2").Value = $"CONTAINER    {shipment.RefCode}";
-        ws.Cell("C3").Value = $"CONTAINER : {shipment.TiiuCode ?? shipment.RefCode}";
-        ws.Cell("F3").Value = shipment.RefCode;
-        ws.Cell("C4").Value = "DEPARTURE EXW";
-        ws.Cell("D4").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
-        ws.Cell("C5").Value = "DEPARTURE POL";
-        ws.Cell("D5").Value = ":" + shipment.PlannedDepartureDate.ToString("ddd.dd,MMM.yyyy");
-        ws.Cell("C6").Value = "ARRIVAL POD";
-        ws.Cell("D6").Value = ":" + shipment.PlannedArrivalDate.ToString("ddd.dd,MMM.yyyy");
-        ws.Cell("C7").Value = "BL NO";
-        ws.Cell("D7").Value = shipment.RefCode;
+        // ── Title row ──
+        ws.Range("A1:I1").Merge().SetValue("BILL OF LADING");
+        StyleTitle(ws.Range("A1:I1"), 16);
 
+        // ── Metadata rows ──
+        ws.Cell("A3").Value = "Container:"; ws.Cell("B3").Value = shipment.RefCode;
+        ws.Cell("C3").Value = "TIIU:"; ws.Cell("D3").Value = shipment.TiiuCode ?? "—";
+        ws.Cell("F3").Value = "BL No:"; ws.Cell("G3").Value = shipment.RefCode;
+        StyleMetaRow(ws.Range("A3:I3"));
+        ws.Cell("A3").Style.Font.Bold = true; ws.Cell("C3").Style.Font.Bold = true; ws.Cell("F3").Style.Font.Bold = true;
+
+        ws.Cell("A4").Value = "Origin:"; ws.Cell("B4").Value = $"{shipment.OriginWarehouse.Name} ({shipment.OriginWarehouse.Code})";
+        ws.Cell("C4").Value = "Destination:"; ws.Cell("D4").Value = $"{shipment.DestinationWarehouse.Name} ({shipment.DestinationWarehouse.Code})";
+        StyleMetaRow(ws.Range("A4:I4"));
+        ws.Cell("A4").Style.Font.Bold = true; ws.Cell("C4").Style.Font.Bold = true;
+
+        ws.Cell("A5").Value = "Departure EXW:"; ws.Cell("B5").Value = shipment.PlannedDepartureDate.ToString("dd MMM yyyy");
+        ws.Cell("C5").Value = "Departure POL:"; ws.Cell("D5").Value = shipment.PlannedDepartureDate.ToString("dd MMM yyyy");
+        ws.Cell("F5").Value = "Arrival POD:"; ws.Cell("G5").Value = shipment.PlannedArrivalDate.ToString("dd MMM yyyy");
+        StyleMetaRow(ws.Range("A5:I5"));
+        ws.Cell("A5").Style.Font.Bold = true; ws.Cell("C5").Style.Font.Bold = true; ws.Cell("F5").Style.Font.Bold = true;
+
+        ws.Cell("I6").SetValue($"Generated: {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC");
+        ws.Cell("I6").Style.Font.Italic = true;
+        ws.Cell("I6").Style.Font.FontColor = XLColor.Gray;
+        ws.Cell("I6").Style.Font.FontSize = 9;
+        ws.Cell("I6").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+        // ── Column Headers ──
+        var headers = new[] { "#", "Customer", "CBM", "Weight (Tons)", "Rate", "Freight", "Fees", "Total", "Notes" };
+        for (var c = 0; c < headers.Length; c++)
+            ws.Cell(8, c + 1).Value = headers[c];
+        StyleColumnHeaders(ws.Range(8, 1, 8, 9));
+
+        // ── Data ──
         var grouped = shipment.Packages
             .Where(p => p.Status != PackageStatus.Cancelled)
             .GroupBy(p => p.Customer)
@@ -241,31 +319,47 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
                 No = i + 1,
                 CustomerName = g.Key.Name,
                 Cbm = g.Sum(x => x.Cbm),
-                WeightKg = g.Sum(x => x.WeightKg),
-                Rate = g.Average(x => x.WeightKg * x.AppliedRatePerKg >= x.Cbm * x.AppliedRatePerCbm
-                    ? x.AppliedRatePerKg : x.AppliedRatePerCbm),
-                Price = g.Sum(x => x.ChargeAmount),
+                WeightTons = g.Sum(x => x.WeightKg) / 1000m,
+                Rate = g.Average(x => x.WeightKg * x.AppliedRatePerKg >= x.Cbm * x.AppliedRatePerCbm ? x.AppliedRatePerKg : x.AppliedRatePerCbm),
+                Freight = g.Sum(x => x.ChargeAmount),
                 Fees = 0m,
             })
             .ToList();
 
-        ws.Range("A10:J200").Clear(XLClearOptions.Contents);
-
-        var row = 10;
+        var row = 9;
         foreach (var g in grouped)
         {
             ws.Cell(row, 1).Value = g.No;
-            ws.Cell(row, 2).Value = g.No;
-            ws.Cell(row, 3).Value = g.CustomerName;
-            ws.Cell(row, 4).Value = Math.Round(g.Cbm, 3);
-            ws.Cell(row, 5).Value = Math.Round(g.WeightKg / 1000m, 3);
-            ws.Cell(row, 6).Value = Math.Round(g.Rate, 2);
-            ws.Cell(row, 7).Value = Math.Round(g.Price, 2);
-            ws.Cell(row, 8).Value = g.Fees;
-            ws.Cell(row, 9).Value = Math.Round(g.Price + g.Fees, 2);
-            ws.Cell(row, 10).Value = string.Empty;
+            ws.Cell(row, 2).Value = g.CustomerName;
+            ws.Cell(row, 3).Value = g.Cbm; ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.000";
+            ws.Cell(row, 4).Value = g.WeightTons; ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
+            ws.Cell(row, 5).Value = g.Rate; ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 6).Value = g.Freight; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 7).Value = g.Fees; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 8).Value = g.Freight + g.Fees; ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 8).Style.Font.Bold = true;
+            ws.Cell(row, 9).Value = "";
+            StyleDataRow(ws.Range(row, 1, row, 9), row);
             row++;
         }
+
+        // ── Totals row ──
+        ws.Cell(row, 2).Value = "TOTAL"; ws.Cell(row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 3).Value = grouped.Sum(x => x.Cbm); ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.000";
+        ws.Cell(row, 4).Value = grouped.Sum(x => x.WeightTons); ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
+        ws.Cell(row, 6).Value = grouped.Sum(x => x.Freight); ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 7).Value = grouped.Sum(x => x.Fees); ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 8).Value = grouped.Sum(x => x.Freight + x.Fees); ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
+        var totalsRange = ws.Range(row, 1, row, 9);
+        totalsRange.Style.Font.Bold = true;
+        totalsRange.Style.Border.TopBorder = XLBorderStyleValues.Double;
+
+        // ── Column widths + layout ──
+        ws.Column(1).Width = 5; ws.Column(2).Width = 30; ws.Column(3).Width = 12;
+        ws.Column(4).Width = 14; ws.Column(5).Width = 12; ws.Column(6).Width = 14;
+        ws.Column(7).Width = 12; ws.Column(8).Width = 14; ws.Column(9).Width = 20;
+        ws.SheetView.FreezeRows(8);
+        ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+        ws.PageSetup.FitToPages(1, 0);
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
@@ -280,13 +374,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
     public async Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default)
     {
         var shipment = await LoadShipmentExportData(shipmentId, ct);
-        using var workbook = new XLWorkbook(GetTemplatePath("customer-invoices-template.xlsx"));
-
-        while (workbook.Worksheets.Count > 1)
-            workbook.Worksheet(workbook.Worksheets.Count).Delete();
-
-        var template = workbook.Worksheet(1);
-        var sourceTemplate = template.CopyTo("_template_source");
+        using var workbook = new XLWorkbook();
 
         var grouped = shipment.Packages
             .Where(p => p.Status != PackageStatus.Cancelled)
@@ -301,12 +389,9 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         {
             var g = grouped[i];
             var name = SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1);
-            var ws = i == 0 ? template : sourceTemplate.CopyTo(name);
-            if (i == 0) ws.Name = name;
+            var ws = workbook.Worksheets.Add(name);
             FillCustomerInvoiceSheet(ws, shipment, g);
         }
-
-        sourceTemplate.Delete();
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
@@ -326,25 +411,40 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         return clean.Length <= 31 ? clean : clean[..31];
     }
 
-    private void FillCustomerInvoiceSheet(IXLWorksheet ws, Shipment shipment, IGrouping<Customer, Package> group)
+    private static void FillCustomerInvoiceSheet(IXLWorksheet ws, Shipment shipment, IGrouping<Customer, Package> group)
     {
-        for (var r = 16; r <= 250; r++)
-            ws.Range(r, 1, r, 4).Clear(XLClearOptions.Contents);
-
         var customer = group.Key;
         var totalCbm = group.Sum(x => x.Cbm);
         var totalWeight = group.Sum(x => x.WeightKg);
         var totalFreight = group.Sum(x => x.ChargeAmount);
+        var currency = group.FirstOrDefault()?.Currency ?? "EUR";
 
-        ws.Cell("D1").Value = shipment.RefCode;
-        ws.Cell("A3").Value = $"CLIENT NAME : {customer.Name.ToUpperInvariant()}";
-        ws.Cell("A4").Value = $"CLIENT CODE :  {customer.Id}";
-        ws.Cell("C6").Value = $"{Math.Round(totalCbm, 3)} mᵌ";
-        ws.Cell("D6").Value = $"{Math.Round(totalWeight, 0):N0} KG";
-        ws.Cell("A8").Value = customer.PrimaryPhone;
-        ws.Cell("C8").Value = totalFreight <= 0 ? "FOR FREE" : $"FREIGHT = {Math.Round(totalFreight, 0):N0} {group.FirstOrDefault()?.Currency ?? "EUR"}";
+        // ── Title ──
+        ws.Range("A1:D1").Merge().SetValue("CUSTOMER INVOICE");
+        StyleTitle(ws.Range("A1:D1"), 14);
 
-        var row = 16;
+        // ── Metadata ──
+        ws.Cell("A3").Value = $"Client: {customer.Name.ToUpperInvariant()}";
+        ws.Cell("C3").Value = $"Code: {customer.Id}";
+        StyleMetaRow(ws.Range("A3:D3"));
+        ws.Cell("A3").Style.Font.Bold = true; ws.Cell("C3").Style.Font.Bold = true;
+
+        ws.Cell("A4").Value = $"Phone: {customer.PrimaryPhone}";
+        ws.Cell("C4").Value = $"Shipment: {shipment.RefCode}";
+        StyleMetaRow(ws.Range("A4:D4"));
+
+        ws.Cell("A5").Value = $"CBM: {Math.Round(totalCbm, 3)} m\u00B3";
+        ws.Cell("B5").Value = $"Weight: {Math.Round(totalWeight, 0):N0} KG";
+        ws.Cell("C5").Value = totalFreight <= 0 ? "FOR FREE" : $"Freight: {Math.Round(totalFreight, 0):N0} {currency}";
+        StyleMetaRow(ws.Range("A5:D5"));
+        ws.Cell("A5").Style.Font.Bold = true; ws.Cell("B5").Style.Font.Bold = true; ws.Cell("C5").Style.Font.Bold = true;
+
+        // ── Column Headers ──
+        ws.Cell(7, 1).Value = "Item"; ws.Cell(7, 2).Value = "Qty"; ws.Cell(7, 3).Value = "Unit"; ws.Cell(7, 4).Value = "Notes";
+        StyleColumnHeaders(ws.Range(7, 1, 7, 4));
+
+        // ── Data ──
+        var row = 8;
         var lines = group.SelectMany(p => p.Items.Select(i => new { Item = i, PackageNote = p.Note })).ToList();
         if (lines.Count == 0)
         {
@@ -352,17 +452,66 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             ws.Cell(row, 2).Value = 1;
             ws.Cell(row, 3).Value = "UNIT";
             ws.Cell(row, 4).Value = "No items recorded";
-            return;
+            StyleDataRow(ws.Range(row, 1, row, 4), row);
+        }
+        else
+        {
+            foreach (var line in lines)
+            {
+                ws.Cell(row, 1).Value = line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}";
+                ws.Cell(row, 2).Value = line.Item.Quantity;
+                ws.Cell(row, 3).Value = "UNIT";
+                ws.Cell(row, 4).Value = string.IsNullOrWhiteSpace(line.Item.Note) ? (line.PackageNote ?? string.Empty) : line.Item.Note;
+                StyleDataRow(ws.Range(row, 1, row, 4), row);
+                row++;
+            }
         }
 
-        foreach (var line in lines)
-        {
-            ws.Cell(row, 1).Value = line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}";
-            ws.Cell(row, 2).Value = line.Item.Quantity;
-            ws.Cell(row, 3).Value = "UNIT";
-            ws.Cell(row, 4).Value = string.IsNullOrWhiteSpace(line.Item.Note) ? (line.PackageNote ?? string.Empty) : line.Item.Note;
-            row++;
-        }
+        // ── Column widths + layout ──
+        ws.Column(1).Width = 30; ws.Column(2).Width = 10; ws.Column(3).Width = 10; ws.Column(4).Width = 40;
+        ws.Column(2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Column(3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Column(4).Style.Alignment.WrapText = true;
+        ws.SheetView.FreezeRows(7);
+        ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
+        ws.PageSetup.FitToPages(1, 0);
+    }
+
+    // ── Shared styling helpers ──
+    private static void StyleTitle(IXLRange range, int fontSize)
+    {
+        range.Style.Font.Bold = true;
+        range.Style.Font.FontSize = fontSize;
+        range.Style.Font.FontColor = XLColor.White;
+        range.Style.Fill.BackgroundColor = BrandTeal;
+        range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        range.Worksheet.Row(range.FirstRow().RowNumber()).Height = fontSize * 2.2;
+    }
+
+    private static void StyleMetaRow(IXLRange range)
+    {
+        range.Style.Fill.BackgroundColor = HeaderGray;
+        range.Style.Font.FontSize = 10;
+    }
+
+    private static void StyleColumnHeaders(IXLRange range)
+    {
+        range.Style.Font.Bold = true;
+        range.Style.Font.FontColor = XLColor.White;
+        range.Style.Fill.BackgroundColor = BrandTeal;
+        range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        range.Style.Border.BottomBorder = XLBorderStyleValues.Medium;
+        range.Style.Border.BottomBorderColor = BrandTeal;
+    }
+
+    private static void StyleDataRow(IXLRange range, int rowIndex)
+    {
+        if (rowIndex % 2 == 0) range.Style.Fill.BackgroundColor = AltRowColor;
+        range.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        range.Style.Border.InsideBorderColor = XLColor.FromHtml("#E0E0E0");
+        range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        range.Style.Border.OutsideBorderColor = XLColor.FromHtml("#E0E0E0");
     }
 
     private async Task<Shipment> LoadShipmentExportData(int shipmentId, CancellationToken ct)
@@ -381,14 +530,6 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             throw new KeyNotFoundException("Shipment not found.");
 
         return shipment;
-    }
-
-    private string GetTemplatePath(string fileName)
-    {
-        var path = Path.Combine(env.ContentRootPath, "Templates", fileName);
-        if (!File.Exists(path))
-            throw new FileNotFoundException($"Template not found: {fileName}", path);
-        return path;
     }
 }
 

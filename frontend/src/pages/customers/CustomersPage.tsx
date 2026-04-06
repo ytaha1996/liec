@@ -131,7 +131,7 @@ const CustomersPage = () => {
         {
           icon: <OpenInNewIcon fontSize="small" />,
           label: 'Open Detail',
-          onClick: (id: string) => navigate(`/customers/${id}`),
+          onClick: (id: string) => navigate(`/master/customers/${id}`),
           hidden: () => false,
         },
       ],

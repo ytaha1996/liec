@@ -125,6 +125,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       customer: customersMap[item.customerId] ?? `#${item.customerId}`,
       hasDeparturePhotos: String(item.hasDeparturePhotos),
       hasArrivalPhotos: String(item.hasArrivalPhotos),
+      chargeDisplay: item.chargeAmount > 0 ? `${Number(item.chargeAmount).toFixed(2)} ${item.currency}` : '—',
     };
     return acc;
   }, {});
@@ -139,6 +140,9 @@ const ShipmentDetailPage = ({ id }: Props) => {
       onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/packages/${row.id}`),
     },
     { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
+    { id: 'weightKg', label: 'Weight (Kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
+    { id: 'cbm', label: 'CBM', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
+    { id: 'chargeDisplay', label: 'Charge', type: EnhancedTableColumnType.TEXT, numeric: true, disablePadding: false },
     {
       id: 'status',
       label: 'Status',
@@ -313,6 +317,29 @@ const ShipmentDetailPage = ({ id }: Props) => {
     destinationWarehouse: warehousesMap[data.destinationWarehouseId] ?? `#${data.destinationWarehouseId}`,
   };
 
+  const activePackages = shipmentPackages.filter((p: any) => p.status !== 'Cancelled');
+  const totalCharge = activePackages.reduce((sum: number, p: any) => sum + (p.chargeAmount ?? 0), 0);
+  const shipmentCurrency = activePackages[0]?.currency ?? 'EUR';
+  const overrideCount = activePackages.filter((p: any) => p.hasPricingOverride).length;
+
+  const financialFields: IInformationWidgetField[] = [
+    { type: InformationWidgetFieldTypes.Text, name: 'packageCount', title: 'Total Packages', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'totalWeight', title: 'Total Weight (Kg)', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'totalCbm', title: 'Total CBM', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'totalCharges', title: 'Total Charges', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'currency', title: 'Currency', width: 'third' },
+    ...(overrideCount > 0 ? [{ type: InformationWidgetFieldTypes.Text, name: 'overrides', title: 'Pricing Overrides', width: 'third' } as IInformationWidgetField] : []),
+  ];
+
+  const financialData = {
+    packageCount: activePackages.length,
+    totalWeight: data.totalWeightKg,
+    totalCbm: data.totalCbm,
+    totalCharges: totalCharge.toFixed(2),
+    currency: shipmentCurrency,
+    overrides: `${overrideCount} package${overrideCount !== 1 ? 's' : ''}`,
+  };
+
   const editInfoActions = CAN_EDIT_SHIPMENT.has(data.status)
     ? [{ key: 'edit', title: 'Edit Info', onClick: () => setEditDrawerOpen(true) }]
     : [];
@@ -421,6 +448,10 @@ const ShipmentDetailPage = ({ id }: Props) => {
               );
             })()}
           </MainPageSection>
+        )}
+
+        {['Departed', 'Arrived', 'Closed'].includes(data.status) && (
+          <InformationWidget title="Financial Summary" fields={financialFields} data={financialData} />
         )}
 
         <MainPageSection title="External Tracking Sync">

@@ -104,6 +104,18 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
 
         s.Status = status;
 
+        // When cancelling a shipment, cancel all non-shipped packages and recalculate capacity
+        if (status == ShipmentStatus.Cancelled)
+        {
+            var pkgs = await db.Packages
+                .Where(p => p.ShipmentId == id && p.Status < PackageStatus.Shipped && p.Status != PackageStatus.Cancelled)
+                .ToListAsync();
+            foreach (var p in pkgs) p.Status = PackageStatus.Cancelled;
+            await db.SaveChangesAsync();
+            await capacity.RecalculateAsync(id);
+            return (s.ToDto(), null);
+        }
+
         // Reassign unloaded packages (Draft/Received/Packed) to another Draft shipment on the same route
         if (status == ShipmentStatus.ReadyToDepart)
         {
@@ -252,6 +264,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 {
     public async Task<(PackageDto? dto, object? error)> CreateAsync(int shipmentId, CreatePackageRequest input)
     {
+        // Validate customer exists and is active
+        var customer = await db.Customers.FindAsync(input.CustomerId);
+        if (customer is null) return (null, new { code = "VALIDATION_ERROR", message = "Customer not found." });
+        if (!customer.IsActive) return (null, new { code = "VALIDATION_ERROR", message = "Customer is inactive." });
+
         var package = new Package
         {
             ShipmentId = shipmentId,
@@ -264,35 +281,46 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             Status = PackageStatus.Draft,
         };
 
-        if (package.WeightKg > 0 || package.Cbm > 0)
+        await using var tx = await db.Database.BeginTransactionAsync();
+        try
         {
-            var shipment = await db.Shipments.Include(s => s.Packages).FirstOrDefaultAsync(s => s.Id == shipmentId);
-            if (shipment is not null)
+            if (package.WeightKg > 0 || package.Cbm > 0)
             {
-                var currentWeight = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.WeightKg);
-                var currentCbm = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.Cbm);
-                if (shipment.MaxWeightKg > 0 && currentWeight + package.WeightKg > shipment.MaxWeightKg)
-                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Package weight exceeds shipment capacity." });
-                if (shipment.MaxCbm > 0 && currentCbm + package.Cbm > shipment.MaxCbm)
-                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Package CBM exceeds shipment capacity." });
+                var shipment = await db.Shipments.Include(s => s.Packages).FirstOrDefaultAsync(s => s.Id == shipmentId);
+                if (shipment is not null)
+                {
+                    var currentWeight = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.WeightKg);
+                    var currentCbm = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.Cbm);
+                    if (shipment.MaxWeightKg > 0 && currentWeight + package.WeightKg > shipment.MaxWeightKg)
+                        return (null, new { code = "CAPACITY_EXCEEDED", message = "Package weight exceeds shipment capacity." });
+                    if (shipment.MaxCbm > 0 && currentCbm + package.Cbm > shipment.MaxCbm)
+                        return (null, new { code = "CAPACITY_EXCEEDED", message = "Package CBM exceeds shipment capacity." });
+                }
             }
-        }
 
-        db.Packages.Add(package);
-        await db.SaveChangesAsync();
-
-        if (input.Items is { Count: > 0 })
-        {
-            foreach (var item in input.Items)
-                db.PackageItems.Add(new PackageItem { PackageId = package.Id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
+            db.Packages.Add(package);
             await db.SaveChangesAsync();
-        }
 
-        if (package.WeightKg > 0 || package.Cbm > 0)
+            if (input.Items is { Count: > 0 })
+            {
+                foreach (var item in input.Items)
+                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
+                await db.SaveChangesAsync();
+            }
+
+            if (package.WeightKg > 0 || package.Cbm > 0)
+            {
+                await pricing.RecalculateAsync(package);
+                await db.SaveChangesAsync();
+                await capacity.RecalculateAsync(shipmentId);
+            }
+
+            await tx.CommitAsync();
+        }
+        catch
         {
-            await pricing.RecalculateAsync(package);
-            await db.SaveChangesAsync();
-            await capacity.RecalculateAsync(shipmentId);
+            await tx.RollbackAsync();
+            throw;
         }
 
         return (package.ToDto(), null);
@@ -385,6 +413,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         p.Status = status;
         if (status == PackageStatus.Packed) await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
+
+        // Recalculate shipment capacity when a package is cancelled
+        if (status == PackageStatus.Cancelled)
+            await capacity.RecalculateAsync(p.ShipmentId);
+
         return (p.ToDto(), null, null);
     }
 
@@ -426,7 +459,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
+        if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
 
         var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note };
         db.PackageItems.Add(entity);
@@ -439,7 +472,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
+        if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId);
         if (i is null) return (null, null);
 
@@ -452,7 +485,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     public async Task<object?> DeleteItemAsync(int id, int itemId)
     {
         var p = await db.Packages.FindAsync(id); if (p is null) return null;
-        if (p.Status >= PackageStatus.Shipped) return new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." };
+        if (p.Status >= PackageStatus.ReadyToShip) return new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." };
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId); if (i is null) return null;
         db.PackageItems.Remove(i);
         await db.SaveChangesAsync();
@@ -470,7 +503,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var ext = Path.GetExtension(req.File.FileName);
         var forced = $"media/packages/{id}/{req.Stage.ToString().ToLowerInvariant()}/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}{ext}";
         var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, processedStream, req.File.ContentType, forced);
-        var media = new Media { PackageId = id, Stage = req.Stage, BlobKey = key, PublicUrl = url, CapturedAt = req.CapturedAt, OperatorName = req.OperatorName, Notes = req.Notes, RecordedByAdminUserId = 1 };
+        var media = new Media { PackageId = id, Stage = req.Stage, BlobKey = key, PublicUrl = url, CapturedAt = req.CapturedAt, OperatorName = req.OperatorName, Notes = req.Notes, RecordedByAdminUserId = req.AdminUserId };
         db.Media.Add(media); await db.SaveChangesAsync();
         p.HasDeparturePhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Departure);
         p.HasArrivalPhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Arrival);
@@ -503,6 +536,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (p is null) return (null, null);
         if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Cannot override pricing on a shipped package." });
         if (string.IsNullOrWhiteSpace(req.Reason)) return (null, new { code = "VALIDATION_ERROR", message = "Reason is required." });
+        if (req.OverrideType != PricingOverrideType.TotalCharge && req.NewValue <= 0)
+            return (null, new { code = "VALIDATION_ERROR", message = "Rate must be greater than 0." });
+        if (req.OverrideType == PricingOverrideType.TotalCharge && req.NewValue < 0)
+            return (null, new { code = "VALIDATION_ERROR", message = "Total charge cannot be negative." });
 
         var originalValue = req.OverrideType switch
         {

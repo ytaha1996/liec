@@ -20,6 +20,7 @@
     <PackageReference Include="ClosedXML" Version="0.103.0" />
     <PackageReference Include="SkiaSharp" Version="2.88.*" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.*" />
+    <PackageReference Include="Twilio" Version="7.*" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Migrations\" />

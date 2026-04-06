@@ -18,6 +18,7 @@ import SuppliersPage from './pages/suppliers/SuppliersPage';
 import SupplyOrdersPage from './pages/supply-orders/SupplyOrdersPage';
 import MessagingLogsPage from './pages/messaging/MessagingLogsPage';
 import GroupHelperExportPage from './pages/messaging/GroupHelperExportPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 const CustomerDetailWrap = () => { const { id = '0' } = useParams(); return <CustomerDetailPage id={id} />; };
 const ShipmentDetailWrap = () => { const { id = '0' } = useParams(); return <ShipmentDetailPage id={id} />; };
@@ -64,7 +65,7 @@ export const Protected: React.FC = () => {
         <Route path="/comms/messaging-logs" element={<MessagingLogsPage />} />
         <Route path="/comms/group-helper-export" element={<GroupHelperExportPage />} />
 
-        <Route path="*" element={<Navigate to="/ops/dashboard" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );

@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WhatsAppCampaign> WhatsAppCampaigns => Set<WhatsAppCampaign>();
     public DbSet<WhatsAppDeliveryLog> WhatsAppDeliveryLogs => Set<WhatsAppDeliveryLog>();
     public DbSet<PackagePricingOverride> PricingOverrides => Set<PackagePricingOverride>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,5 +30,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Shipment>().HasIndex(x => x.RefCode).IsUnique();
         modelBuilder.Entity<SupplyOrder>().HasIndex(x => x.PackageId).IsUnique();
         modelBuilder.Entity<ShipmentSequence>().HasIndex(x => new { x.OriginWarehouseCode, x.Year }).IsUnique();
+
+        // Performance indexes on foreign keys used in frequent queries
+        modelBuilder.Entity<Package>().HasIndex(x => x.ShipmentId);
+        modelBuilder.Entity<Package>().HasIndex(x => x.CustomerId);
+        modelBuilder.Entity<PackageItem>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<Media>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<WhatsAppDeliveryLog>().HasIndex(x => x.CampaignId);
+        modelBuilder.Entity<PackagePricingOverride>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<AuditLog>().HasIndex(x => new { x.EntityType, x.EntityId });
     }
 }

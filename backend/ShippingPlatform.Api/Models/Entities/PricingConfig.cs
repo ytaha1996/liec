@@ -9,5 +9,6 @@ public class PricingConfig
     public DateTime? EffectiveTo { get; set; }
     public decimal DefaultRatePerKg { get; set; }
     public decimal DefaultRatePerCbm { get; set; }
+    public decimal MinimumCharge { get; set; }
     public PricingConfigStatus Status { get; set; } = PricingConfigStatus.Draft;
 }

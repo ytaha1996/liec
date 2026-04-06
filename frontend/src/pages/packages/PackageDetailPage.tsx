@@ -73,14 +73,6 @@ const PKG_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'note', title: 'Note', width: 'full' },
 ];
 
-const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
-  { type: InformationWidgetFieldTypes.Text, name: 'refCode', title: 'Ref Code', width: 'third' },
-  { type: InformationWidgetFieldTypes.Text, name: 'status', title: 'Status', width: 'third' },
-  { type: InformationWidgetFieldTypes.Text, name: 'originWarehouse', title: 'Origin', width: 'third' },
-  { type: InformationWidgetFieldTypes.Text, name: 'destinationWarehouse', title: 'Destination', width: 'third' },
-  { type: InformationWidgetFieldTypes.Date, name: 'plannedDepartureDate', title: 'Planned Departure', width: 'third' },
-  { type: InformationWidgetFieldTypes.Date, name: 'plannedArrivalDate', title: 'Planned Arrival', width: 'third' },
-];
 
 
 const PackageDetailPage = ({ id }: Props) => {
@@ -234,6 +226,15 @@ const PackageDetailPage = ({ id }: Props) => {
     destinationWarehouse: warehousesMap[shipmentQuery.data.destinationWarehouseId] ?? `#${shipmentQuery.data.destinationWarehouseId}`,
   } : {};
 
+  const shipmentInfoFields: IInformationWidgetField[] = [
+    { type: InformationWidgetFieldTypes.Text, name: 'refCode', title: 'Ref Code', width: 'third', action: { label: 'View Shipment', onClick: () => navigate(`/ops/shipments/${shipmentId}`) } },
+    { type: InformationWidgetFieldTypes.Text, name: 'status', title: 'Status', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'originWarehouse', title: 'Origin', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'destinationWarehouse', title: 'Destination', width: 'third' },
+    { type: InformationWidgetFieldTypes.Date, name: 'plannedDepartureDate', title: 'Planned Departure', width: 'third' },
+    { type: InformationWidgetFieldTypes.Date, name: 'plannedArrivalDate', title: 'Planned Arrival', width: 'third' },
+  ];
+
   const pricingFields: IInformationWidgetField[] = [
     { type: InformationWidgetFieldTypes.Text, name: 'weightKg', title: 'Weight (Kg)', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'cbm', title: 'CBM', width: 'third' },
@@ -314,7 +315,7 @@ const PackageDetailPage = ({ id }: Props) => {
         )}
 
         {shipmentQuery.data && (
-          <InformationWidget title="Shipment Info" fields={SHIPMENT_INFO_FIELDS} data={shipmentDisplayData} />
+          <InformationWidget title="Shipment Info" fields={shipmentInfoFields} data={shipmentDisplayData} />
         )}
 
         <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
