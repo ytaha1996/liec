@@ -230,6 +230,7 @@ const PackageDetailPage = ({ id }: Props) => {
     shipmentRef: shipmentQuery.data?.refCode ?? `#${shipmentId}`,
     provisionMethod: pkg.provisionMethod === 'ProcuredForCustomer' ? 'Procured For Customer' : 'Customer Provided',
     supplyOrderInfo: soData ? `#${soData.id} — ${SUPPLY_ORDER_STATUS_LABELS[soData.status] ?? soData.status}` : (pkg.supplyOrderId ? `#${pkg.supplyOrderId}` : '—'),
+    weightTons: (pkg.weightKg / 1000).toFixed(3),
   };
 
   const shipmentDisplayData = shipmentQuery.data ? {
@@ -248,11 +249,11 @@ const PackageDetailPage = ({ id }: Props) => {
   ];
 
   const pricingFields: IInformationWidgetField[] = [
-    { type: InformationWidgetFieldTypes.Text, name: 'weightKg', title: 'Weight (Kg)', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'cbm', title: 'CBM', width: 'third' },
+    { type: InformationWidgetFieldTypes.Text, name: 'weightTons', title: 'Weight (t)', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'currency', title: 'Currency', width: 'third' },
-    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } },
     { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } },
     { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } },
   ];
 

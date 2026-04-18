@@ -114,15 +114,15 @@ const ShipmentsPage = () => {
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
     const weightPct = item.maxWeightKg > 0 ? Math.round((item.totalWeightKg / item.maxWeightKg) * 100) : -1;
     const cbmPct = item.maxCbm > 0 ? Math.round((item.totalCbm / item.maxCbm) * 100) : -1;
-    const capLabel = (pct: number, used: number, max: number, unit: string) =>
-      pct < 0 ? '—' : `${used}/${max} ${unit} (${pct}%)`;
     const capLevel = (pct: number) => pct < 0 ? 'none' : pct > 95 ? 'danger' : pct >= 80 ? 'warning' : 'ok';
+    const weightLabel = weightPct < 0 ? '—' : `${(item.totalWeightKg / 1000).toFixed(3)}/${(item.maxWeightKg / 1000).toFixed(3)} t (${weightPct}%)`;
+    const cbmLabel = cbmPct < 0 ? '—' : `${item.totalCbm}/${item.maxCbm} (${cbmPct}%)`;
     acc[item.id] = {
       ...item,
-      weightCapacity: capLabel(weightPct, item.totalWeightKg, item.maxWeightKg, 'kg'),
-      weightCapacityLevel: capLevel(weightPct),
-      cbmCapacity: capLabel(cbmPct, item.totalCbm, item.maxCbm, ''),
+      cbmCapacity: cbmLabel,
       cbmCapacityLevel: capLevel(cbmPct),
+      weightCapacity: weightLabel,
+      weightCapacityLevel: capLevel(weightPct),
     };
     return acc;
   }, {});
@@ -153,21 +153,6 @@ const ShipmentsPage = () => {
       disablePadding: false,
     },
     {
-      id: 'weightCapacity',
-      label: 'Weight',
-      type: EnhancedTableColumnType.COLORED_CHIP,
-      numeric: false,
-      disablePadding: false,
-      chipColors: {
-        ok: { color: '#fff', backgroundColor: '#2e7d32' },
-        warning: { color: '#fff', backgroundColor: '#ed6c02' },
-        danger: { color: '#fff', backgroundColor: '#c62828' },
-        none: { color: '#999', backgroundColor: '#f5f5f5' },
-      },
-      chipLabels: {},
-      chipValueKey: 'weightCapacityLevel',
-    } as any,
-    {
       id: 'cbmCapacity',
       label: 'CBM',
       type: EnhancedTableColumnType.COLORED_CHIP,
@@ -181,6 +166,21 @@ const ShipmentsPage = () => {
       },
       chipLabels: {},
       chipValueKey: 'cbmCapacityLevel',
+    } as any,
+    {
+      id: 'weightCapacity',
+      label: 'Weight',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        ok: { color: '#fff', backgroundColor: '#2e7d32' },
+        warning: { color: '#fff', backgroundColor: '#ed6c02' },
+        danger: { color: '#fff', backgroundColor: '#c62828' },
+        none: { color: '#999', backgroundColor: '#f5f5f5' },
+      },
+      chipLabels: {},
+      chipValueKey: 'weightCapacityLevel',
     } as any,
   ];
 

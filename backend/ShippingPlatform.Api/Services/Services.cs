@@ -434,7 +434,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         StyleMetaRow(ws.Range("A4:D4"));
 
         ws.Cell("A5").Value = $"CBM: {Math.Round(totalCbm, 3)} m\u00B3";
-        ws.Cell("B5").Value = $"Weight: {Math.Round(totalWeight, 0):N0} KG";
+        ws.Cell("B5").Value = $"Weight: {totalWeight / 1000m:N3} t";
         ws.Cell("C5").Value = totalFreight <= 0 ? "FOR FREE" : $"Freight: {Math.Round(totalFreight, 0):N0} {currency}";
         StyleMetaRow(ws.Range("A5:D5"));
         ws.Cell("A5").Style.Font.Bold = true; ws.Cell("B5").Style.Font.Bold = true; ws.Cell("C5").Style.Font.Bold = true;

@@ -426,23 +426,23 @@ const ShipmentDetailPage = ({ id }: Props) => {
 
         {(data.maxWeightKg > 0 || data.maxCbm > 0) && (
           <MainPageSection title="Container Capacity">
-            {data.maxWeightKg > 0 && (() => {
-              const pct = Math.min((data.totalWeightKg / data.maxWeightKg) * 100, 100);
+            {data.maxCbm > 0 && (() => {
+              const pct = Math.min((data.totalCbm / data.maxCbm) * 100, 100);
               return (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    Weight: {data.totalWeightKg} / {data.maxWeightKg} kg ({pct.toFixed(1)}%)
+                    CBM: {data.totalCbm} / {data.maxCbm} ({pct.toFixed(1)}%)
                   </Typography>
                   <LinearProgress variant="determinate" value={pct} color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'} />
                 </Box>
               );
             })()}
-            {data.maxCbm > 0 && (() => {
-              const pct = Math.min((data.totalCbm / data.maxCbm) * 100, 100);
+            {data.maxWeightKg > 0 && (() => {
+              const pct = Math.min((data.totalWeightKg / data.maxWeightKg) * 100, 100);
               return (
                 <Box>
                   <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    CBM: {data.totalCbm} / {data.maxCbm} ({pct.toFixed(1)}%)
+                    Weight: {(data.totalWeightKg / 1000).toFixed(3)} / {(data.maxWeightKg / 1000).toFixed(3)} t ({pct.toFixed(1)}%)
                   </Typography>
                   <LinearProgress variant="determinate" value={pct} color={pct >= 90 ? 'error' : pct >= 80 ? 'warning' : 'primary'} />
                 </Box>
