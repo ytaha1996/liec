@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, CircularProgress } from '@mui/material';
+import { Alert, Box, CircularProgress, TextField, Typography } from '@mui/material';
 import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
@@ -87,10 +87,11 @@ const ShipmentsPage = () => {
   const qc = useQueryClient();
   const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
-    queryKey: [ENDPOINT],
-    queryFn: () => getJson<any[]>(ENDPOINT),
+    queryKey: [ENDPOINT, search],
+    queryFn: () => getJson<any[]>(search ? `${ENDPOINT}?q=${encodeURIComponent(search)}` : ENDPOINT),
   });
 
   const { data: warehouses = [] } = useQuery<any[]>({
@@ -209,6 +210,18 @@ const ShipmentsPage = () => {
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
+        <TextField
+          size="small"
+          label="Search by Ref Code or TIIU"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2, minWidth: 300 }}
+        />
+        {Object.keys(tableData).length === 0 && (
+          <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+            No shipments found. Create one to get started.
+          </Typography>
+        )}
         <EnhancedTable
           title="Shipments"
           header={tableHeaders}

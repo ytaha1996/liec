@@ -29,7 +29,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     }
 
     [HttpGet("api/packages")]
-    public async Task<IActionResult> List() => Ok(await business.ListAsync());
+    public async Task<IActionResult> List([FromQuery] string? q = null, [FromQuery] int? customerId = null, [FromQuery] int? shipmentId = null, [FromQuery] PackageStatus? status = null, [FromQuery] int? page = null, [FromQuery] int pageSize = 25) => Ok(await business.ListAsync(q, customerId, shipmentId, status, page, pageSize));
 
     [HttpGet("api/packages/{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } p ? Ok(p) : NotFound();
@@ -116,6 +116,9 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
 
     [HttpGet("api/packages/{id:int}/pricing-overrides")]
     public async Task<IActionResult> GetPricingOverrides(int id) => Ok(await business.GetPricingOverridesAsync(id));
+
+    [HttpGet("api/packages/{id:int}/audit-log")]
+    public async Task<IActionResult> AuditLog(int id, [FromServices] ShippingPlatform.Api.Services.IAuditService audit) => Ok(await audit.GetLogsAsync("Package", id));
 
     private async Task<IActionResult> Change(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
     {

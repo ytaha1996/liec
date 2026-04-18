@@ -71,6 +71,7 @@ builder.Services.AddScoped<ISupplyOrderBusiness, SupplyOrderBusiness>();
 builder.Services.AddScoped<IWhatsAppBusiness, WhatsAppBusiness>();
 builder.Services.AddScoped<IExportBusiness, ExportBusiness>();
 builder.Services.AddScoped<IUserBusiness, UserBusiness>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 
 builder.Services.AddRateLimiter(o =>
 {

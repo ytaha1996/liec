@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, CircularProgress } from '@mui/material';
+import { Alert, Box, CircularProgress, TextField, Typography } from '@mui/material';
 import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
@@ -76,10 +76,11 @@ const PackagesPage = () => {
   const role = useUserRole();
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
+  const [search, setSearch] = useState('');
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
-    queryKey: [ENDPOINT],
-    queryFn: () => getJson<any[]>(ENDPOINT),
+    queryKey: [ENDPOINT, search],
+    queryFn: () => getJson<any[]>(search ? `${ENDPOINT}?q=${encodeURIComponent(search)}` : ENDPOINT),
   });
 
   const { data: customers = [] } = useQuery<any[]>({
@@ -152,7 +153,7 @@ const PackagesPage = () => {
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
     acc[item.id] = {
       ...item,
-      customer: customersMap[item.customerId] ?? `#${item.customerId}`,
+      customer: item.customerName ?? customersMap[item.customerId] ?? `#${item.customerId}`,
       hasDeparturePhotos: String(item.hasDeparturePhotos),
       hasArrivalPhotos: String(item.hasArrivalPhotos),
     };
@@ -169,11 +170,12 @@ const PackagesPage = () => {
       onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/packages/${row.id}`),
     },
     {
-      id: 'shipmentId',
-      label: 'Shipment ID',
-      type: EnhancedTableColumnType.NUMBER,
-      numeric: true,
+      id: 'shipmentRefCode',
+      label: 'Shipment',
+      type: EnhancedTableColumnType.Clickable,
+      numeric: false,
       disablePadding: false,
+      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/shipments/${row.shipmentId}`),
     },
     {
       id: 'customer',
@@ -228,12 +230,24 @@ const PackagesPage = () => {
       <MainPageTitle
         title="Packages"
         action={canManageShipments(role) ? {
-          title: 'New Package (Auto-Assign)',
+          title: 'Create Package',
           onClick: () => setAutoAssignOpen(true),
         } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
+        <TextField
+          size="small"
+          label="Search by Package ID or Customer"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2, minWidth: 300 }}
+        />
+        {Object.keys(tableData).length === 0 && (
+          <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+            No packages found. Create one to get started.
+          </Typography>
+        )}
         <EnhancedTable
           title="Packages"
           header={tableHeaders}
@@ -264,7 +278,7 @@ const PackagesPage = () => {
 
       <GenericDialog
         open={autoAssignOpen}
-        title="New Package (Auto-Assign to Oldest Pending Container)"
+        title="Create Package"
         onClose={() => { setAutoAssignOpen(false); setProvisionMethod('CustomerProvided'); }}
       >
         <DynamicFormWidget

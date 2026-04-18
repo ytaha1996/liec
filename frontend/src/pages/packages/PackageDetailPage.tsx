@@ -7,14 +7,14 @@ import {
   Button,
   Chip,
   Link as MuiLink,
-
   Stack,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -90,6 +90,7 @@ const PackageDetailPage = ({ id }: Props) => {
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerCbm' | 'TotalCharge'>('RatePerKg');
   const [editPkgOpen, setEditPkgOpen] = useState(false);
+  const [tab, setTab] = useState(0);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/packages', id],
@@ -104,6 +105,11 @@ const PackageDetailPage = ({ id }: Props) => {
   const overridesQuery = useQuery<any[]>({
     queryKey: ['/api/packages', id, 'pricing-overrides'],
     queryFn: () => getJson<any[]>(`/api/packages/${id}/pricing-overrides`),
+  });
+
+  const auditQuery = useQuery<any[]>({
+    queryKey: ['/api/packages', id, 'audit-log'],
+    queryFn: () => getJson<any[]>(`/api/packages/${id}/audit-log`),
   });
 
   const customersQuery = useQuery<any[]>({
@@ -331,41 +337,86 @@ const PackageDetailPage = ({ id }: Props) => {
           </Alert>
         )}
 
-        {shipmentQuery.data && (
-          <InformationWidget title="Shipment Info" fields={shipmentInfoFields} data={shipmentDisplayData} />
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+            <Tab label="Overview" />
+            <Tab label="Items & Pricing" />
+            <Tab label="Photos" />
+            <Tab label="Activity" />
+          </Tabs>
+        </Box>
+
+        {tab === 0 && (
+          <>
+            <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
+            {shipmentQuery.data && (
+              <InformationWidget title="Shipment Info" fields={shipmentInfoFields} data={shipmentDisplayData} />
+            )}
+          </>
         )}
 
-        <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay} />
+        {tab === 1 && (
+          <>
+            <MainPageSection title="Items">
+              {canEditPackageItems(role) && (
+                <Box sx={{ mb: 2 }}>
+                  <Button variant="contained" size="small" onClick={() => { setEditingItem(null); setAddItemOpen(true); }}>
+                    Add Item
+                  </Button>
+                </Box>
+              )}
+              <EnhancedTable title="Package Items" header={itemHeaders} data={itemsTableData} defaultOrder="goodName" />
+            </MainPageSection>
 
-        <InformationWidget
-          title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}
-          fields={pricingFields}
-          data={pkg}
-        >
-          {canEditPackageItems(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
-            <Box sx={{ mt: 1 }}>
-              <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => setEditPkgOpen(true)}>
-                Edit Weight / CBM / Note
-              </Button>
-            </Box>
-          )}
-          <PricingOverrideHistory overrides={overridesQuery.data ?? []} />
-        </InformationWidget>
+            <InformationWidget
+              title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}
+              fields={pricingFields}
+              data={pkg}
+            >
+              {canEditPackageItems(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
+                <Box sx={{ mt: 1 }}>
+                  <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => setEditPkgOpen(true)}>
+                    Edit Weight / CBM / Note
+                  </Button>
+                </Box>
+              )}
+              <PricingOverrideHistory overrides={overridesQuery.data ?? []} />
+            </InformationWidget>
+          </>
+        )}
 
-        <MainPageSection title="Items">
-          {canEditPackageItems(role) && (
-            <Box sx={{ mb: 2 }}>
-              <Button variant="contained" size="small" onClick={() => { setEditingItem(null); setAddItemOpen(true); }}>
-                Add Item
-              </Button>
-            </Box>
-          )}
-          <EnhancedTable title="Package Items" header={itemHeaders} data={itemsTableData} defaultOrder="goodName" />
-        </MainPageSection>
-
-        {canUploadPhotos(role) && (
+        {tab === 2 && canUploadPhotos(role) && (
           <MainPageSection title="Photos">
             <MediaStageCards packageId={id} media={mediaQuery.data ?? []} />
+          </MainPageSection>
+        )}
+
+        {tab === 3 && (
+          <MainPageSection title="Activity Log">
+            {(auditQuery.data ?? []).length > 0 ? (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Action</TableCell>
+                    <TableCell>Old Value</TableCell>
+                    <TableCell>New Value</TableCell>
+                    <TableCell>Date</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(auditQuery.data ?? []).map((log: any, idx: number) => (
+                    <TableRow key={log.id ?? idx}>
+                      <TableCell>{log.action}</TableCell>
+                      <TableCell>{log.oldValue ?? '—'}</TableCell>
+                      <TableCell>{log.newValue ?? '—'}</TableCell>
+                      <TableCell>{log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <Box sx={{ py: 3, textAlign: 'center', color: 'text.secondary' }}>No activity yet.</Box>
+            )}
           </MainPageSection>
         )}
     </DetailPageLayout>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Button, Stack, TextField } from '@mui/material';
+import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
 import { SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
@@ -95,10 +95,11 @@ const SupplyOrdersPage = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [search, setSearch] = useState('');
 
   const { data = [] } = useQuery<any[]>({
-    queryKey: [ENDPOINT],
-    queryFn: () => getJson<any[]>(ENDPOINT),
+    queryKey: [ENDPOINT, search],
+    queryFn: () => getJson<any[]>(search ? `${ENDPOINT}?q=${encodeURIComponent(search)}` : ENDPOINT),
   });
 
   const { data: customers = [] } = useQuery<any[]>({
@@ -167,6 +168,14 @@ const SupplyOrdersPage = () => {
     return acc;
   }, {});
 
+  const STATUS_FOR_ACTION: Record<string, string> = {
+    approve: 'Draft',
+    order: 'Approved',
+    'deliver-to-warehouse': 'Ordered',
+    'pack-into-package': 'DeliveredToWarehouse',
+    close: 'PackedIntoPackage',
+  };
+
   const lifecycleActionDefs = LIFECYCLE_ACTIONS.map(({ label, action }) => ({
     icon: <PlayArrowIcon fontSize="small" />,
     label,
@@ -179,7 +188,12 @@ const SupplyOrdersPage = () => {
         lifecycleMut.mutate({ id, action });
       }
     },
-    hidden: () => false,
+    hidden: (row: Record<string, any>) => {
+      if (action === 'cancel') {
+        return ['Closed', 'Cancelled'].includes(row.status);
+      }
+      return row.status !== STATUS_FOR_ACTION[action];
+    },
   }));
 
   const tableHeaders: EnhanceTableHeaderTypes[] = [
@@ -216,9 +230,12 @@ const SupplyOrdersPage = () => {
             const row = tableData[id];
             if (row) { setEditing(row); setDialogOpen(true); }
           },
-          hidden: () => !canWriteMasterData(role),
+          hidden: (row: Record<string, any>) => !canWriteMasterData(role) || ['Closed', 'Cancelled'].includes(row.status),
         },
-        ...lifecycleActionDefs.map(a => ({ ...a, hidden: () => !canWriteMasterData(role) })),
+        ...lifecycleActionDefs.map(a => ({
+          ...a,
+          hidden: (row: Record<string, any>) => !canWriteMasterData(role) || a.hidden(row),
+        })),
       ],
     },
   ];
@@ -243,6 +260,18 @@ const SupplyOrdersPage = () => {
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
+        <TextField
+          size="small"
+          label="Search by Name"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2, minWidth: 300 }}
+        />
+        {Object.keys(tableData).length === 0 && (
+          <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+            No supply orders found. Create one to get started.
+          </Typography>
+        )}
         <EnhancedTable title="Supply Orders" header={tableHeaders} data={tableData} defaultOrder="name" />
       </Box>
 

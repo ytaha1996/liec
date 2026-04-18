@@ -12,7 +12,7 @@ namespace ShippingPlatform.Api.Controllers;
 public class SupplyOrderController(ISupplyOrderBusiness business) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<SupplyOrderDto>>> List() => Ok(await business.ListAsync());
+    public async Task<ActionResult<IEnumerable<SupplyOrderDto>>> List([FromQuery] string? q = null, [FromQuery] SupplyOrderStatus? status = null, [FromQuery] int? customerId = null) => Ok(await business.ListAsync(q, status, customerId));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SupplyOrderDto>> Get(int id) => (await business.GetAsync(id)) is { } e ? Ok(e) : NotFound();

@@ -93,6 +93,11 @@ const ShipmentDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any>(`/api/shipments/${id}`),
   });
 
+  const auditQuery = useQuery<any[]>({
+    queryKey: ['/api/shipments', id, 'audit-log'],
+    queryFn: () => getJson<any[]>(`/api/shipments/${id}/audit-log`),
+  });
+
   const packagesQuery = useQuery<any[]>({
     queryKey: ['/api/packages'],
     queryFn: () => getJson<any[]>('/api/packages'),
@@ -476,12 +481,67 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </MainPageSection>
         )}
 
-        {canManageShipments(role) && CAN_ADD_PACKAGE.has(data.status) && (
-          <Box sx={{ mb: 2 }}>
-            <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>+ Add Package</Button>
-          </Box>
+        {(auditQuery.data ?? []).length > 0 && (
+          <MainPageSection title="Activity Log">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Action</TableCell>
+                  <TableCell>Old Value</TableCell>
+                  <TableCell>New Value</TableCell>
+                  <TableCell>Date</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(auditQuery.data ?? []).map((log: any, idx: number) => (
+                  <TableRow key={log.id ?? idx}>
+                    <TableCell>{log.action}</TableCell>
+                    <TableCell>{log.oldValue ?? '—'}</TableCell>
+                    <TableCell>{log.newValue ?? '—'}</TableCell>
+                    <TableCell>{log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </MainPageSection>
         )}
-        <EnhancedTable title="Packages in Shipment" header={packageHeadersWithNav} data={packageTableData} defaultOrder="id" actions={packageActions} />
+
+        <MainPageSection title="Packages">
+          {shipmentPackages.length > 0 && (() => {
+            const statusCounts: Record<string, number> = {};
+            shipmentPackages.filter((p: any) => p.status !== 'Cancelled').forEach((p: any) => {
+              statusCounts[p.status] = (statusCounts[p.status] ?? 0) + 1;
+            });
+            const missingDep = shipmentPackages.filter((p: any) => !p.hasDeparturePhotos && p.status !== 'Cancelled' && p.status !== 'Draft');
+            const missingArr = shipmentPackages.filter((p: any) => !p.hasArrivalPhotos && p.status !== 'Cancelled' && ['Shipped', 'ArrivedAtDestination', 'ReadyForHandout'].includes(p.status));
+            return (
+              <>
+                <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1.5 }}>
+                  {Object.entries(statusCounts).map(([status, count]) => (
+                    <Chip key={status} size="small" label={`${PKG_STATUS_LABELS[status] ?? status}: ${count}`}
+                      sx={{ backgroundColor: PKG_STATUS_CHIPS[status]?.backgroundColor ?? '#e0e0e0', color: PKG_STATUS_CHIPS[status]?.color ?? '#333', fontWeight: 600 }} />
+                  ))}
+                </Stack>
+                {missingDep.length > 0 && (
+                  <Alert severity="warning" sx={{ mb: 1.5 }}>
+                    {missingDep.length} package(s) missing departure photos: {missingDep.map((p: any) => `#${p.id} (${customersMap[p.customerId] ?? p.customerId})`).join(', ')}
+                  </Alert>
+                )}
+                {missingArr.length > 0 && (
+                  <Alert severity="info" sx={{ mb: 1.5 }}>
+                    {missingArr.length} package(s) missing arrival photos: {missingArr.map((p: any) => `#${p.id} (${customersMap[p.customerId] ?? p.customerId})`).join(', ')}
+                  </Alert>
+                )}
+              </>
+            );
+          })()}
+          {canManageShipments(role) && CAN_ADD_PACKAGE.has(data.status) && (
+            <Box sx={{ mb: 2 }}>
+              <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>+ Add Package</Button>
+            </Box>
+          )}
+          <EnhancedTable title="Packages in Shipment" header={packageHeadersWithNav} data={packageTableData} defaultOrder="id" actions={packageActions} />
+        </MainPageSection>
       </DetailPageLayout>
 
       <AddPackageDialog open={addPkgOpen} onClose={() => setAddPkgOpen(false)} shipmentId={id} />

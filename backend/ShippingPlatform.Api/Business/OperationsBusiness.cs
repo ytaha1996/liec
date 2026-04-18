@@ -9,7 +9,7 @@ namespace ShippingPlatform.Api.Business;
 
 public interface IShipmentBusiness
 {
-    Task<List<ShipmentDto>> ListAsync(ShipmentStatus? status);
+    Task<object> ListAsync(ShipmentStatus? status, string? q = null, DateTime? dateFrom = null, DateTime? dateTo = null, int? page = null, int pageSize = 25);
     Task<ShipmentDto?> GetAsync(int id);
     Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input);
     Task<(ShipmentDto? dto, object? error)> SetStatusAsync(int id, ShipmentStatus status);
@@ -21,13 +21,23 @@ public interface IShipmentBusiness
     Task<object> PreviewReadyToDepartAsync(int id);
 }
 
-public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity) : IShipmentBusiness
+public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity, IAuditService audit) : IShipmentBusiness
 {
-    public async Task<List<ShipmentDto>> ListAsync(ShipmentStatus? status)
+    public async Task<object> ListAsync(ShipmentStatus? status, string? q = null, DateTime? dateFrom = null, DateTime? dateTo = null, int? page = null, int pageSize = 25)
     {
-        var q = db.Shipments.AsQueryable();
-        if (status.HasValue) q = q.Where(x => x.Status == status);
-        return (await q.OrderByDescending(x => x.CreatedAt).ToListAsync()).Select(x => x.ToDto()).ToList();
+        var query = db.Shipments.AsQueryable();
+        if (status.HasValue) query = query.Where(x => x.Status == status);
+        if (!string.IsNullOrWhiteSpace(q)) query = query.Where(x => x.RefCode.Contains(q) || (x.TiiuCode != null && x.TiiuCode.Contains(q)));
+        if (dateFrom.HasValue) query = query.Where(x => x.PlannedDepartureDate >= dateFrom.Value);
+        if (dateTo.HasValue) query = query.Where(x => x.PlannedDepartureDate <= dateTo.Value);
+        var ordered = query.OrderByDescending(x => x.CreatedAt);
+        if (page.HasValue)
+        {
+            var total = await ordered.CountAsync();
+            var items = (await ordered.Skip((page.Value - 1) * pageSize).Take(pageSize).ToListAsync()).Select(x => x.ToDto()).ToList();
+            return new PagedResult<ShipmentDto>(items, total, page.Value, pageSize);
+        }
+        return (await ordered.ToListAsync()).Select(x => x.ToDto()).ToList();
     }
 
     public async Task<ShipmentDto?> GetAsync(int id) => (await db.Shipments.FirstOrDefaultAsync(x => x.Id == id))?.ToDto();
@@ -94,6 +104,8 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (status == ShipmentStatus.Scheduled && string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling shipment." });
         if (!transitions.CanMove(s.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to {status}." });
 
+        var oldStatus = s.Status;
+
         if (status == ShipmentStatus.ReadyToDepart)
         {
             var hasReadyPkg = await db.Packages.AnyAsync(p =>
@@ -113,6 +125,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
             foreach (var p in pkgs) p.Status = PackageStatus.Cancelled;
             await db.SaveChangesAsync();
             await capacity.RecalculateAsync(id);
+            await audit.LogAsync("Shipment", id, $"Status → {status}", oldStatus.ToString(), status.ToString());
             return (s.ToDto(), null);
         }
 
@@ -154,11 +167,13 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
                 await db.SaveChangesAsync();
                 await capacity.RecalculateAsync(id);
                 await capacity.RecalculateAsync(target.Id);
+                await audit.LogAsync("Shipment", id, $"Status → {status}", oldStatus.ToString(), status.ToString());
                 return (s.ToDto(), null);
             }
         }
 
         await db.SaveChangesAsync();
+        await audit.LogAsync("Shipment", id, $"Status → {status}", oldStatus.ToString(), status.ToString());
         return (s.ToDto(), null);
     }
 
@@ -170,8 +185,10 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (s is null) return (null, null, null);
         if (string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling/departing." });
         if (!transitions.CanMove(s.Status, ShipmentStatus.Departed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Departed." });
+        var oldStatus = s.Status;
         s.Status = ShipmentStatus.Departed; s.ActualDepartureAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        await audit.LogAsync("Shipment", id, $"Status → {ShipmentStatus.Departed}", oldStatus.ToString(), ShipmentStatus.Departed.ToString());
         return (s.ToDto(), null, null);
     }
 
@@ -182,7 +199,9 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null, null);
         if (!transitions.CanMove(s.Status, ShipmentStatus.Closed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Closed." });
+        var oldStatus = s.Status;
         s.Status = ShipmentStatus.Closed; await db.SaveChangesAsync();
+        await audit.LogAsync("Shipment", id, $"Status → {ShipmentStatus.Closed}", oldStatus.ToString(), ShipmentStatus.Closed.ToString());
         return (s.ToDto(), null, null);
     }
 
@@ -246,7 +265,7 @@ public interface IPackageBusiness
     Task<(PackageDto? dto, object? error)> CreateAsync(int shipmentId, CreatePackageRequest input);
     Task<(PackageDto? dto, object? error)> AutoAssignAsync(AutoAssignPackageRequest input);
     Task<(PackageDto? dto, object? error)> UpdatePackageAsync(int id, UpdatePackageRequest req);
-    Task<List<PackageDto>> ListAsync();
+    Task<object> ListAsync(string? q = null, int? customerId = null, int? shipmentId = null, PackageStatus? status = null, int? page = null, int pageSize = 25);
     Task<object?> GetAsync(int id);
     Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false);
     Task<(PackageItemDto? dto, object? error)> AddItemAsync(int id, UpsertPackageItemRequest item);
@@ -260,7 +279,7 @@ public interface IPackageBusiness
     Task<(int transitioned, object? error)> BulkTransitionAsync(int shipmentId, BulkTransitionRequest request);
 }
 
-public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark, IRefCodeService refs) : IPackageBusiness
+public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark, IRefCodeService refs, IAuditService audit) : IPackageBusiness
 {
     public async Task<(PackageDto? dto, object? error)> CreateAsync(int shipmentId, CreatePackageRequest input)
     {
@@ -388,7 +407,30 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         return err is not null ? (null, err) : (dto, null);
     }
 
-    public async Task<List<PackageDto>> ListAsync() => (await db.Packages.ToListAsync()).Select(x => x.ToDto()).ToList();
+    public async Task<object> ListAsync(string? q = null, int? customerId = null, int? shipmentId = null, PackageStatus? status = null, int? page = null, int pageSize = 25)
+    {
+        var query = db.Packages.Include(x => x.Customer).Include(x => x.Shipment).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(q)) query = query.Where(x => x.Customer.Name.Contains(q) || x.Id.ToString() == q);
+        if (customerId.HasValue) query = query.Where(x => x.CustomerId == customerId);
+        if (shipmentId.HasValue) query = query.Where(x => x.ShipmentId == shipmentId);
+        if (status.HasValue) query = query.Where(x => x.Status == status);
+        var ordered = query.OrderByDescending(x => x.CreatedAt);
+
+        object MapPkg(Package x) => new
+        {
+            x.Id, x.ShipmentId, ShipmentRefCode = x.Shipment.RefCode, x.CustomerId, CustomerName = x.Customer.Name,
+            x.ProvisionMethod, x.Status, x.WeightKg, x.Cbm, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerCbm,
+            x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.HasPricingOverride, x.SupplyOrderId, x.Note, x.CreatedAt,
+        };
+
+        if (page.HasValue)
+        {
+            var total = await ordered.CountAsync();
+            var items = (await ordered.Skip((page.Value - 1) * pageSize).Take(pageSize).ToListAsync()).Select(MapPkg).ToList();
+            return new { items, total, page = page.Value, pageSize };
+        }
+        return (await ordered.ToListAsync()).Select(MapPkg).ToList();
+    }
 
     public async Task<object?> GetAsync(int id)
     {
@@ -433,6 +475,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 return (null, new { code = "VALIDATION_ERROR", message = "Package must have at least one item before packing." }, null);
         }
 
+        var oldStatus = p.Status;
         p.Status = status;
         if (status == PackageStatus.Packed) await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
@@ -446,6 +489,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             if (linkedSo is not null) { linkedSo.PackageId = null; await db.SaveChangesAsync(); }
         }
 
+        await audit.LogAsync("Package", id, $"Status → {status}", oldStatus.ToString(), status.ToString());
         return (p.ToDto(), null, null);
     }
 
@@ -666,7 +710,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
 public interface ISupplyOrderBusiness
 {
-    Task<List<SupplyOrderDto>> ListAsync();
+    Task<List<SupplyOrderDto>> ListAsync(string? q = null, SupplyOrderStatus? status = null, int? customerId = null);
     Task<SupplyOrderDto?> GetAsync(int id);
     Task<SupplyOrderDto> CreateAsync(UpsertSupplyOrderRequest req);
     Task<SupplyOrderDto?> UpdateAsync(int id, UpsertSupplyOrderRequest req);
@@ -675,7 +719,14 @@ public interface ISupplyOrderBusiness
 
 public class SupplyOrderBusiness(AppDbContext db, ITransitionRuleService transitions) : ISupplyOrderBusiness
 {
-    public async Task<List<SupplyOrderDto>> ListAsync() => (await db.SupplyOrders.ToListAsync()).Select(x => x.ToDto()).ToList();
+    public async Task<List<SupplyOrderDto>> ListAsync(string? q = null, SupplyOrderStatus? status = null, int? customerId = null)
+    {
+        var query = db.SupplyOrders.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(q)) query = query.Where(x => x.Name.Contains(q));
+        if (status.HasValue) query = query.Where(x => x.Status == status);
+        if (customerId.HasValue) query = query.Where(x => x.CustomerId == customerId);
+        return (await query.OrderByDescending(x => x.Id).ToListAsync()).Select(x => x.ToDto()).ToList();
+    }
     public async Task<SupplyOrderDto?> GetAsync(int id) => (await db.SupplyOrders.FindAsync(id))?.ToDto();
     public async Task<SupplyOrderDto> CreateAsync(UpsertSupplyOrderRequest req)
     {

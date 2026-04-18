@@ -11,7 +11,7 @@ namespace ShippingPlatform.Api.Controllers;
 public class ShipmentsController(IShipmentBusiness business, IPackageBusiness packageBusiness) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] ShipmentStatus? status = null) => Ok(await business.ListAsync(status));
+    public async Task<IActionResult> List([FromQuery] ShipmentStatus? status = null, [FromQuery] string? q = null, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] int? page = null, [FromQuery] int pageSize = 25) => Ok(await business.ListAsync(status, q, dateFrom, dateTo, page, pageSize));
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } s ? Ok(s) : NotFound();
@@ -80,6 +80,9 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
     }
+
+    [HttpGet("{id:int}/audit-log")]
+    public async Task<IActionResult> AuditLog(int id, [FromServices] ShippingPlatform.Api.Services.IAuditService audit) => Ok(await audit.GetLogsAsync("Shipment", id));
 
     [HttpGet("{id:int}/media")]
     public async Task<IActionResult> Media(int id) => Ok(await business.MediaAsync(id));

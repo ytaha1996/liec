@@ -1,7 +1,8 @@
-import { ChangeEvent, useState } from 'react';
+import { ChangeEvent, DragEvent, useCallback, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, LinearProgress, Stack, Typography } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { toast } from 'react-toastify';
 import { uploadMultipart } from '../../api/client';
@@ -27,21 +28,79 @@ const STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
 const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
   const qc = useQueryClient();
   const [viewerStage, setViewerStage] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { done: number; total: number }>>({});
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const upload = useMutation({
-    mutationFn: ({ stage, file }: { stage: string; file: File }) => {
+  const uploadSingleFile = useCallback(
+    (stage: string, file: File) => {
       const fd = new FormData();
       fd.append('stage', stage);
       fd.append('file', file);
       return uploadMultipart(`/api/packages/${packageId}/media`, fd);
     },
-    onSuccess: () => {
-      toast.success('Photo uploaded');
+    [packageId],
+  );
+
+  const uploadMultipleFiles = useCallback(
+    async (stage: string, files: File[]) => {
+      if (files.length === 0) return;
+      setUploadProgress((prev) => ({ ...prev, [stage]: { done: 0, total: files.length } }));
+      let failed = 0;
+      for (let i = 0; i < files.length; i++) {
+        try {
+          await uploadSingleFile(stage, files[i]);
+        } catch {
+          failed++;
+        }
+        setUploadProgress((prev) => ({ ...prev, [stage]: { done: i + 1, total: files.length } }));
+      }
+      setUploadProgress((prev) => {
+        const next = { ...prev };
+        delete next[stage];
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId, 'media'] });
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
+      if (failed === 0) {
+        toast.success(`${files.length} photo${files.length !== 1 ? 's' : ''} uploaded`);
+      } else {
+        toast.warning(`${files.length - failed}/${files.length} photos uploaded, ${failed} failed`);
+      }
     },
-    onError: () => toast.error('Upload failed'),
-  });
+    [uploadSingleFile, packageId, qc],
+  );
+
+  const handleDrop = useCallback(
+    (stage: string) => (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDragOverStage(null);
+      const droppedFiles = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      if (droppedFiles.length > 0) uploadMultipleFiles(stage, droppedFiles);
+    },
+    [uploadMultipleFiles],
+  );
+
+  const handleDragOver = useCallback(
+    (stage: string) => (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDragOverStage(stage);
+    },
+    [],
+  );
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverStage(null);
+  }, []);
+
+  const handleFileInput = useCallback(
+    (stage: string) => (e: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length > 0) uploadMultipleFiles(stage, files);
+      e.target.value = '';
+    },
+    [uploadMultipleFiles],
+  );
 
   const countByStage = STAGES.reduce((acc, stage) => {
     acc[stage] = media.filter((m) => m.stage === stage).length;
@@ -54,6 +113,8 @@ const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
         {STAGES.map((stage) => {
           const sc = MEDIA_STAGE_CHIPS[stage] ?? MEDIA_STAGE_CHIPS['Other'];
           const count = countByStage[stage];
+          const progress = uploadProgress[stage];
+          const isDragOver = dragOverStage === stage;
           return (
             <Card key={stage} variant="outlined" sx={{ borderLeft: `4px solid ${sc.backgroundColor}` }}>
               <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
@@ -64,25 +125,50 @@ const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                   {count === 0 ? 'No photos' : `${count} photo${count !== 1 ? 's' : ''}`}
                 </Typography>
+
+                {/* Drop zone */}
+                <Box
+                  onDrop={handleDrop(stage)}
+                  onDragOver={handleDragOver(stage)}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRefs.current[stage]?.click()}
+                  sx={{
+                    border: '2px dashed',
+                    borderColor: isDragOver ? 'primary.main' : 'grey.400',
+                    backgroundColor: isDragOver ? 'action.hover' : 'transparent',
+                    borderRadius: 1,
+                    p: 1.5,
+                    mb: 1.5,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    '&:hover': { borderColor: 'primary.main', backgroundColor: 'action.hover' },
+                  }}
+                >
+                  <CloudUploadIcon sx={{ fontSize: 28, color: isDragOver ? 'primary.main' : 'grey.500', mb: 0.5 }} />
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    Drop photos here or click to upload
+                  </Typography>
+                  <input
+                    ref={(el) => { fileInputRefs.current[stage] = el; }}
+                    hidden
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileInput(stage)}
+                  />
+                </Box>
+
+                {progress && (
+                  <Box sx={{ mb: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Uploading {progress.done}/{progress.total}...
+                    </Typography>
+                    <LinearProgress variant="determinate" value={(progress.done / progress.total) * 100} sx={{ mt: 0.5 }} />
+                  </Box>
+                )}
+
                 <Stack direction="row" spacing={1}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<UploadIcon />}
-                    component="label"
-                  >
-                    Upload
-                    <input
-                      hidden
-                      type="file"
-                      accept="image/*"
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                        const file = e.target.files?.[0];
-                        if (file) upload.mutate({ stage, file });
-                        e.target.value = '';
-                      }}
-                    />
-                  </Button>
                   <Button
                     size="small"
                     variant="contained"

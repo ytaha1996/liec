@@ -8,7 +8,7 @@ namespace ShippingPlatform.Api.Controllers;
 [ApiController]
 [Route("api/customers")]
 [Authorize(Roles = "Admin,Manager,Accountant")]
-public class CustomerController(ICustomerBusiness business) : ControllerBase
+public class CustomerController(ICustomerBusiness business, IPackageBusiness packageBusiness) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CustomerDto>>> List([FromQuery] string? q = null) => Ok(await business.ListAsync(q));
@@ -27,6 +27,9 @@ public class CustomerController(ICustomerBusiness business) : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     [HttpPut("{id:int}")]
     public async Task<ActionResult<CustomerDto>> Update(int id, UpdateCustomerRequest input) => (await business.UpdateAsync(id, input)) is { } e ? Ok(e) : NotFound();
+
+    [HttpGet("{id:int}/packages")]
+    public async Task<IActionResult> Packages(int id) => Ok(await packageBusiness.ListAsync(customerId: id));
 
     [Authorize(Roles = "Admin,Manager")]
     [HttpPatch("{id:int}/whatsapp-consent")]
