@@ -195,44 +195,74 @@ public class PhotoComplianceService(AppDbContext db) : IPhotoComplianceService
 public interface IWhatsAppSender { Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null); }
 public class StubWhatsAppSender : IWhatsAppSender { public Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null) => Task.FromResult<(bool, string?)>((true, null)); }
 
-public class TwilioWhatsAppSender(IConfiguration cfg, ILogger<TwilioWhatsAppSender> logger) : IWhatsAppSender
+public class TwilioWhatsAppSender : IWhatsAppSender
 {
+    private readonly string _from;
+    private readonly ILogger<TwilioWhatsAppSender> _logger;
+
+    public TwilioWhatsAppSender(IConfiguration cfg, ILogger<TwilioWhatsAppSender> logger)
+    {
+        _logger = logger;
+        _from = cfg["Twilio:WhatsAppFrom"]!;
+        Twilio.TwilioClient.Init(cfg["Twilio:AccountSid"], cfg["Twilio:AuthToken"]);
+    }
+
     public async Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null)
     {
+        if (string.IsNullOrWhiteSpace(phone) || !System.Text.RegularExpressions.Regex.IsMatch(phone, @"^\+\d{8,15}$"))
+            return (false, $"Invalid phone number: {phone}");
+
         try
         {
-            Twilio.TwilioClient.Init(cfg["Twilio:AccountSid"], cfg["Twilio:AuthToken"]);
+            var urls = mediaUrls?.ToList() ?? [];
+            var firstBatch = urls.Take(10).Select(u => new Uri(u)).ToList();
 
             var options = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
                 new Twilio.Types.PhoneNumber($"whatsapp:{phone}"))
             {
-                From = new Twilio.Types.PhoneNumber($"whatsapp:{cfg["Twilio:WhatsAppFrom"]}"),
+                From = new Twilio.Types.PhoneNumber($"whatsapp:{_from}"),
                 Body = text,
             };
 
-            if (mediaUrls?.Any() == true)
-                options.MediaUrl = mediaUrls.Select(u => new Uri(u)).ToList();
+            if (firstBatch.Count > 0)
+                options.MediaUrl = firstBatch;
 
             var msg = await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(options);
 
             if (msg.ErrorCode != null)
             {
                 var errMsg = $"Twilio error {msg.ErrorCode}: {msg.ErrorMessage}";
-                logger.LogWarning(errMsg);
+                _logger.LogWarning(errMsg);
                 return (false, errMsg);
             }
+
+            _logger.LogInformation("WhatsApp sent to {Phone}, SID: {Sid}", phone, msg.Sid);
+
+            // Send remaining media in chunks of 10 if more than 10 photos
+            for (var i = 10; i < urls.Count; i += 10)
+            {
+                var chunk = urls.Skip(i).Take(10).Select(u => new Uri(u)).ToList();
+                var chunkOpts = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
+                    new Twilio.Types.PhoneNumber($"whatsapp:{phone}"))
+                {
+                    From = new Twilio.Types.PhoneNumber($"whatsapp:{_from}"),
+                    MediaUrl = chunk,
+                };
+                await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(chunkOpts);
+            }
+
             return (true, null);
         }
         catch (Twilio.Exceptions.ApiException ex)
         {
             var errMsg = $"Twilio API exception: {ex.Message}";
-            logger.LogError(ex, errMsg);
+            _logger.LogError(ex, errMsg);
             return (false, errMsg);
         }
         catch (Exception ex)
         {
             var errMsg = $"WhatsApp send failed: {ex.Message}";
-            logger.LogError(ex, errMsg);
+            _logger.LogError(ex, errMsg);
             return (false, errMsg);
         }
     }
