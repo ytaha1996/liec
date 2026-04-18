@@ -3,7 +3,7 @@ using ShippingPlatform.Api.Models;
 namespace ShippingPlatform.Api.Dtos;
 
 public record LoginRequest(string Email, string Password);
-public record LoginResponse(string Token, string Email);
+public record LoginResponse(string Token, string Email, string Role);
 public record GateFailure(string Code, string Message, List<MissingGateItem> Missing);
 public record MissingGateItem(int PackageId, string CustomerName, MediaStage Stage);
 public record StatusRequest(string Status);

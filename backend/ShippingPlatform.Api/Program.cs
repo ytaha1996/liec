@@ -70,6 +70,7 @@ builder.Services.AddScoped<IPackageBusiness, PackageBusiness>();
 builder.Services.AddScoped<ISupplyOrderBusiness, SupplyOrderBusiness>();
 builder.Services.AddScoped<IWhatsAppBusiness, WhatsAppBusiness>();
 builder.Services.AddScoped<IExportBusiness, ExportBusiness>();
+builder.Services.AddScoped<IUserBusiness, UserBusiness>();
 
 builder.Services.AddRateLimiter(o =>
 {
@@ -99,7 +100,7 @@ using (var scope = app.Services.CreateScope())
     var email = app.Configuration["SeedAdmin:Email"] ?? Environment.GetEnvironmentVariable("ADMIN_EMAIL") ?? Environment.GetEnvironmentVariable("SEED_ADMIN_EMAIL") ?? "admin@local";
     var pwd = app.Configuration["SeedAdmin:Password"] ?? Environment.GetEnvironmentVariable("ADMIN_PASSWORD") ?? Environment.GetEnvironmentVariable("SEED_ADMIN_PASSWORD") ?? "Admin123!";
     if (!db.AdminUsers.Any(x => x.Email == email))
-        db.AdminUsers.Add(new AdminUser { Email = email, PasswordHash = BCrypt.Net.BCrypt.HashPassword(pwd), IsActive = true });
+        db.AdminUsers.Add(new AdminUser { Email = email, PasswordHash = BCrypt.Net.BCrypt.HashPassword(pwd), IsActive = true, Role = UserRole.Admin });
     db.SaveChanges();
 
     // ── Warehouses ──────────────────────────────────────────────────────────

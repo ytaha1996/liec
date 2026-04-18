@@ -125,3 +125,22 @@ public class ExportRequestValidator : AbstractValidator<ExportRequest>
         RuleFor(x => x.Format).Must(x => x?.ToLower() is "csv" or "vcf");
     }
 }
+
+public class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
+{
+    public CreateUserRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(200);
+        RuleFor(x => x.Password).NotEmpty().MinimumLength(8);
+        RuleFor(x => x.Role).IsInEnum();
+    }
+}
+
+public class UpdateUserRequestValidator : AbstractValidator<UpdateUserRequest>
+{
+    public UpdateUserRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(200);
+        RuleFor(x => x.Role).IsInEnum();
+    }
+}

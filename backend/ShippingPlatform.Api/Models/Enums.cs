@@ -9,3 +9,4 @@ public enum ProvisionMethod { CustomerProvided, ProcuredForCustomer }
 public enum MediaStage { Receiving, Departure, Arrival, Other }
 public enum CampaignType { StatusUpdate, DeparturePhotos, ArrivalPhotos }
 public enum DeliveryResult { Pending, Sent, Failed, SkippedNoOptIn }
+public enum UserRole { Admin, Manager, Accountant, Field }

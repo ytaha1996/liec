@@ -37,6 +37,7 @@ import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS } from '../../constants/s
 import ItemDialog from './components/ItemDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
+import { useUserRole, canTransitionPackage, canEditPackageItems, canUploadPhotos, canOverridePricing } from '../../helpers/rbac';
 
 interface Props {
   id: string;
@@ -81,6 +82,7 @@ const PackageDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [gate, setGate] = useState<GateError | null>(null);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
@@ -194,7 +196,7 @@ const PackageDetailPage = ({ id }: Props) => {
             const item = itemsTableData[tableId];
             if (item) { setEditingItem(item); setAddItemOpen(true); }
           },
-          hidden: () => false,
+          hidden: () => !canEditPackageItems(role),
         },
         {
           icon: null,
@@ -208,7 +210,7 @@ const PackageDetailPage = ({ id }: Props) => {
               onSubmit: () => deleteItem.mutate(item.id),
             }));
           },
-          hidden: () => false,
+          hidden: () => !canEditPackageItems(role),
         },
       ],
     },
@@ -252,12 +254,14 @@ const PackageDetailPage = ({ id }: Props) => {
     { type: InformationWidgetFieldTypes.Text, name: 'cbm', title: 'CBM', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'weightTons', title: 'Weight (t)', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'currency', title: 'Currency', width: 'third' },
-    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } },
-    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } },
-    { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } } : {}) },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } } : {}) },
+    { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } } : {}) },
   ];
 
-  const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[pkg.status] ?? []).map(
+  const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[pkg.status] ?? []).filter(
+    ({ action }) => canTransitionPackage(role, action),
+  ).map(
     ({ label, action, isCancel, confirmMessage, requiredShipmentStatus }) => ({
       label,
       disabled: transition.isPending
@@ -338,7 +342,7 @@ const PackageDetailPage = ({ id }: Props) => {
           fields={pricingFields}
           data={pkg}
         >
-          {['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
+          {canEditPackageItems(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
             <Box sx={{ mt: 1 }}>
               <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => setEditPkgOpen(true)}>
                 Edit Weight / CBM / Note
@@ -349,17 +353,21 @@ const PackageDetailPage = ({ id }: Props) => {
         </InformationWidget>
 
         <MainPageSection title="Items">
-          <Box sx={{ mb: 2 }}>
-            <Button variant="contained" size="small" onClick={() => { setEditingItem(null); setAddItemOpen(true); }}>
-              Add Item
-            </Button>
-          </Box>
+          {canEditPackageItems(role) && (
+            <Box sx={{ mb: 2 }}>
+              <Button variant="contained" size="small" onClick={() => { setEditingItem(null); setAddItemOpen(true); }}>
+                Add Item
+              </Button>
+            </Box>
+          )}
           <EnhancedTable title="Package Items" header={itemHeaders} data={itemsTableData} defaultOrder="goodName" />
         </MainPageSection>
 
-        <MainPageSection title="Photos">
-          <MediaStageCards packageId={id} media={mediaQuery.data ?? []} />
-        </MainPageSection>
+        {canUploadPhotos(role) && (
+          <MainPageSection title="Photos">
+            <MediaStageCards packageId={id} media={mediaQuery.data ?? []} />
+          </MainPageSection>
+        )}
     </DetailPageLayout>
 
       <ItemDialog

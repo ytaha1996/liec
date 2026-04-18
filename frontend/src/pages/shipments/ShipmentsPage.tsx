@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, CircularProgress } from '@mui/material';
+import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
@@ -84,6 +85,7 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
 const ShipmentsPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
@@ -200,10 +202,10 @@ const ShipmentsPage = () => {
     <Box>
       <MainPageTitle
         title="Shipments"
-        action={{
+        action={canManageShipments(role) ? {
           title: 'Create Shipment',
           onClick: () => setDialogOpen(true),
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>

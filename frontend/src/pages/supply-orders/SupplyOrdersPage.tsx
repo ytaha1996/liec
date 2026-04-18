@@ -15,6 +15,7 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const ENDPOINT = '/api/supply-orders';
 
@@ -88,6 +89,7 @@ const buildFields = (
 
 const SupplyOrdersPage = () => {
   const qc = useQueryClient();
+  const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -214,9 +216,9 @@ const SupplyOrdersPage = () => {
             const row = tableData[id];
             if (row) { setEditing(row); setDialogOpen(true); }
           },
-          hidden: () => false,
+          hidden: () => !canWriteMasterData(role),
         },
-        ...lifecycleActionDefs,
+        ...lifecycleActionDefs.map(a => ({ ...a, hidden: () => !canWriteMasterData(role) })),
       ],
     },
   ];
@@ -234,10 +236,10 @@ const SupplyOrdersPage = () => {
     <Box>
       <MainPageTitle
         title="Supply Orders"
-        action={{
+        action={canWriteMasterData(role) ? {
           title: 'Create Supply Order',
           onClick: () => { setEditing(null); setDialogOpen(true); },
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>

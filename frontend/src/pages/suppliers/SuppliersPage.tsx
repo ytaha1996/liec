@@ -18,9 +18,11 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const SuppliersPage: React.FC = () => {
   const qc = useQueryClient();
+  const role = useUserRole();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -87,7 +89,7 @@ const SuppliersPage: React.FC = () => {
           icon: <Icon icon="mdi:pencil" />,
           label: 'Edit',
           onClick: (id: string) => openEdit(id),
-          hidden: (_row: Record<string, any>) => false,
+          hidden: () => !canWriteMasterData(role),
         },
       ],
     } as EnhancedTableActionHeader,
@@ -143,7 +145,7 @@ const SuppliersPage: React.FC = () => {
       <PageTitleWrapper>
         <MainPageTitle
           title="Suppliers"
-          action={{ title: 'Create Supplier', onClick: openCreate }}
+          action={canWriteMasterData(role) ? { title: 'Create Supplier', onClick: openCreate } : undefined}
         />
       </PageTitleWrapper>
       <MainPageSection title="Suppliers">

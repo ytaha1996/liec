@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -15,6 +16,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } s ? Ok(s) : NotFound();
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateShipmentRequest input)
     {
@@ -23,13 +25,14 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         return Created($"/api/shipments/{dto.Id}", dto);
     }
 
-    [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
-    [HttpPost("{id:int}/activate")] public Task<IActionResult> Activate(int id) => SetStatus(id, ShipmentStatus.Scheduled);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/schedule")] public Task<IActionResult> Schedule(int id) => SetStatus(id, ShipmentStatus.Scheduled);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/activate")] public Task<IActionResult> Activate(int id) => SetStatus(id, ShipmentStatus.Scheduled);
     [HttpGet("{id:int}/ready-to-depart/preview")] public async Task<IActionResult> ReadyToDepartPreview(int id) => Ok(await business.PreviewReadyToDepartAsync(id));
-    [HttpPost("{id:int}/ready-to-depart")] public Task<IActionResult> ReadyToDepart(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
-    [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
-    [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/ready-to-depart")] public Task<IActionResult> ReadyToDepart(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/load")] public Task<IActionResult> Load(int id) => SetStatus(id, ShipmentStatus.ReadyToDepart);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => SetStatus(id, ShipmentStatus.Cancelled);
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, UpdateShipmentRequest req)
     {
@@ -38,6 +41,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id:int}/arrive")]
     public async Task<IActionResult> Arrive(int id)
     {
@@ -46,6 +50,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id:int}/depart")]
     [HttpPost("{id:int}/ship")]
     public async Task<IActionResult> Depart(int id)
@@ -56,6 +61,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id:int}/close")]
     [HttpPost("{id:int}/complete")]
     public async Task<IActionResult> Close(int id)
@@ -66,6 +72,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id:int}/tracking/sync")]
     public async Task<IActionResult> SyncTracking(int id, ShipmentTrackingSyncRequest req, CancellationToken ct)
     {
@@ -77,6 +84,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
     [HttpGet("{id:int}/media")]
     public async Task<IActionResult> Media(int id) => Ok(await business.MediaAsync(id));
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{shipmentId:int}/packages/bulk-transition")]
     public async Task<IActionResult> BulkTransition(int shipmentId, BulkTransitionRequest request)
     {

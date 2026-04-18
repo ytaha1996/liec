@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -9,6 +10,7 @@ namespace ShippingPlatform.Api.Controllers;
 [ApiController]
 public class PackagesController(IPackageBusiness business) : ControllerBase
 {
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("api/shipments/{shipmentId:int}/packages")]
     public async Task<IActionResult> Create(int shipmentId, CreatePackageRequest input)
     {
@@ -17,6 +19,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return Created($"/api/packages/{dto!.Id}", dto);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("api/packages/auto-assign")]
     public async Task<IActionResult> AutoAssign(AutoAssignPackageRequest input)
     {
@@ -31,6 +34,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpGet("api/packages/{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } p ? Ok(p) : NotFound();
 
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpPatch("api/packages/{id:int}")]
     public async Task<IActionResult> Update(int id, UpdatePackageRequest req)
     {
@@ -39,15 +43,16 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
-    [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
-    [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
-    [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => Change(id, PackageStatus.ReadyToShip);
-    [HttpPost("api/packages/{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => Change(id, PackageStatus.Cancelled);
-    [HttpPost("api/packages/{id:int}/ship")] public Task<IActionResult> Ship(int id) => Change(id, PackageStatus.Shipped, checkDepartureGate: true);
-    [HttpPost("api/packages/{id:int}/arrive-destination")] public Task<IActionResult> ArriveDestination(int id) => Change(id, PackageStatus.ArrivedAtDestination);
-    [HttpPost("api/packages/{id:int}/ready-for-handout")] public Task<IActionResult> ReadyForHandout(int id) => Change(id, PackageStatus.ReadyForHandout);
-    [HttpPost("api/packages/{id:int}/handout")] public Task<IActionResult> Handout(int id) => Change(id, PackageStatus.HandedOut, checkArrivalGate: true);
+    [Authorize(Roles = "Admin,Manager,Field")] [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
+    [Authorize(Roles = "Admin,Manager,Field")] [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
+    [Authorize(Roles = "Admin,Manager,Field")] [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => Change(id, PackageStatus.ReadyToShip);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => Change(id, PackageStatus.Cancelled);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/ship")] public Task<IActionResult> Ship(int id) => Change(id, PackageStatus.Shipped, checkDepartureGate: true);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/arrive-destination")] public Task<IActionResult> ArriveDestination(int id) => Change(id, PackageStatus.ArrivedAtDestination);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/ready-for-handout")] public Task<IActionResult> ReadyForHandout(int id) => Change(id, PackageStatus.ReadyForHandout);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/handout")] public Task<IActionResult> Handout(int id) => Change(id, PackageStatus.HandedOut, checkArrivalGate: true);
 
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpPost("api/packages/{id:int}/items")]
     public async Task<IActionResult> AddItem(int id, UpsertPackageItemRequest item)
     {
@@ -56,6 +61,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpPut("api/packages/{id:int}/items/{itemId:int}")]
     public async Task<IActionResult> UpdateItem(int id, int itemId, UpsertPackageItemRequest input)
     {
@@ -64,6 +70,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpDelete("api/packages/{id:int}/items/{itemId:int}")]
     public async Task<IActionResult> DeleteItem(int id, int itemId)
     {
@@ -73,6 +80,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpPost("api/packages/{id:int}/media")]
     public async Task<IActionResult> UploadMedia(int id, [FromForm] MediaUploadRequest req)
     {
@@ -86,6 +94,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpGet("api/packages/{id:int}/media")]
     public async Task<IActionResult> ListMedia(int id) => Ok(await business.ListMediaAsync(id));
 
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpDelete("api/packages/{id:int}/media/{mediaId:int}")]
     public async Task<IActionResult> DeleteMedia(int id, int mediaId)
     {
@@ -95,6 +104,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return Ok(result);
     }
 
+    [Authorize(Roles = "Admin,Manager,Accountant")]
     [HttpPost("api/packages/{id:int}/pricing-override")]
     public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)
     {

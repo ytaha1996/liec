@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -7,6 +8,7 @@ namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/supply-orders")]
+[Authorize(Roles = "Admin,Manager,Accountant")]
 public class SupplyOrderController(ISupplyOrderBusiness business) : ControllerBase
 {
     [HttpGet]
@@ -15,6 +17,7 @@ public class SupplyOrderController(ISupplyOrderBusiness business) : ControllerBa
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SupplyOrderDto>> Get(int id) => (await business.GetAsync(id)) is { } e ? Ok(e) : NotFound();
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost]
     public async Task<ActionResult<SupplyOrderDto>> Create(UpsertSupplyOrderRequest req)
     {
@@ -22,18 +25,21 @@ public class SupplyOrderController(ISupplyOrderBusiness business) : ControllerBa
         return Created($"/api/supply-orders/{e.Id}", e);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPut("{id:int}")]
     public async Task<ActionResult<SupplyOrderDto>> Update(int id, UpsertSupplyOrderRequest req) =>
         (await business.UpdateAsync(id, req)) is { } e ? Ok(e) : NotFound();
 
-    [HttpPost("{id:int}/approve")] public Task<IActionResult> Approve(int id) => Move(id, SupplyOrderStatus.Approved);
-    [HttpPost("{id:int}/order")] public Task<IActionResult> Order(int id) => Move(id, SupplyOrderStatus.Ordered);
-    [HttpPost("{id:int}/deliver-to-warehouse")] public Task<IActionResult> DeliverToWarehouse(int id) => Move(id, SupplyOrderStatus.DeliveredToWarehouse);
-    [HttpPost("{id:int}/pack-into-package")] public Task<IActionResult> PackIntoPackage(int id) => Move(id, SupplyOrderStatus.PackedIntoPackage);
-    [HttpPost("{id:int}/close")] public Task<IActionResult> Close(int id) => Move(id, SupplyOrderStatus.Closed);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/approve")] public Task<IActionResult> Approve(int id) => Move(id, SupplyOrderStatus.Approved);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/order")] public Task<IActionResult> Order(int id) => Move(id, SupplyOrderStatus.Ordered);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/deliver-to-warehouse")] public Task<IActionResult> DeliverToWarehouse(int id) => Move(id, SupplyOrderStatus.DeliveredToWarehouse);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/pack-into-package")] public Task<IActionResult> PackIntoPackage(int id) => Move(id, SupplyOrderStatus.PackedIntoPackage);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("{id:int}/close")] public Task<IActionResult> Close(int id) => Move(id, SupplyOrderStatus.Closed);
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id:int}/cancel")]
     public Task<IActionResult> Cancel(int id, [FromBody] SupplyOrderTransitionRequest req) => Move(id, SupplyOrderStatus.Cancelled, req.CancelReason);
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id:int}/transition")]
     public async Task<IActionResult> Transition(int id, SupplyOrderTransitionRequest req)
     {

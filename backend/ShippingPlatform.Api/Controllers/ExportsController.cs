@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -6,6 +7,7 @@ namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/exports")]
+[Authorize(Roles = "Admin,Manager,Accountant")]
 public class ExportsController(IExportBusiness business) : ControllerBase
 {
     [HttpPost("group-helper")]

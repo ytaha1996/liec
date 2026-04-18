@@ -1,16 +1,20 @@
 import { IApplication } from './IApplication';
 import { IUserStore } from './redux/user/types';
+import { MODULE_ACCESS, UserRole } from './helpers/rbac';
 
 export const applications = (_user: IUserStore): Record<string, IApplication> => {
+  const role = (_user.role || 'Field') as UserRole;
+  const canSee = (mod: string) => MODULE_ACCESS[mod]?.includes(role) ?? false;
+
   return {
     operations: {
       title: 'Operations',
       name: 'operations',
       route: '/ops',
       modules: {
-        dashboard: { name: 'dashboard', route: '/ops/dashboard', title: 'Dashboard' },
-        shipments: { name: 'shipments', route: '/ops/shipments', title: 'Shipments' },
-        packages: { name: 'packages', route: '/ops/packages', title: 'Packages' },
+        dashboard: { name: 'dashboard', route: '/ops/dashboard', title: 'Dashboard', hidden: !canSee('dashboard') },
+        shipments: { name: 'shipments', route: '/ops/shipments', title: 'Shipments', hidden: !canSee('shipments') },
+        packages: { name: 'packages', route: '/ops/packages', title: 'Packages', hidden: !canSee('packages') },
       }
     },
     masterData: {
@@ -18,12 +22,12 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
       name: 'masterData',
       route: '/master',
       modules: {
-        customers: { name: 'customers', route: '/master/customers', title: 'Customers' },
-        warehouses: { name: 'warehouses', route: '/master/warehouses', title: 'Warehouses' },
-        goodTypes: { name: 'goodTypes', route: '/master/good-types', title: 'Good Types' },
-        pricing: { name: 'pricing', route: '/master/pricing-configs', title: 'Pricing' },
-        suppliers: { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers' },
-        supplyOrders: { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders' },
+        customers: { name: 'customers', route: '/master/customers', title: 'Customers', hidden: !canSee('customers') },
+        warehouses: { name: 'warehouses', route: '/master/warehouses', title: 'Warehouses', hidden: !canSee('warehouses') },
+        goodTypes: { name: 'goodTypes', route: '/master/good-types', title: 'Good Types', hidden: !canSee('goodTypes') },
+        pricing: { name: 'pricing', route: '/master/pricing-configs', title: 'Pricing', hidden: !canSee('pricing') },
+        suppliers: { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers', hidden: !canSee('suppliers') },
+        supplyOrders: { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders', hidden: !canSee('supplyOrders') },
       }
     },
     communications: {
@@ -31,8 +35,17 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
       name: 'communications',
       route: '/comms',
       modules: {
-        messaging: { name: 'messaging', route: '/comms/messaging-logs', title: 'Messaging Logs' },
-        groupHelper: { name: 'groupHelper', route: '/comms/group-helper-export', title: 'Group Helper Export' },
+        messaging: { name: 'messaging', route: '/comms/messaging-logs', title: 'Messaging Logs', hidden: !canSee('messaging') },
+        groupHelper: { name: 'groupHelper', route: '/comms/group-helper-export', title: 'Group Helper Export', hidden: !canSee('groupHelper') },
+      }
+    },
+    admin: {
+      title: 'Admin',
+      name: 'admin',
+      route: '/admin',
+      hidden: !canSee('users'),
+      modules: {
+        users: { name: 'users', route: '/admin/users', title: 'Users', hidden: !canSee('users') },
       }
     }
   };

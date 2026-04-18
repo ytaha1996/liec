@@ -2,6 +2,10 @@ using ShippingPlatform.Api.Models;
 
 namespace ShippingPlatform.Api.Dtos;
 
+public record AdminUserDto(int Id, string Email, string Role, bool IsActive, DateTime? LastLoginAt);
+public record CreateUserRequest(string Email, string Password, UserRole Role, bool IsActive = true);
+public record UpdateUserRequest(string Email, UserRole Role, bool IsActive);
+
 public record CustomerDto(int Id, string Name, string PrimaryPhone, string? Email, string? CompanyName, string? TaxId, string? BillingAddress, bool IsActive, WhatsAppConsentDto? WhatsAppConsent);
 public record CreateCustomerRequest(string Name, string PrimaryPhone, string? Email, string? CompanyName = null, string? TaxId = null, string? BillingAddress = null, bool IsActive = true);
 public record UpdateCustomerRequest(string Name, string PrimaryPhone, string? Email, string? CompanyName, string? TaxId, string? BillingAddress, bool IsActive);
@@ -38,6 +42,7 @@ public record PricingOverrideDto(int Id, PricingOverrideType OverrideType, decim
 
 public static class DtoMap
 {
+    public static AdminUserDto ToDto(this AdminUser x) => new(x.Id, x.Email, x.Role.ToString(), x.IsActive, x.LastLoginAt);
     public static CustomerDto ToDto(this Customer c) => new(c.Id, c.Name, c.PrimaryPhone, c.Email, c.CompanyName, c.TaxId, c.BillingAddress, c.IsActive, c.WhatsAppConsent is null ? null : new WhatsAppConsentDto(c.WhatsAppConsent.OptInStatusUpdates, c.WhatsAppConsent.OptInDeparturePhotos, c.WhatsAppConsent.OptInArrivalPhotos, c.WhatsAppConsent.OptedOutAt));
     public static WarehouseDto ToDto(this Warehouse x) => new(x.Id, x.Code, x.Name, x.City, x.Country, x.MaxWeightKg, x.MaxCbm, x.IsActive);
     public static GoodTypeDto ToDto(this GoodType x) => new(x.Id, x.NameEn, x.NameAr, x.CanBreak, x.CanBurn, x.IsActive);

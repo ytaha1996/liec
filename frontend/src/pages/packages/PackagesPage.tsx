@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, CircularProgress } from '@mui/material';
+import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
@@ -72,6 +73,7 @@ const buildAutoAssignFields = (
 const PackagesPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
 
@@ -225,10 +227,10 @@ const PackagesPage = () => {
     <Box>
       <MainPageTitle
         title="Packages"
-        action={{
+        action={canManageShipments(role) ? {
           title: 'New Package (Auto-Assign)',
           onClick: () => setAutoAssignOpen(true),
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>

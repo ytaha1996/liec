@@ -20,7 +20,7 @@ public class AuthBusiness(AppDbContext db, ITokenService tokens) : IAuthBusiness
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash)) return null;
         user.LastLoginAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return new LoginResponse(tokens.Create(user), user.Email);
+        return new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString());
     }
 }
 
@@ -116,6 +116,65 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
         e.Status = PricingConfigStatus.Retired; await db.SaveChangesAsync(); return e.ToDto();
+    }
+}
+
+public interface IUserBusiness
+{
+    Task<List<AdminUserDto>> ListAsync();
+    Task<AdminUserDto?> GetAsync(int id);
+    Task<(AdminUserDto? dto, object? err)> CreateAsync(CreateUserRequest req);
+    Task<(AdminUserDto? dto, object? err)> UpdateAsync(int id, UpdateUserRequest req, int callerUserId);
+}
+
+public class UserBusiness(AppDbContext db) : IUserBusiness
+{
+    public async Task<List<AdminUserDto>> ListAsync() =>
+        (await db.AdminUsers.OrderBy(x => x.Email).ToListAsync()).Select(x => x.ToDto()).ToList();
+
+    public async Task<AdminUserDto?> GetAsync(int id) =>
+        (await db.AdminUsers.FindAsync(id))?.ToDto();
+
+    public async Task<(AdminUserDto? dto, object? err)> CreateAsync(CreateUserRequest req)
+    {
+        if (await db.AdminUsers.AnyAsync(x => x.Email == req.Email))
+            return (null, new { code = "DUPLICATE_EMAIL", message = "A user with this email already exists." });
+
+        var user = new AdminUser
+        {
+            Email = req.Email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+            Role = req.Role,
+            IsActive = req.IsActive,
+        };
+        db.AdminUsers.Add(user);
+        await db.SaveChangesAsync();
+        return (user.ToDto(), null);
+    }
+
+    public async Task<(AdminUserDto? dto, object? err)> UpdateAsync(int id, UpdateUserRequest req, int callerUserId)
+    {
+        var user = await db.AdminUsers.FindAsync(id);
+        if (user is null) return (null, null);
+
+        if (id == callerUserId && user.Role != req.Role)
+            return (null, new { code = "SELF_ROLE_CHANGE", message = "You cannot change your own role." });
+
+        if (user.Email != req.Email && await db.AdminUsers.AnyAsync(x => x.Email == req.Email && x.Id != id))
+            return (null, new { code = "DUPLICATE_EMAIL", message = "A user with this email already exists." });
+
+        if (user.IsActive && !req.IsActive && user.Role == UserRole.Admin)
+        {
+            var activeAdminCount = await db.AdminUsers.CountAsync(x => x.Role == UserRole.Admin && x.IsActive && x.Id != id);
+            if (activeAdminCount == 0)
+                return (null, new { code = "LAST_ADMIN", message = "Cannot deactivate the last active admin." });
+        }
+
+        user.Email = req.Email;
+        user.Role = req.Role;
+        user.IsActive = req.IsActive;
+        await db.SaveChangesAsync();
+        return (user.ToDto(), null);
     }
 }
 

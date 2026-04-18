@@ -49,7 +49,7 @@ const AppLauncherModules: React.FC<IAppLauncherModulesProps> = ({
       open
     >
       {Object.values(applications).map((app) =>
-        Object.keys(app.modules).map(
+        Object.keys(app.modules).filter(moduleName => !app.modules[moduleName].hidden).map(
           (moduleName) =>
             (!searchKey ||
               !searchKey.trim() ||

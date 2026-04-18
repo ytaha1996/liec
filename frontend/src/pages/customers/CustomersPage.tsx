@@ -16,6 +16,7 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const ENDPOINT = '/api/customers';
 
@@ -81,6 +82,7 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
 const CustomersPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
@@ -150,7 +152,7 @@ const CustomersPage = () => {
               setDialogOpen(true);
             }
           },
-          hidden: () => false,
+          hidden: () => !canWriteMasterData(role),
         },
         {
           icon: <OpenInNewIcon fontSize="small" />,
@@ -175,13 +177,13 @@ const CustomersPage = () => {
     <Box>
       <MainPageTitle
         title="Customers"
-        action={{
+        action={canWriteMasterData(role) ? {
           title: 'Create Customer',
           onClick: () => {
             setEditing(null);
             setDialogOpen(true);
           },
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>

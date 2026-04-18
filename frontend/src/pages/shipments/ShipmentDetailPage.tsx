@@ -38,6 +38,7 @@ import AddPackageDialog from './components/AddPackageDialog';
 import EditShipmentDrawer from './components/EditShipmentDrawer';
 import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
 import WhatsAppCampaignCards from './components/WhatsAppCampaignCards';
+import { useUserRole, canManageShipments, canSendWhatsApp, canExport } from '../../helpers/rbac';
 
 interface Props {
   id: string;
@@ -79,6 +80,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [gate, setGate] = useState<GateError | null>(null);
   const [trackingCode, setTrackingCode] = useState('');
   const [addPkgOpen, setAddPkgOpen] = useState(false);
@@ -341,11 +343,11 @@ const ShipmentDetailPage = ({ id }: Props) => {
     overrides: `${overrideCount} package${overrideCount !== 1 ? 's' : ''}`,
   };
 
-  const editInfoActions = CAN_EDIT_SHIPMENT.has(data.status)
+  const editInfoActions = CAN_EDIT_SHIPMENT.has(data.status) && canManageShipments(role)
     ? [{ key: 'edit', title: 'Edit Info', onClick: () => setEditDrawerOpen(true) }]
     : [];
 
-  const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[data.status] ?? []).map(
+  const titleActions: MainPageAction[] = canManageShipments(role) ? (ALLOWED_TRANSITIONS[data.status] ?? []).map(
     ({ label, action, isCancel, confirmMessage, useRtdPreview }) => ({
       label,
       disabled: move.isPending,
@@ -370,7 +372,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
               }),
             ),
     }),
-  );
+  ) : [];
 
   const statusChip = (
     <Chip
@@ -463,9 +465,9 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </Stack>
         </MainPageSection>
 
-        <WhatsAppCampaignCards shipmentId={id} shipmentStatus={data.status} customerCount={uniqueCustomerCount} />
+        {canSendWhatsApp(role) && <WhatsAppCampaignCards shipmentId={id} shipmentStatus={data.status} customerCount={uniqueCustomerCount} />}
 
-        {EXPORTABLE_STATUSES.has(data.status) && (
+        {canExport(role) && EXPORTABLE_STATUSES.has(data.status) && (
           <MainPageSection title="Shipment Reports">
             <Stack direction="row" gap={1} flexWrap="wrap">
               <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>BOL report</Button>
@@ -474,7 +476,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </MainPageSection>
         )}
 
-        {CAN_ADD_PACKAGE.has(data.status) && (
+        {canManageShipments(role) && CAN_ADD_PACKAGE.has(data.status) && (
           <Box sx={{ mb: 2 }}>
             <Button variant="contained" size="small" onClick={() => setAddPkgOpen(true)}>+ Add Package</Button>
           </Box>
