@@ -3,8 +3,9 @@ import { Route, Routes } from 'react-router-dom';
 import { IUserStore } from './redux/user/types';
 import { useDispatch } from 'react-redux';
 import { LoginUser } from './redux/user/userReducer';
-import { getUserToken } from './helpers/user-token';
+import { getUserToken, decodeRoleFromToken } from './helpers/user-token';
 import Loader from './components/Loader';
+import ConfirmationBox from './components/ConfirmationBox';
 import BaseLayout from './layouts/BaseLayout';
 import LoginPage from './pages/auth/LoginPage';
 import { Protected } from './Protected';
@@ -20,7 +21,7 @@ export const Portal: React.FC = () => {
       const userStore: IUserStore = {
         token,
         active: true,
-        role: 'admin',
+        role: decodeRoleFromToken(token) || 'Field',
         isAuthenticated: true,
         user: {
           email: 'admin',
@@ -35,9 +36,12 @@ export const Portal: React.FC = () => {
   }, []);
 
   return loaded ? (
-    <Routes>
-      <Route path="/login" element={<BaseLayout><LoginPage /></BaseLayout>} />
-      <Route path="*" element={<Protected />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={<BaseLayout><LoginPage /></BaseLayout>} />
+        <Route path="*" element={<Protected />} />
+      </Routes>
+      <ConfirmationBox />
+    </>
   ) : <Loader size={75} />;
 };

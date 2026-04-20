@@ -1,3 +1,6 @@
+# Claude Code
+.claude/
+
 # OS / Editor
 .DS_Store
 Thumbs.db
@@ -42,3 +45,4 @@ TestResults/
 artifacts/
 tmp/
 admin-template/
+.vs/

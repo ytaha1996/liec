@@ -74,7 +74,7 @@ const AppLauncherApps: React.FC<IAppLauncherAppsProps> = ({
     }
   }, [applications, searchKey]);
 
-  const getAppPath = (app: IApplication) => app.route;
+  const getAppPath = (app: IApplication) => Object.values(app.modules)[0]?.route ?? app.route;
 
   return (
     <>

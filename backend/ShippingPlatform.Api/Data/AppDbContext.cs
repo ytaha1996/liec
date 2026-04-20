@@ -11,7 +11,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<PricingConfig> PricingConfigs => Set<PricingConfig>();
     public DbSet<GoodType> GoodTypes => Set<GoodType>();
-    public DbSet<Good> Goods => Set<Good>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ShipmentSequence> ShipmentSequences => Set<ShipmentSequence>();
     public DbSet<Package> Packages => Set<Package>();
@@ -21,6 +20,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Media> Media => Set<Media>();
     public DbSet<WhatsAppCampaign> WhatsAppCampaigns => Set<WhatsAppCampaign>();
     public DbSet<WhatsAppDeliveryLog> WhatsAppDeliveryLogs => Set<WhatsAppDeliveryLog>();
+    public DbSet<PackagePricingOverride> PricingOverrides => Set<PackagePricingOverride>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,5 +30,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Shipment>().HasIndex(x => x.RefCode).IsUnique();
         modelBuilder.Entity<SupplyOrder>().HasIndex(x => x.PackageId).IsUnique();
         modelBuilder.Entity<ShipmentSequence>().HasIndex(x => new { x.OriginWarehouseCode, x.Year }).IsUnique();
+
+        // Performance indexes on foreign keys used in frequent queries
+        modelBuilder.Entity<Package>().HasIndex(x => x.ShipmentId);
+        modelBuilder.Entity<Package>().HasIndex(x => x.CustomerId);
+        modelBuilder.Entity<PackageItem>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<Media>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<WhatsAppDeliveryLog>().HasIndex(x => x.CampaignId);
+        modelBuilder.Entity<PackagePricingOverride>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<AuditLog>().HasIndex(x => new { x.EntityType, x.EntityId });
     }
 }

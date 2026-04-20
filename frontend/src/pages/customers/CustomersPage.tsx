@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, Stack } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
+import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -15,6 +16,7 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const ENDPOINT = '/api/customers';
 
@@ -43,6 +45,30 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     disabled: false,
     value: initial?.email ?? '',
   } as any,
+  companyName: {
+    type: DynamicField.TEXT,
+    name: 'companyName',
+    title: 'Company Name',
+    required: false,
+    disabled: false,
+    value: initial?.companyName ?? '',
+  },
+  taxId: {
+    type: DynamicField.TEXT,
+    name: 'taxId',
+    title: 'Tax ID',
+    required: false,
+    disabled: false,
+    value: initial?.taxId ?? '',
+  },
+  billingAddress: {
+    type: DynamicField.TEXT,
+    name: 'billingAddress',
+    title: 'Billing Address',
+    required: false,
+    disabled: false,
+    value: initial?.billingAddress ?? '',
+  },
   isActive: {
     type: DynamicField.CHECKBOX,
     name: 'isActive',
@@ -56,6 +82,7 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
 const CustomersPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
@@ -125,12 +152,12 @@ const CustomersPage = () => {
               setDialogOpen(true);
             }
           },
-          hidden: () => false,
+          hidden: () => !canWriteMasterData(role),
         },
         {
           icon: <OpenInNewIcon fontSize="small" />,
           label: 'Open Detail',
-          onClick: (id: string) => navigate(`/customers/${id}`),
+          onClick: (id: string) => navigate(`/master/customers/${id}`),
           hidden: () => false,
         },
       ],
@@ -150,17 +177,30 @@ const CustomersPage = () => {
     <Box>
       <MainPageTitle
         title="Customers"
-        action={{
+        action={canWriteMasterData(role) ? {
           title: 'Create Customer',
           onClick: () => {
             setEditing(null);
             setDialogOpen(true);
           },
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <EnhancedTable title="Customers" header={tableHeaders} data={tableData} defaultOrder="name" />
+        <EnhancedTable
+          title="Customers"
+          header={tableHeaders}
+          data={tableData}
+          defaultOrder="name"
+          filters={[
+            {
+              name: 'isActive',
+              title: 'Status',
+              type: TableFilterTypes.SELECT,
+              options: { true: 'Active', false: 'Inactive' },
+            } as ITableFilterType,
+          ]}
+        />
 
         <Box sx={{ mt: 3 }}>
           <Alert severity="warning" sx={{ mb: 2 }}>

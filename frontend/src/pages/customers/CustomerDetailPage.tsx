@@ -1,10 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Box,
-  Card,
-  CardContent,
   Chip,
   TextField,
   Typography,
@@ -17,10 +16,25 @@ import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
+import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
+import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
+import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
+import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
+import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
 
 interface Props {
   id: string;
 }
+
+const CUSTOMER_INFO_FIELDS: IInformationWidgetField[] = [
+  { type: InformationWidgetFieldTypes.Text, name: 'name', title: 'Name', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'primaryPhone', title: 'Primary Phone', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'email', title: 'Email', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'companyName', title: 'Company Name', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'taxId', title: 'Tax ID', width: 'third' },
+  { type: InformationWidgetFieldTypes.Text, name: 'billingAddress', title: 'Billing Address', width: 'third' },
+  { type: InformationWidgetFieldTypes.Boolean, name: 'isActive', title: 'Active', width: 'third' },
+];
 
 const buildConsentFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
   optInStatusUpdates: {
@@ -50,6 +64,7 @@ const buildConsentFields = (initial?: Record<string, any>): Record<string, Dynam
 });
 
 const CustomerDetailPage = ({ id }: Props) => {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [shipmentId, setShipmentId] = useState('');
 
@@ -79,6 +94,62 @@ const CustomerDetailPage = ({ id }: Props) => {
     onSuccess: () => toast.success('WhatsApp message sent'),
     onError: (e: any) => toast.error(e?.message ?? 'Send failed'),
   });
+
+  const { data: customerPackages = [] } = useQuery<any[]>({
+    queryKey: ['/api/customers', id, 'packages'],
+    queryFn: () => getJson<any[]>(`/api/customers/${id}/packages`),
+  });
+
+  const packagesTableData = (customerPackages as any[]).reduce((acc: Record<string, any>, item: any) => {
+    acc[item.id] = {
+      ...item,
+      chargeAmountDisplay: item.chargeAmount != null ? `$${Number(item.chargeAmount).toFixed(2)}` : '-',
+      createdAtDisplay: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '-',
+    };
+    return acc;
+  }, {});
+
+  const packagesTableHeaders: EnhanceTableHeaderTypes[] = [
+    {
+      id: 'id',
+      label: 'Package ID',
+      type: EnhancedTableColumnType.Clickable,
+      numeric: false,
+      disablePadding: false,
+      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/packages/${row.id}`),
+    },
+    {
+      id: 'shipmentRefCode',
+      label: 'Shipment',
+      type: EnhancedTableColumnType.Clickable,
+      numeric: false,
+      disablePadding: false,
+      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/shipments/${row.shipmentId}`),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: PKG_STATUS_CHIPS,
+      chipLabels: PKG_STATUS_LABELS,
+    },
+    {
+      id: 'chargeAmountDisplay',
+      label: 'Charge Amount',
+      type: EnhancedTableColumnType.TEXT,
+      numeric: false,
+      disablePadding: false,
+    },
+    {
+      id: 'createdAtDisplay',
+      label: 'Created At',
+      type: EnhancedTableColumnType.TEXT,
+      numeric: false,
+      disablePadding: false,
+    },
+  ];
 
   const handleConsentSubmit = async (values: Record<string, any>): Promise<boolean> => {
     try {
@@ -124,65 +195,26 @@ const CustomerDetailPage = ({ id }: Props) => {
       </PageTitleWrapper>
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <MainPageSection title="Info">
-          <Card variant="outlined">
-            <CardContent>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Name</Typography>
-                  <Typography>{data.name}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">ID</Typography>
-                  <Typography>#{data.id}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Primary Phone</Typography>
-                  <Typography>{data.primaryPhone}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Email</Typography>
-                  <Typography>{data.email ?? '-'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">Is Active</Typography>
-                  <Chip
-                    label={data.isActive ? 'Active' : 'Inactive'}
-                    color={data.isActive ? 'success' : 'default'}
-                    size="small"
-                  />
-                </Box>
-                <Box sx={{ gridColumn: { sm: '1 / -1' } }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    WhatsApp Consent Flags
-                  </Typography>
-                  <Stack direction="row" gap={1} flexWrap="wrap">
-                    <Chip
-                      label={`Status: ${consent.optInStatusUpdates ? 'Yes' : 'No'}`}
-                      color={consent.optInStatusUpdates ? 'success' : 'default'}
-                      size="small"
-                    />
-                    <Chip
-                      label={`Departure Photos: ${consent.optInDeparturePhotos ? 'Yes' : 'No'}`}
-                      color={consent.optInDeparturePhotos ? 'success' : 'default'}
-                      size="small"
-                    />
-                    <Chip
-                      label={`Arrival Photos: ${consent.optInArrivalPhotos ? 'Yes' : 'No'}`}
-                      color={consent.optInArrivalPhotos ? 'success' : 'default'}
-                      size="small"
-                    />
-                  </Stack>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+        <InformationWidget title="Info" fields={CUSTOMER_INFO_FIELDS} data={data} />
+
+        <MainPageSection title="WhatsApp Consent Flags">
+          <Stack direction="row" gap={1} flexWrap="wrap">
+            <Chip
+              label={`Status: ${consent.optInStatusUpdates ? 'Yes' : 'No'}`}
+              color={consent.optInStatusUpdates ? 'success' : 'default'}
+              size="small"
+            />
+            <Chip
+              label={`Departure Photos: ${consent.optInDeparturePhotos ? 'Yes' : 'No'}`}
+              color={consent.optInDeparturePhotos ? 'success' : 'default'}
+              size="small"
+            />
+            <Chip
+              label={`Arrival Photos: ${consent.optInArrivalPhotos ? 'Yes' : 'No'}`}
+              color={consent.optInArrivalPhotos ? 'success' : 'default'}
+              size="small"
+            />
+          </Stack>
         </MainPageSection>
 
         <MainPageSection title="WhatsApp Consent">
@@ -225,6 +257,21 @@ const CustomerDetailPage = ({ id }: Props) => {
               Arrival Photos
             </Button>
           </Stack>
+        </MainPageSection>
+
+        <MainPageSection title="Packages">
+          {Object.keys(packagesTableData).length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+              No packages found for this customer.
+            </Typography>
+          ) : (
+            <EnhancedTable
+              title="Customer Packages"
+              header={packagesTableHeaders}
+              data={packagesTableData}
+              defaultOrder="id"
+            />
+          )}
         </MainPageSection>
       </Box>
     </Box>
