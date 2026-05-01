@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ShippingPlatform.Api.Data;
 
@@ -11,9 +12,11 @@ using ShippingPlatform.Api.Data;
 namespace ShippingPlatform.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260501065243_BoundStringColumns")]
+    partial class BoundStringColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -49,9 +52,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.ToTable("AdminUsers");
                 });
@@ -92,10 +92,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("varchar(2000)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AdminUserId");
-
-                    b.HasIndex("CreatedAt");
 
                     b.HasIndex("EntityType", "EntityId");
 
@@ -140,10 +136,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("varchar(50)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email");
-
-                    b.HasIndex("PrimaryPhone");
 
                     b.ToTable("Customers");
                 });
@@ -319,10 +311,6 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("ShipmentId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("SupplyOrderId");
 
                     b.ToTable("Packages");
                 });
@@ -545,12 +533,8 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.HasIndex("OriginWarehouseId");
 
-                    b.HasIndex("PlannedDepartureDate");
-
                     b.HasIndex("RefCode")
                         .IsUnique();
-
-                    b.HasIndex("Status");
 
                     b.ToTable("Shipments");
                 });
@@ -789,10 +773,6 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.HasIndex("CampaignId");
 
-                    b.HasIndex("CustomerId");
-
-                    b.HasIndex("Result");
-
                     b.ToTable("WhatsAppDeliveryLogs");
                 });
 
@@ -812,13 +792,13 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasOne("ShippingPlatform.Api.Models.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("ShippingPlatform.Api.Models.Shipment", "Shipment")
                         .WithMany("Packages")
                         .HasForeignKey("ShipmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Customer");
@@ -861,13 +841,13 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasOne("ShippingPlatform.Api.Models.Warehouse", "DestinationWarehouse")
                         .WithMany()
                         .HasForeignKey("DestinationWarehouseId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("ShippingPlatform.Api.Models.Warehouse", "OriginWarehouse")
                         .WithMany()
                         .HasForeignKey("OriginWarehouseId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("DestinationWarehouse");
@@ -880,13 +860,13 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasOne("ShippingPlatform.Api.Models.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("ShippingPlatform.Api.Models.Supplier", "Supplier")
                         .WithMany()
                         .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Customer");

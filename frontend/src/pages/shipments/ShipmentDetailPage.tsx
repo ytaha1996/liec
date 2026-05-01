@@ -235,6 +235,15 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onError: () => toast.error('Customer invoices export failed'),
   });
 
+  const exportCommercialDocs = useMutation({
+    mutationFn: () => postJson<{ publicUrl: string }>(`/api/exports/shipments/${id}/commercial-documents`),
+    onSuccess: (res) => {
+      if (res?.publicUrl) window.open(res.publicUrl, '_blank', 'noopener,noreferrer');
+      toast.success('Commercial Invoice + Packing List ready');
+    },
+    onError: () => toast.error('Commercial documents export failed'),
+  });
+
   const bulkTransition = useMutation({
     mutationFn: (payload: { packageIds: number[]; action: string }) =>
       postJson(`/api/shipments/${id}/packages/bulk-transition`, payload),
@@ -475,8 +484,9 @@ const ShipmentDetailPage = ({ id }: Props) => {
         {canExport(role) && EXPORTABLE_STATUSES.has(data.status) && (
           <MainPageSection title="Shipment Reports">
             <Stack direction="row" gap={1} flexWrap="wrap">
-              <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>BOL report</Button>
-              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending}>customer-invoices-excel</Button>
+              <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>BOL report</Button>
+              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>customer-invoices-excel</Button>
+              <Button variant="outlined" onClick={() => exportCommercialDocs.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>Commercial Invoice + Packing List</Button>
             </Stack>
           </MainPageSection>
         )}

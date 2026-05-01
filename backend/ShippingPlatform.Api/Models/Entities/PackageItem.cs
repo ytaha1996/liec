@@ -10,5 +10,7 @@ public class PackageItem
     public int GoodTypeId { get; set; }
     public GoodType GoodType { get; set; } = null!;
     public int Quantity { get; set; } = 1;
+    public Unit Unit { get; set; } = Unit.Box;
+    public decimal? UnitPrice { get; set; }
     [MaxLength(500)] public string? Note { get; set; }
 }

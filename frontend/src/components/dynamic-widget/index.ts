@@ -59,6 +59,7 @@ export interface IDynamicNumberField extends IDynamicBaseField {
   type: DynamicField.NUMBER;
   min?: number;
   max?: number;
+  step?: number;
 }
 
 export interface IDynamicCurrencyField extends IDynamicBaseField {

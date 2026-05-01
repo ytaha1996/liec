@@ -38,6 +38,7 @@ import ItemDialog from './components/ItemDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
 import { useUserRole, canTransitionPackage, canEditPackageItems, canUploadPhotos, canOverridePricing } from '../../helpers/rbac';
+import { UNIT_LABEL_EN } from '../../api/lookups';
 
 interface Props {
   id: string;
@@ -179,14 +180,24 @@ const PackageDetailPage = ({ id }: Props) => {
   );
 
   const items: any[] = data?.items ?? [];
+  const pkgCurrency: string = (data?.package ?? data)?.currency ?? '';
   const itemsTableData = items.reduce((acc: Record<string, any>, item: any) => {
-    acc[item.id] = { ...item, goodName: item.goodTypeName || goodsMap[item.goodTypeId] || `#${item.goodTypeId}` };
+    acc[item.id] = {
+      ...item,
+      goodName: item.goodTypeName || goodsMap[item.goodTypeId] || `#${item.goodTypeId}`,
+      unitLabel: UNIT_LABEL_EN[item.unit] ?? item.unit ?? '—',
+      unitPriceDisplay: item.unitPrice == null
+        ? '—'
+        : `${pkgCurrency ? pkgCurrency + ' ' : ''}${Number(item.unitPrice).toFixed(2)}`,
+    };
     return acc;
   }, {});
 
   const itemHeaders: EnhanceTableHeaderTypes[] = [
     { id: 'goodName', label: 'Good', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     { id: 'quantity', label: 'Quantity', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
+    { id: 'unitLabel', label: 'Unit', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
+    { id: 'unitPriceDisplay', label: 'Unit Price', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     { id: 'note', label: 'Note', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     {
       id: 'itemActions',
@@ -426,6 +437,7 @@ const PackageDetailPage = ({ id }: Props) => {
         onClose={() => { setAddItemOpen(false); setEditingItem(null); }}
         packageId={id}
         editingItem={editingItem}
+        packageCurrency={pkgCurrency}
       />
 
       <PricingOverrideDialog

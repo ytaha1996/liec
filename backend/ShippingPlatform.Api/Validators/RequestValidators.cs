@@ -93,6 +93,8 @@ public class UpsertPackageItemRequestValidator : AbstractValidator<UpsertPackage
     {
         RuleFor(x => x.GoodTypeId).GreaterThan(0);
         RuleFor(x => x.Quantity).GreaterThanOrEqualTo(1);
+        RuleFor(x => x.Unit).IsInEnum();
+        RuleFor(x => x.UnitPrice).InclusiveBetween(0m, 1_000_000m).When(x => x.UnitPrice.HasValue);
         RuleFor(x => x.Note).MaximumLength(500);
     }
 }

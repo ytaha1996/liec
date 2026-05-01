@@ -258,7 +258,14 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
         case DynamicField.TEXTAREA:
           return <GenericTextAreaInput {...commonProps} />;
         case DynamicField.NUMBER:
-          return <GenericNumberInput {...commonProps} />;
+          return (
+            <GenericNumberInput
+              {...commonProps}
+              min={(field as any).min}
+              max={(field as any).max}
+              step={(field as any).step}
+            />
+          );
         case DynamicField.PHONENUMBER:
           return <GenericPhoneInput {...commonProps} type="text" />;
         case DynamicField.CURRENCY:

@@ -13,7 +13,7 @@ public class Package
     public PackageStatus Status { get; set; } = PackageStatus.Draft;
     public decimal WeightKg { get; set; }
     public decimal Cbm { get; set; }
-    public string Currency { get; set; } = "EUR";
+    [MaxLength(3)] public string Currency { get; set; } = "EUR";
     public decimal AppliedRatePerKg { get; set; }
     public decimal AppliedRatePerCbm { get; set; }
     public decimal ChargeAmount { get; set; }

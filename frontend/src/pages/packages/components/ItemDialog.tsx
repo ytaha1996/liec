@@ -4,15 +4,23 @@ import { getJson, postJson, putJson } from '../../../api/client';
 import GenericDialog from '../../../components/GenericDialog/GenericDialog';
 import DynamicFormWidget from '../../../components/dynamic-widget/DynamicFormWidget';
 import { DynamicField, DynamicFieldTypes } from '../../../components/dynamic-widget';
+import { useUnitsLookup } from '../../../api/lookups';
 
 interface ItemDialogProps {
   open: boolean;
   onClose: () => void;
   packageId: string;
   editingItem?: Record<string, any> | null;
+  packageCurrency?: string;
 }
 
-const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: Record<string, string>): Record<string, DynamicFieldTypes> => ({
+const buildItemFields = (
+  initial: Record<string, any> | undefined,
+  goodsItems: Record<string, string>,
+  unitItems: Record<string, string>,
+  packageCurrency: string,
+  isEditing: boolean,
+): Record<string, DynamicFieldTypes> => ({
   goodTypeId: {
     type: DynamicField.SELECT,
     name: 'goodTypeId',
@@ -29,6 +37,29 @@ const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: R
     required: true,
     disabled: false,
     value: initial?.quantity ?? 1,
+    min: 1,
+  },
+  unit: {
+    type: DynamicField.SELECT,
+    name: 'unit',
+    title: 'Unit',
+    required: true,
+    disabled: false,
+    items: unitItems,
+    value: initial?.unit ?? 'Box',
+  },
+  unitPrice: {
+    type: DynamicField.NUMBER,
+    name: 'unitPrice',
+    title: `Unit Price${packageCurrency ? ` (${packageCurrency})` : ''}`,
+    required: false,
+    disabled: false,
+    // On create: default to 10. On edit: prefill from existing value, or empty when null.
+    value: isEditing
+      ? (initial?.unitPrice ?? '')
+      : (initial?.unitPrice ?? 10),
+    min: 0,
+    step: 0.01,
   },
   note: {
     type: DynamicField.TEXT,
@@ -40,7 +71,7 @@ const buildItemFields = (initial: Record<string, any> | undefined, goodsItems: R
   },
 });
 
-const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) => {
+const ItemDialog = ({ open, onClose, packageId, editingItem, packageCurrency = '' }: ItemDialogProps) => {
   const qc = useQueryClient();
 
   const goodsQuery = useQuery<any[]>({
@@ -48,17 +79,32 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
     queryFn: () => getJson<any[]>('/api/good-types'),
   });
 
+  const unitsQuery = useUnitsLookup();
+
   const goodsItems: Record<string, string> = (goodsQuery.data ?? []).reduce(
     (acc: Record<string, string>, g: any) => { acc[String(g.id)] = g.nameEn; return acc; }, {},
   );
 
+  const unitItems: Record<string, string> = (unitsQuery.data ?? []).reduce(
+    (acc: Record<string, string>, u) => { acc[u.code] = u.labelEn; return acc; }, {},
+  );
+
+  const buildBody = (values: Record<string, any>) => {
+    const unitPrice = values.unitPrice === '' || values.unitPrice == null
+      ? null
+      : Number(values.unitPrice);
+    return {
+      goodTypeId: Number(values.goodTypeId),
+      quantity: Number(values.quantity),
+      unit: values.unit,
+      unitPrice,
+      note: values.note || null,
+    };
+  };
+
   const addItem = useMutation({
     mutationFn: (values: Record<string, any>) =>
-      postJson(`/api/packages/${packageId}/items`, {
-        goodTypeId: Number(values.goodTypeId),
-        quantity: Number(values.quantity),
-        note: values.note || null,
-      }),
+      postJson(`/api/packages/${packageId}/items`, buildBody(values)),
     onSuccess: () => {
       toast.success('Item added');
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
@@ -69,11 +115,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
 
   const putItem = useMutation({
     mutationFn: ({ itemId, values }: { itemId: number; values: Record<string, any> }) =>
-      putJson(`/api/packages/${packageId}/items/${itemId}`, {
-        goodTypeId: Number(values.goodTypeId),
-        quantity: Number(values.quantity),
-        note: values.note || null,
-      }),
+      putJson(`/api/packages/${packageId}/items/${itemId}`, buildBody(values)),
     onSuccess: () => {
       toast.success('Item updated');
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
@@ -101,7 +143,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
       <DynamicFormWidget
         title=""
         drawerMode
-        fields={buildItemFields(editingItem ?? undefined, goodsItems)}
+        fields={buildItemFields(editingItem ?? undefined, goodsItems, unitItems, packageCurrency, !!editingItem)}
         onSubmit={handleSubmit}
       />
     </GenericDialog>

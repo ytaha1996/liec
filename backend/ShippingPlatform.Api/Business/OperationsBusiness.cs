@@ -533,7 +533,15 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (p is null) return (null, null);
         if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
 
-        var entity = new PackageItem { PackageId = id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note };
+        var entity = new PackageItem
+        {
+            PackageId = id,
+            GoodTypeId = item.GoodTypeId,
+            Quantity = item.Quantity,
+            Unit = item.Unit,
+            UnitPrice = item.UnitPrice ?? 10m,
+            Note = item.Note,
+        };
         db.PackageItems.Add(entity);
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.GoodType).LoadAsync();
@@ -548,7 +556,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId);
         if (i is null) return (null, null);
 
-        i.GoodTypeId = input.GoodTypeId; i.Quantity = input.Quantity; i.Note = input.Note;
+        i.GoodTypeId = input.GoodTypeId;
+        i.Quantity = input.Quantity;
+        i.Unit = input.Unit;
+        if (input.UnitPrice.HasValue) i.UnitPrice = input.UnitPrice.Value;
+        i.Note = input.Note;
         await db.SaveChangesAsync();
         await db.Entry(i).Reference(x => x.GoodType).LoadAsync();
         return (i.ToDto(), null);

@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ShippingPlatform.Api.Models;
 
 public class SupplyOrder
@@ -8,9 +10,9 @@ public class SupplyOrder
     public int SupplierId { get; set; }
     public Supplier Supplier { get; set; } = null!;
     public int? PackageId { get; set; }
-    public string Name { get; set; } = string.Empty;
+    [MaxLength(200)] public string Name { get; set; } = string.Empty;
     public decimal PurchasePrice { get; set; }
-    public string? Details { get; set; }
+    [MaxLength(2000)] public string? Details { get; set; }
     public SupplyOrderStatus Status { get; set; } = SupplyOrderStatus.Draft;
-    public string? CancelReason { get; set; }
+    [MaxLength(500)] public string? CancelReason { get; set; }
 }

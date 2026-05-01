@@ -18,4 +18,7 @@ public class ExportsController(IExportBusiness business) : ControllerBase
 
     [HttpPost("shipments/{shipmentId:int}/customer-invoices-excel")]
     public async Task<IActionResult> ShipmentCustomerInvoicesExcel(int shipmentId) => Ok(await business.ShipmentCustomerInvoicesExcelAsync(shipmentId));
+
+    [HttpPost("shipments/{shipmentId:int}/commercial-documents")]
+    public async Task<IActionResult> ShipmentCommercialDocuments(int shipmentId) => Ok(await business.ShipmentCommercialDocumentsAsync(shipmentId));
 }

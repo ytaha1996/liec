@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Models;
 using ShippingPlatform.Api.Services;
+using ShippingPlatform.Api.Services.Exports;
 using ShippingPlatform.Api.Business;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,9 +29,13 @@ var conn = builder.Configuration["ConnectionStrings:MySql"]
           ?? builder.Configuration.GetConnectionString("Default")
           ?? builder.Configuration["ConnectionStrings:Default"];
 if (!string.IsNullOrWhiteSpace(conn))
-    builder.Services.AddDbContext<AppDbContext>(o => o.UseMySql(conn, ServerVersion.AutoDetect(conn)));
+    builder.Services.AddDbContext<AppDbContext>(o => o
+        .UseMySql(conn, ServerVersion.AutoDetect(conn))
+        .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning)));
 else
-    builder.Services.AddDbContext<AppDbContext>(o => o.UseInMemoryDatabase("shipping"));
+    builder.Services.AddDbContext<AppDbContext>(o => o
+        .UseInMemoryDatabase("shipping")
+        .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning)));
 
 var secret = builder.Configuration["Auth:Secret"] ?? "dev-secret-super-long";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -60,6 +65,8 @@ if (!string.IsNullOrEmpty(builder.Configuration["Twilio:AccountSid"]))
 else
     builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
+builder.Services.AddScoped<IInvoiceSequenceService, InvoiceSequenceService>();
+builder.Services.AddSingleton(sp => InvoiceTemplateConstants.FromConfig(sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddHttpClient<IShipmentTrackingLookupService, ShipmentTrackingLookupService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
 builder.Services.AddScoped<IAuthBusiness, AuthBusiness>();

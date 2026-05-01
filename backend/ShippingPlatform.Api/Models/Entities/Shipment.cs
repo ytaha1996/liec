@@ -5,7 +5,7 @@ namespace ShippingPlatform.Api.Models;
 public class Shipment
 {
     public int Id { get; set; }
-    public string RefCode { get; set; } = string.Empty;
+    [MaxLength(20)] public string RefCode { get; set; } = string.Empty;
     [MaxLength(11)] public string? TiiuCode { get; set; }
     public int OriginWarehouseId { get; set; }
     public int DestinationWarehouseId { get; set; }
@@ -20,13 +20,15 @@ public class Shipment
     public decimal MaxCbm { get; set; } = 0;
     public decimal TotalWeightKg { get; set; }
     public decimal TotalCbm { get; set; }
-    public string? ExternalTrackingCode { get; set; }
-    public string? ExternalCarrierName { get; set; }
-    public string? ExternalOrigin { get; set; }
-    public string? ExternalDestination { get; set; }
+    [MaxLength(200)] public string? ExternalTrackingCode { get; set; }
+    [MaxLength(200)] public string? ExternalCarrierName { get; set; }
+    [MaxLength(200)] public string? ExternalOrigin { get; set; }
+    [MaxLength(200)] public string? ExternalDestination { get; set; }
     public DateTime? ExternalEstimatedArrivalAt { get; set; }
-    public string? ExternalStatus { get; set; }
+    [MaxLength(200)] public string? ExternalStatus { get; set; }
     public DateTime? ExternalLastSyncedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? InvoiceNumber { get; set; }
+    public int? InvoiceYear { get; set; }
     public List<Package> Packages { get; set; } = [];
 }

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ShippingPlatform.Api.Data;
 
@@ -11,9 +12,11 @@ using ShippingPlatform.Api.Data;
 namespace ShippingPlatform.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260501064702_AddInvoiceSequence")]
+    partial class AddInvoiceSequence
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -49,9 +52,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.ToTable("AdminUsers");
                 });
@@ -92,10 +92,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("varchar(2000)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AdminUserId");
-
-                    b.HasIndex("CreatedAt");
 
                     b.HasIndex("EntityType", "EntityId");
 
@@ -141,10 +137,6 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email");
-
-                    b.HasIndex("PrimaryPhone");
-
                     b.ToTable("Customers");
                 });
 
@@ -167,13 +159,11 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<string>("NameAr")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("NameEn")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.HasKey("Id");
 
@@ -212,27 +202,23 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<string>("BlobKey")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("CapturedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("OperatorName")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("PackageId")
                         .HasColumnType("int");
 
                     b.Property<string>("PublicUrl")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("RecordedByAdminUserId")
                         .HasColumnType("int");
@@ -259,28 +245,23 @@ namespace ShippingPlatform.Api.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<decimal>("AppliedRatePerCbm")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("AppliedRatePerKg")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("Cbm")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("ChargeAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("varchar(3)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("CustomerId")
                         .HasColumnType("int");
@@ -311,18 +292,13 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("WeightKg")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("ShipmentId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("SupplyOrderId");
 
                     b.ToTable("Packages");
                 });
@@ -381,12 +357,10 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<decimal>("NewValue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("OriginalValue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<int>("OverrideType")
                         .HasColumnType("int");
@@ -416,16 +390,13 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("varchar(3)");
+                        .HasColumnType("longtext");
 
                     b.Property<decimal>("DefaultRatePerCbm")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("DefaultRatePerKg")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<DateTime>("EffectiveFrom")
                         .HasColumnType("datetime(6)");
@@ -434,13 +405,11 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<decimal>("MinimumCharge")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -471,12 +440,10 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("ExternalCarrierName")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("ExternalDestination")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("ExternalEstimatedArrivalAt")
                         .HasColumnType("datetime(6)");
@@ -485,16 +452,13 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("ExternalOrigin")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("ExternalStatus")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("ExternalTrackingCode")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<int?>("InvoiceNumber")
                         .HasColumnType("int");
@@ -503,12 +467,10 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("MaxCbm")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("MaxWeightKg")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<int>("OriginWarehouseId")
                         .HasColumnType("int");
@@ -521,8 +483,7 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<string>("RefCode")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
+                        .HasColumnType("varchar(255)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -532,12 +493,10 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("varchar(11)");
 
                     b.Property<decimal>("TotalCbm")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("TotalWeightKg")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.HasKey("Id");
 
@@ -545,12 +504,8 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.HasIndex("OriginWarehouseId");
 
-                    b.HasIndex("PlannedDepartureDate");
-
                     b.HasIndex("RefCode")
                         .IsUnique();
-
-                    b.HasIndex("Status");
 
                     b.ToTable("Shipments");
                 });
@@ -591,16 +546,14 @@ namespace ShippingPlatform.Api.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Email")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.HasKey("Id");
 
@@ -616,27 +569,23 @@ namespace ShippingPlatform.Api.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("CancelReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("CustomerId")
                         .HasColumnType("int");
 
                     b.Property<string>("Details")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
+                        .HasColumnType("longtext");
 
                     b.Property<int?>("PackageId")
                         .HasColumnType("int");
 
                     b.Property<decimal>("PurchasePrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -666,8 +615,7 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<string>("City")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -676,19 +624,16 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.Property<string>("Country")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<decimal>("MaxCbm")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<decimal>("MaxWeightKg")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("decimal(10,3)");
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -771,13 +716,11 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("FailureReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Phone")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
+                        .HasColumnType("longtext");
 
                     b.Property<int>("Result")
                         .HasColumnType("int");
@@ -788,10 +731,6 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CampaignId");
-
-                    b.HasIndex("CustomerId");
-
-                    b.HasIndex("Result");
 
                     b.ToTable("WhatsAppDeliveryLogs");
                 });
@@ -812,13 +751,13 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasOne("ShippingPlatform.Api.Models.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("ShippingPlatform.Api.Models.Shipment", "Shipment")
                         .WithMany("Packages")
                         .HasForeignKey("ShipmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Customer");
@@ -861,13 +800,13 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasOne("ShippingPlatform.Api.Models.Warehouse", "DestinationWarehouse")
                         .WithMany()
                         .HasForeignKey("DestinationWarehouseId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("ShippingPlatform.Api.Models.Warehouse", "OriginWarehouse")
                         .WithMany()
                         .HasForeignKey("OriginWarehouseId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("DestinationWarehouse");
@@ -880,13 +819,13 @@ namespace ShippingPlatform.Api.Migrations
                     b.HasOne("ShippingPlatform.Api.Models.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("ShippingPlatform.Api.Models.Supplier", "Supplier")
                         .WithMany()
                         .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Customer");

@@ -273,9 +273,15 @@ public interface IExportService
     Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default);
     Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default);
     Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default);
+    Task<string> GenerateShipmentCommercialDocumentsAsync(int shipmentId, CancellationToken ct = default);
 }
 
-public class ExportService(AppDbContext db, IBlobStorageService blob, IConfiguration cfg) : IExportService
+public class ExportService(
+    AppDbContext db,
+    IBlobStorageService blob,
+    IConfiguration cfg,
+    ShippingPlatform.Api.Services.Exports.IInvoiceSequenceService invoiceSeq,
+    ShippingPlatform.Api.Services.Exports.InvoiceTemplateConstants invoiceTpl) : IExportService
 {
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
@@ -480,7 +486,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         {
             ws.Cell(row, 1).Value = "N/A";
             ws.Cell(row, 2).Value = 1;
-            ws.Cell(row, 3).Value = "UNIT";
+            ws.Cell(row, 3).Value = UnitLabels.En[Unit.Box];
             ws.Cell(row, 4).Value = "No items recorded";
             StyleDataRow(ws.Range(row, 1, row, 4), row);
         }
@@ -490,7 +496,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             {
                 ws.Cell(row, 1).Value = line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}";
                 ws.Cell(row, 2).Value = line.Item.Quantity;
-                ws.Cell(row, 3).Value = "UNIT";
+                ws.Cell(row, 3).Value = UnitLabels.En.TryGetValue(line.Item.Unit, out var label) ? label : line.Item.Unit.ToString();
                 ws.Cell(row, 4).Value = string.IsNullOrWhiteSpace(line.Item.Note) ? (line.PackageNote ?? string.Empty) : line.Item.Note;
                 StyleDataRow(ws.Range(row, 1, row, 4), row);
                 row++;
@@ -544,6 +550,34 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
         range.Style.Border.OutsideBorderColor = XLColor.FromHtml("#E0E0E0");
     }
 
+    public async Task<string> GenerateShipmentCommercialDocumentsAsync(int shipmentId, CancellationToken ct = default)
+    {
+        var shipment = await LoadShipmentExportData(shipmentId, ct);
+
+        if (shipment.InvoiceNumber is null)
+        {
+            var year = DateTime.UtcNow.Year;
+            var seq = await invoiceSeq.NextAsync(year);
+            shipment.InvoiceNumber = seq;
+            shipment.InvoiceYear = year;
+            await db.SaveChangesAsync(ct);
+        }
+
+        using var workbook = new XLWorkbook();
+        ShippingPlatform.Api.Services.Exports.CommercialDocumentBuilder.Fill(
+            workbook, shipment, shipment.InvoiceNumber!.Value, shipment.InvoiceYear!.Value, invoiceTpl);
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        var destCountry = ShippingPlatform.Api.Services.Exports.CountryCodeHelper.FromWarehouseCountry(shipment.DestinationWarehouse?.Country);
+        var fileName = $"{shipment.RefCode}_INVOICE_PL_{destCountry}.xlsx";
+        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
+        var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
+        return url;
+    }
+
     private async Task<Shipment> LoadShipmentExportData(int shipmentId, CancellationToken ct)
     {
         var shipment = await db.Shipments
@@ -554,6 +588,7 @@ public class ExportService(AppDbContext db, IBlobStorageService blob, IConfigura
             .Include(s => s.Packages)
                 .ThenInclude(p => p.Items)
                     .ThenInclude(i => i.GoodType)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == shipmentId, ct);
 
         if (shipment is null)
