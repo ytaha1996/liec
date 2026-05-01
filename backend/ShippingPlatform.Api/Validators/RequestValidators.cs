@@ -146,3 +146,26 @@ public class UpdateUserRequestValidator : AbstractValidator<UpdateUserRequest>
         RuleFor(x => x.Role).IsInEnum();
     }
 }
+
+public class UpsertCurrencyRequestValidator : AbstractValidator<UpsertCurrencyRequest>
+{
+    public UpsertCurrencyRequestValidator()
+    {
+        RuleFor(x => x.Code).NotEmpty().Length(3).Matches(@"^[A-Za-z]{3}$").WithMessage("Currency code must be 3 letters (ISO 4217).");
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(60);
+        RuleFor(x => x.Symbol).MaximumLength(8);
+        RuleFor(x => x.AnchorCurrencyCode).NotEmpty().Length(3).When(x => !x.IsBase).WithMessage("Non-base currencies require AnchorCurrencyCode.");
+        RuleFor(x => x.Rate).NotNull().GreaterThan(0).When(x => !x.IsBase).WithMessage("Non-base currencies require a positive Rate.");
+        RuleFor(x => x.AnchorCurrencyCode).Must((req, anchor) => !string.Equals(anchor, req.Code, StringComparison.OrdinalIgnoreCase))
+            .When(x => !x.IsBase && !string.IsNullOrEmpty(x.AnchorCurrencyCode))
+            .WithMessage("Currency cannot anchor to itself.");
+    }
+}
+
+public class UpsertManualRateRequestValidator : AbstractValidator<UpsertManualRateRequest>
+{
+    public UpsertManualRateRequestValidator()
+    {
+        RuleFor(x => x.RateToBase).GreaterThan(0).LessThanOrEqualTo(1_000_000m);
+    }
+}

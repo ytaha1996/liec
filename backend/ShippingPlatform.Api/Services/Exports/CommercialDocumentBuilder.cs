@@ -10,6 +10,11 @@ namespace ShippingPlatform.Api.Services.Exports;
 /// - exact (mis)spellings (e.g., FRIEGHT)
 /// - exact leading/trailing spaces in sheet names and labels
 /// </summary>
+public record InvoiceFxRates(
+    decimal EurPerBase,        // for "Total / EurPerBase = EUR" footer (1.075)
+    decimal F8DisplayRate,     // value written into F8 cell (and used in =E*$F$8 formula)
+    decimal CountryPerEur);    // for "*676" multiplier in column H
+
 public static class CommercialDocumentBuilder
 {
     public static void Fill(
@@ -17,7 +22,8 @@ public static class CommercialDocumentBuilder
         Shipment shipment,
         int invoiceNumber,
         int invoiceYear,
-        InvoiceTemplateConstants tpl)
+        InvoiceTemplateConstants tpl,
+        InvoiceFxRates rates)
     {
         var packages = shipment.Packages
             .Where(p => p.Status != PackageStatus.Cancelled)
@@ -42,7 +48,7 @@ public static class CommercialDocumentBuilder
 
         FillInvoiceSheet(workbook.Worksheets.Add(SafeSheet(invoiceSheetName)),
             shipment, packages, primaryCustomer, multi, invoiceNumber, invoiceYear,
-            invoiceDate, country2, destCity, tpl);
+            invoiceDate, country2, destCity, tpl, rates);
         FillPackingListSheet(workbook.Worksheets.Add(SafeSheet(plSheetName)),
             shipment, packages, primaryCustomer, multi, invoiceNumber, invoiceYear,
             invoiceDate, country2);
@@ -67,7 +73,8 @@ public static class CommercialDocumentBuilder
         DateTime invoiceDate,
         string country2,
         string destCity,
-        InvoiceTemplateConstants tpl)
+        InvoiceTemplateConstants tpl,
+        InvoiceFxRates rates)
     {
         // Column widths (preserve exactly from source).
         ws.Column("A").Width = 54.54;
@@ -112,13 +119,13 @@ public static class CommercialDocumentBuilder
         ws.Cell("A7").Value = $"Street Address: {primaryCustomer.BillingAddress ?? string.Empty}";
         ws.Cell("C7").Value = "Invoice #";
         ws.Cell("D7").Value = $":  No. {invoiceNumber} -{invoiceYear}";
-        ws.Cell("F7").Value = $"Taux {tpl.CountryRate:0}";
+        ws.Cell("F7").Value = $"Taux {rates.CountryPerEur:0}";
 
         var countryPrefix = string.IsNullOrEmpty(country2) ? "" : country2 + " / ";
         ws.Cell("A8").Value = $"{countryPrefix}TEL: {primaryCustomer.PrimaryPhone}";
         ws.Cell("C8").Value = "Customer ID ";
         ws.Cell("D8").Value = $": {country2}{primaryCustomer.Id} \\\\  {shipment.RefCode}";
-        ws.Cell("F8").Value = tpl.UsdToEuroEquivalence;
+        ws.Cell("F8").Value = rates.F8DisplayRate;
 
         ws.Cell("A9").Value = $"CONTAINER : {shipment.TiiuCode ?? string.Empty}";
 
@@ -179,7 +186,7 @@ public static class CommercialDocumentBuilder
             ws.Cell($"{col.Total}{r}").FormulaA1 = $"={col.Qty}{r}*{col.UnitPrice}{r}";
             ws.Cell($"{col.C}{r}").FormulaA1 = $"={col.Total}{r}*$F$8";
             // POSITION TARRIFAIRE col left blank for ops to fill in manually.
-            ws.Cell($"{col.HFormula}{r}").FormulaA1 = $"={col.C}{r}*{col.PositionTariff}{r}*{tpl.CountryRate:0}";
+            ws.Cell($"{col.HFormula}{r}").FormulaA1 = $"={col.C}{r}*{col.PositionTariff}{r}*{rates.CountryPerEur.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
             var rowRange = multi
                 ? ws.Range($"{col.Customer}{r}:{col.HFormula}{r}")
@@ -218,7 +225,7 @@ public static class CommercialDocumentBuilder
 
         fr++;
         ws.Cell($"A{fr}").Value = $"TOTAL CFR {destCity} EQUIVALENT (EURO) ";
-        ws.Cell($"{col.Total}{fr}").FormulaA1 = $"={col.Total}{fr - 1}/{tpl.EuroDivisor.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        ws.Cell($"{col.Total}{fr}").FormulaA1 = $"={col.Total}{fr - 1}/{rates.EurPerBase.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
         fr += 2; // spacer
         ws.Cell($"A{fr}").Value = "GENERAL TERMS AND CONDITIONS:";

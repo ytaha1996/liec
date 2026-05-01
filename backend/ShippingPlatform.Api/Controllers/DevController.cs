@@ -15,6 +15,7 @@ public class DevController(AppDbContext db, IWebHostEnvironment env) : Controlle
     {
         if (!env.IsDevelopment()) return NotFound();
 
+        // Currencies are part of the seeded master data — preserve them
         db.WhatsAppDeliveryLogs.RemoveRange(db.WhatsAppDeliveryLogs);
         db.WhatsAppCampaigns.RemoveRange(db.WhatsAppCampaigns);
         db.PricingOverrides.RemoveRange(db.PricingOverrides);
@@ -31,6 +32,7 @@ public class DevController(AppDbContext db, IWebHostEnvironment env) : Controlle
         await db.SaveChangesAsync();
 
         SeedHelper.SeedCustomers(db);
+        SeedHelper.SeedCurrencies(db);
 
         return NoContent();
     }

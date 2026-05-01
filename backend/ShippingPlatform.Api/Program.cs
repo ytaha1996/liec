@@ -67,6 +67,9 @@ else
 builder.Services.AddScoped<IExportService, ExportService>();
 builder.Services.AddScoped<IInvoiceSequenceService, InvoiceSequenceService>();
 builder.Services.AddSingleton(sp => InvoiceTemplateConstants.FromConfig(sp.GetRequiredService<IConfiguration>()));
+builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IFxRateService, ShippingPlatform.Api.Services.FxRates.FxRateService>();
+builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService, ShippingPlatform.Api.Services.FxRates.ShipmentSnapshotService>();
+builder.Services.AddScoped<ICurrencyBusiness, CurrencyBusiness>();
 builder.Services.AddHttpClient<IShipmentTrackingLookupService, ShipmentTrackingLookupService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
 builder.Services.AddScoped<IAuthBusiness, AuthBusiness>();
@@ -161,6 +164,9 @@ using (var scope = app.Services.CreateScope())
 
     // ── Customers ───────────────────────────────────────────────────────────
     SeedHelper.SeedCustomers(db);
+
+    // ── Currencies ──────────────────────────────────────────────────────────
+    SeedHelper.SeedCurrencies(db);
 }
 
 app.Run();

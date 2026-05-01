@@ -11,14 +11,12 @@ interface ItemDialogProps {
   onClose: () => void;
   packageId: string;
   editingItem?: Record<string, any> | null;
-  packageCurrency?: string;
 }
 
 const buildItemFields = (
   initial: Record<string, any> | undefined,
   goodsItems: Record<string, string>,
   unitItems: Record<string, string>,
-  packageCurrency: string,
   isEditing: boolean,
 ): Record<string, DynamicFieldTypes> => ({
   goodTypeId: {
@@ -51,7 +49,7 @@ const buildItemFields = (
   unitPrice: {
     type: DynamicField.NUMBER,
     name: 'unitPrice',
-    title: `Unit Price${packageCurrency ? ` (${packageCurrency})` : ''}`,
+    title: 'Unit Price ($)',
     required: false,
     disabled: false,
     // On create: default to 10. On edit: prefill from existing value, or empty when null.
@@ -71,7 +69,7 @@ const buildItemFields = (
   },
 });
 
-const ItemDialog = ({ open, onClose, packageId, editingItem, packageCurrency = '' }: ItemDialogProps) => {
+const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) => {
   const qc = useQueryClient();
 
   const goodsQuery = useQuery<any[]>({
@@ -143,7 +141,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem, packageCurrency = '
       <DynamicFormWidget
         title=""
         drawerMode
-        fields={buildItemFields(editingItem ?? undefined, goodsItems, unitItems, packageCurrency, !!editingItem)}
+        fields={buildItemFields(editingItem ?? undefined, goodsItems, unitItems, !!editingItem)}
         onSubmit={handleSubmit}
       />
     </GenericDialog>

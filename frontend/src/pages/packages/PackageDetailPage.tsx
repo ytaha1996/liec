@@ -180,7 +180,6 @@ const PackageDetailPage = ({ id }: Props) => {
   );
 
   const items: any[] = data?.items ?? [];
-  const pkgCurrency: string = (data?.package ?? data)?.currency ?? '';
   const itemsTableData = items.reduce((acc: Record<string, any>, item: any) => {
     acc[item.id] = {
       ...item,
@@ -188,7 +187,7 @@ const PackageDetailPage = ({ id }: Props) => {
       unitLabel: UNIT_LABEL_EN[item.unit] ?? item.unit ?? '—',
       unitPriceDisplay: item.unitPrice == null
         ? '—'
-        : `${pkgCurrency ? pkgCurrency + ' ' : ''}${Number(item.unitPrice).toFixed(2)}`,
+        : `$ ${Number(item.unitPrice).toFixed(2)}`,
     };
     return acc;
   }, {});
@@ -437,7 +436,6 @@ const PackageDetailPage = ({ id }: Props) => {
         onClose={() => { setAddItemOpen(false); setEditingItem(null); }}
         packageId={id}
         editingItem={editingItem}
-        packageCurrency={pkgCurrency}
       />
 
       <PricingOverrideDialog

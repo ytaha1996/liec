@@ -21,7 +21,7 @@ public interface IShipmentBusiness
     Task<object> PreviewReadyToDepartAsync(int id);
 }
 
-public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity, IAuditService audit) : IShipmentBusiness
+public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity, IAuditService audit, ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fxSnapshot) : IShipmentBusiness
 {
     public async Task<object> ListAsync(ShipmentStatus? status, string? q = null, DateTime? dateFrom = null, DateTime? dateTo = null, int? page = null, int pageSize = 25)
     {
@@ -174,7 +174,15 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
 
         await db.SaveChangesAsync();
         await audit.LogAsync("Shipment", id, $"Status → {status}", oldStatus.ToString(), status.ToString());
+        if (status == ShipmentStatus.Arrived)
+            await TryCaptureFxAsync(id, ShipmentSnapshotEvent.Arrived);
         return (s.ToDto(), null);
+    }
+
+    private async Task TryCaptureFxAsync(int shipmentId, ShipmentSnapshotEvent ev)
+    {
+        try { await fxSnapshot.CaptureAsync(shipmentId, ev); }
+        catch { /* best-effort: snapshot capture must not roll back the lifecycle transition */ }
     }
 
     public async Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id)
@@ -189,6 +197,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         s.Status = ShipmentStatus.Departed; s.ActualDepartureAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         await audit.LogAsync("Shipment", id, $"Status → {ShipmentStatus.Departed}", oldStatus.ToString(), ShipmentStatus.Departed.ToString());
+        await TryCaptureFxAsync(id, ShipmentSnapshotEvent.Departed);
         return (s.ToDto(), null, null);
     }
 

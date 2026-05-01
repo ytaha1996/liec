@@ -5,6 +5,17 @@ namespace ShippingPlatform.Api.Services;
 
 public static class SeedHelper
 {
+    public static void SeedCurrencies(AppDbContext db)
+    {
+        if (db.Currencies.Any()) return;
+
+        db.Currencies.AddRange(
+            new Currency { Code = "USD", Name = "US Dollar", Symbol = "$", IsBase = true, IsActive = true },
+            new Currency { Code = "EUR", Name = "Euro", Symbol = "€", IsBase = false, AnchorCurrencyCode = "USD", Rate = 1.075m, IsActive = true },
+            new Currency { Code = "XAF", Name = "Central African CFA Franc", Symbol = "FCFA", IsBase = false, AnchorCurrencyCode = "EUR", Rate = 0.001524m, IsActive = true });
+        db.SaveChanges();
+    }
+
     public static void SeedCustomers(AppDbContext db)
     {
         if (db.Customers.Any()) return;

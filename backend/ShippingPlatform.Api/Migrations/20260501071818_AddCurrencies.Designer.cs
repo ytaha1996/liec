@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ShippingPlatform.Api.Data;
 
@@ -11,9 +12,11 @@ using ShippingPlatform.Api.Data;
 namespace ShippingPlatform.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260501071818_AddCurrencies")]
+    partial class AddCurrencies
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -602,40 +605,6 @@ namespace ShippingPlatform.Api.Migrations
                     b.ToTable("Shipments");
                 });
 
-            modelBuilder.Entity("ShippingPlatform.Api.Models.ShipmentRateSnapshot", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CapturedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("CurrencyCode")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("varchar(3)");
-
-                    b.Property<int>("Event")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("RateToBase")
-                        .HasPrecision(18, 8)
-                        .HasColumnType("decimal(18,8)");
-
-                    b.Property<int>("ShipmentId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ShipmentId", "Event", "CurrencyCode")
-                        .IsUnique();
-
-                    b.ToTable("ShipmentRateSnapshots");
-                });
-
             modelBuilder.Entity("ShippingPlatform.Api.Models.ShipmentSequence", b =>
                 {
                     b.Property<int>("Id")
@@ -954,17 +923,6 @@ namespace ShippingPlatform.Api.Migrations
                     b.Navigation("DestinationWarehouse");
 
                     b.Navigation("OriginWarehouse");
-                });
-
-            modelBuilder.Entity("ShippingPlatform.Api.Models.ShipmentRateSnapshot", b =>
-                {
-                    b.HasOne("ShippingPlatform.Api.Models.Shipment", "Shipment")
-                        .WithMany()
-                        .HasForeignKey("ShipmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Shipment");
                 });
 
             modelBuilder.Entity("ShippingPlatform.Api.Models.SupplyOrder", b =>

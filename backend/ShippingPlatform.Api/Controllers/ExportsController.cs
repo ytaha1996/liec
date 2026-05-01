@@ -20,5 +20,19 @@ public class ExportsController(IExportBusiness business) : ControllerBase
     public async Task<IActionResult> ShipmentCustomerInvoicesExcel(int shipmentId) => Ok(await business.ShipmentCustomerInvoicesExcelAsync(shipmentId));
 
     [HttpPost("shipments/{shipmentId:int}/commercial-documents")]
-    public async Task<IActionResult> ShipmentCommercialDocuments(int shipmentId) => Ok(await business.ShipmentCommercialDocumentsAsync(shipmentId));
+    public async Task<IActionResult> ShipmentCommercialDocuments(
+        int shipmentId,
+        [FromBody] CommercialDocumentsRequest? req,
+        [FromServices] ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fx)
+    {
+        if (req?.RateOverrides is { Count: > 0 })
+        {
+            foreach (var (code, rate) in req.RateOverrides)
+            {
+                if (rate <= 0) continue;
+                await fx.UpsertManualAsync(shipmentId, code.ToUpperInvariant(), rate);
+            }
+        }
+        return Ok(await business.ShipmentCommercialDocumentsAsync(shipmentId));
+    }
 }

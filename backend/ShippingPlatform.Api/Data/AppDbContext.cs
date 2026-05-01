@@ -14,6 +14,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ShipmentSequence> ShipmentSequences => Set<ShipmentSequence>();
     public DbSet<InvoiceSequence> InvoiceSequences => Set<InvoiceSequence>();
+    public DbSet<Currency> Currencies => Set<Currency>();
+    public DbSet<ShipmentRateSnapshot> ShipmentRateSnapshots => Set<ShipmentRateSnapshot>();
     public DbSet<Package> Packages => Set<Package>();
     public DbSet<PackageItem> PackageItems => Set<PackageItem>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -32,6 +34,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<SupplyOrder>().HasIndex(x => x.PackageId).IsUnique();
         modelBuilder.Entity<ShipmentSequence>().HasIndex(x => new { x.OriginWarehouseCode, x.Year }).IsUnique();
         modelBuilder.Entity<InvoiceSequence>().HasIndex(x => x.Year).IsUnique();
+        modelBuilder.Entity<Currency>().HasIndex(x => x.Code).IsUnique();
+        modelBuilder.Entity<Currency>().Property(x => x.Rate).HasPrecision(18, 8);
+        modelBuilder.Entity<ShipmentRateSnapshot>().HasIndex(x => new { x.ShipmentId, x.Event, x.CurrencyCode }).IsUnique();
+        modelBuilder.Entity<ShipmentRateSnapshot>().Property(x => x.RateToBase).HasPrecision(18, 8);
+        modelBuilder.Entity<ShipmentRateSnapshot>()
+            .HasOne(x => x.Shipment).WithMany()
+            .HasForeignKey(x => x.ShipmentId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Performance indexes on foreign keys used in frequent queries
         modelBuilder.Entity<Package>().HasIndex(x => x.ShipmentId);

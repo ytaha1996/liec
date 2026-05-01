@@ -17,6 +17,7 @@ import PackagesPage from './pages/packages/PackagesPage';
 import PackageDetailPage from './pages/packages/PackageDetailPage';
 import SuppliersPage from './pages/suppliers/SuppliersPage';
 import SupplyOrdersPage from './pages/supply-orders/SupplyOrdersPage';
+import CurrenciesPage from './pages/currencies/CurrenciesPage';
 import MessagingLogsPage from './pages/messaging/MessagingLogsPage';
 import GroupHelperExportPage from './pages/messaging/GroupHelperExportPage';
 import UsersPage from './pages/users/UsersPage';
@@ -67,6 +68,7 @@ export const Protected: React.FC = () => {
         {can('pricing') && <Route path="/master/pricing-configs" element={<PricingConfigsPage />} />}
         {can('suppliers') && <Route path="/master/suppliers" element={<SuppliersPage />} />}
         {can('supplyOrders') && <Route path="/master/supply-orders" element={<SupplyOrdersPage />} />}
+        {can('currencies') && <Route path="/master/currencies" element={<CurrenciesPage />} />}
 
         {can('messaging') && <Route path="/comms/messaging-logs" element={<MessagingLogsPage />} />}
         {can('groupHelper') && <Route path="/comms/group-helper-export" element={<GroupHelperExportPage />} />}

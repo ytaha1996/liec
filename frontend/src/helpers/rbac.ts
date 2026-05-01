@@ -17,6 +17,7 @@ export const MODULE_ACCESS: Record<string, UserRole[]> = {
   pricing:      ['Admin', 'Manager', 'Accountant'],
   suppliers:    ['Admin', 'Manager', 'Accountant'],
   supplyOrders: ['Admin', 'Manager', 'Accountant'],
+  currencies:   ['Admin', 'Manager', 'Accountant'],
   messaging:    ['Admin', 'Manager', 'Accountant'],
   groupHelper:  ['Admin', 'Manager', 'Accountant'],
   users:        ['Admin', 'Manager'],

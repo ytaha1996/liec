@@ -87,6 +87,38 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
     [HttpGet("{id:int}/media")]
     public async Task<IActionResult> Media(int id) => Ok(await business.MediaAsync(id));
 
+    [HttpGet("{id:int}/fx-snapshots")]
+    public async Task<IActionResult> FxSnapshots(int id, [FromServices] ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fx) =>
+        Ok((await fx.GetAsync(id)).Select(x => x.ToDto()));
+
+    [Authorize(Roles = "Admin,Manager")]
+    [HttpPut("{id:int}/fx-snapshots/{currencyCode}")]
+    public async Task<IActionResult> UpsertManualRate(
+        int id,
+        string currencyCode,
+        UpsertManualRateRequest req,
+        [FromServices] ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fx,
+        [FromServices] Data.AppDbContext db)
+    {
+        var code = currencyCode.ToUpperInvariant();
+        var currency = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(db.Currencies, x => x.Code == code);
+        if (currency is null || !currency.IsActive)
+            return Conflict(new { code = "CURRENCY_NOT_FOUND", message = $"Active currency '{code}' not found." });
+        await fx.UpsertManualAsync(id, code, req.RateToBase);
+        return NoContent();
+    }
+
+    [Authorize(Roles = "Admin,Manager")]
+    [HttpDelete("{id:int}/fx-snapshots/{currencyCode}")]
+    public async Task<IActionResult> DeleteManualRate(
+        int id,
+        string currencyCode,
+        [FromServices] ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fx)
+    {
+        await fx.DeleteManualAsync(id, currencyCode.ToUpperInvariant());
+        return NoContent();
+    }
+
     [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{shipmentId:int}/packages/bulk-transition")]
     public async Task<IActionResult> BulkTransition(int shipmentId, BulkTransitionRequest request)

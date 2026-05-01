@@ -47,6 +47,13 @@ public record PricingOverrideDto(int Id, PricingOverrideType OverrideType, decim
 
 public record LookupItemDto(int Value, string Code, string LabelEn, string LabelAr);
 
+public record CurrencyDto(int Id, string Code, string Name, string? Symbol, bool IsBase, string? AnchorCurrencyCode, decimal? Rate, bool IsActive, DateTime UpdatedAt);
+public record UpsertCurrencyRequest(string Code, string Name, string? Symbol, bool IsBase, string? AnchorCurrencyCode, decimal? Rate, bool IsActive = true);
+
+public record ShipmentRateSnapshotDto(int Id, int ShipmentId, ShipmentSnapshotEvent Event, string CurrencyCode, decimal RateToBase, DateTime CapturedAt);
+public record UpsertManualRateRequest(decimal RateToBase);
+public record CommercialDocumentsRequest(Dictionary<string, decimal>? RateOverrides = null);
+
 public static class DtoMap
 {
     public static AdminUserDto ToDto(this AdminUser x) => new(x.Id, x.Email, x.Role.ToString(), x.IsActive, x.LastLoginAt);
@@ -59,4 +66,6 @@ public static class DtoMap
     public static ShipmentDto ToDto(this Shipment x) => new(x.Id, x.RefCode, x.TiiuCode, x.OriginWarehouseId, x.DestinationWarehouseId, x.PlannedDepartureDate, x.PlannedArrivalDate, x.ActualDepartureAt, x.ActualArrivalAt, x.Status, x.MaxWeightKg, x.MaxCbm, x.TotalWeightKg, x.TotalCbm, x.ExternalTrackingCode, x.ExternalCarrierName, x.ExternalOrigin, x.ExternalDestination, x.ExternalEstimatedArrivalAt, x.ExternalStatus, x.ExternalLastSyncedAt, x.CreatedAt);
     public static PackageDto ToDto(this Package x) => new(x.Id, x.ShipmentId, x.CustomerId, x.ProvisionMethod, x.Status, x.WeightKg, x.Cbm, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerCbm, x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.HasPricingOverride, x.SupplyOrderId, x.Note, x.CreatedAt);
     public static PackageItemDto ToDto(this PackageItem x) => new(x.Id, x.PackageId, x.GoodTypeId, x.GoodType?.NameEn ?? "", x.Quantity, x.Unit, x.UnitPrice, x.Note);
+    public static CurrencyDto ToDto(this Currency x) => new(x.Id, x.Code, x.Name, x.Symbol, x.IsBase, x.AnchorCurrencyCode, x.Rate, x.IsActive, x.UpdatedAt);
+    public static ShipmentRateSnapshotDto ToDto(this ShipmentRateSnapshot x) => new(x.Id, x.ShipmentId, x.Event, x.CurrencyCode, x.RateToBase, x.CapturedAt);
 }

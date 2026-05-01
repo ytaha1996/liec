@@ -11,6 +11,7 @@ public class PackageItem
     public GoodType GoodType { get; set; } = null!;
     public int Quantity { get; set; } = 1;
     public Unit Unit { get; set; } = Unit.Box;
+    // Always denominated in the system's base currency (USD). See Currencies table.
     public decimal? UnitPrice { get; set; }
     [MaxLength(500)] public string? Note { get; set; }
 }

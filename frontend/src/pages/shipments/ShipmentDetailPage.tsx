@@ -38,6 +38,7 @@ import AddPackageDialog from './components/AddPackageDialog';
 import EditShipmentDrawer from './components/EditShipmentDrawer';
 import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
 import WhatsAppCampaignCards from './components/WhatsAppCampaignCards';
+import FxSnapshotsSection from './components/FxSnapshotsSection';
 import { useUserRole, canManageShipments, canSendWhatsApp, canExport } from '../../helpers/rbac';
 
 interface Props {
@@ -480,6 +481,8 @@ const ShipmentDetailPage = ({ id }: Props) => {
         </MainPageSection>
 
         {canSendWhatsApp(role) && <WhatsAppCampaignCards shipmentId={id} shipmentStatus={data.status} customerCount={uniqueCustomerCount} />}
+
+        <FxSnapshotsSection shipmentId={id} canManage={canManageShipments(role)} />
 
         {canExport(role) && EXPORTABLE_STATUSES.has(data.status) && (
           <MainPageSection title="Shipment Reports">

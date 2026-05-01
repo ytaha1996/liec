@@ -281,7 +281,8 @@ public class ExportService(
     IBlobStorageService blob,
     IConfiguration cfg,
     ShippingPlatform.Api.Services.Exports.IInvoiceSequenceService invoiceSeq,
-    ShippingPlatform.Api.Services.Exports.InvoiceTemplateConstants invoiceTpl) : IExportService
+    ShippingPlatform.Api.Services.Exports.InvoiceTemplateConstants invoiceTpl,
+    ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fxSnap) : IExportService
 {
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
@@ -563,9 +564,19 @@ public class ExportService(
             await db.SaveChangesAsync(ct);
         }
 
+        // Resolve FX rates: prefer Manual override, then Departed snapshot, then live current rates.
+        var eurSnap = await fxSnap.ResolveForInvoiceAsync(shipmentId, "EUR");
+        var xafSnap = await fxSnap.ResolveForInvoiceAsync(shipmentId, "XAF");
+        var eurRate = eurSnap?.RateToBase ?? 1m;
+        var xafRate = xafSnap?.RateToBase ?? 0m;
+        var rates = new ShippingPlatform.Api.Services.Exports.InvoiceFxRates(
+            EurPerBase: eurRate,
+            F8DisplayRate: eurRate,
+            CountryPerEur: eurRate > 0 && xafRate > 0 ? eurRate / xafRate : 0m);
+
         using var workbook = new XLWorkbook();
         ShippingPlatform.Api.Services.Exports.CommercialDocumentBuilder.Fill(
-            workbook, shipment, shipment.InvoiceNumber!.Value, shipment.InvoiceYear!.Value, invoiceTpl);
+            workbook, shipment, shipment.InvoiceNumber!.Value, shipment.InvoiceYear!.Value, invoiceTpl, rates);
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);

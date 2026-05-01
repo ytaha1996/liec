@@ -28,6 +28,7 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
         pricing: { name: 'pricing', route: '/master/pricing-configs', title: 'Pricing', hidden: !canSee('pricing') },
         suppliers: { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers', hidden: !canSee('suppliers') },
         supplyOrders: { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders', hidden: !canSee('supplyOrders') },
+        currencies: { name: 'currencies', route: '/master/currencies', title: 'Currencies', hidden: !canSee('currencies') },
       }
     },
     communications: {

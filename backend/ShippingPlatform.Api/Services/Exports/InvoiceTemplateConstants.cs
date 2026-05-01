@@ -12,9 +12,6 @@ public class InvoiceTemplateConstants
     public string BankIban { get; init; } = "EURO NO: LB07001400001202353226519913";
     public string PaymentTerms { get; init; } = "100 % TT 150 DAYS BL DATE";
     public string ThankYou { get; init; } = "Thank you for your business!";
-    public decimal EuroDivisor { get; init; } = 1.075m;
-    public decimal CountryRate { get; init; } = 676m;
-    public decimal UsdToEuroEquivalence { get; init; } = 1.3496503m;
     public decimal DefaultFreight { get; init; } = 2550m;
 
     public static InvoiceTemplateConstants FromConfig(IConfiguration cfg)
@@ -33,9 +30,6 @@ public class InvoiceTemplateConstants
             BankIban               = section["BankIban"]               ?? defaults.BankIban,
             PaymentTerms           = section["PaymentTerms"]           ?? defaults.PaymentTerms,
             ThankYou               = section["ThankYou"]               ?? defaults.ThankYou,
-            EuroDivisor            = decimal.TryParse(section["EuroDivisor"], out var ed) ? ed : defaults.EuroDivisor,
-            CountryRate            = decimal.TryParse(section["CountryRate"], out var cr) ? cr : defaults.CountryRate,
-            UsdToEuroEquivalence   = decimal.TryParse(section["UsdToEuroEquivalence"], out var ue) ? ue : defaults.UsdToEuroEquivalence,
             DefaultFreight         = decimal.TryParse(section["DefaultFreight"], out var df) ? df : defaults.DefaultFreight,
         };
     }

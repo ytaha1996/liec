@@ -13,3 +13,4 @@ public enum UserRole { Admin, Manager, Accountant, Field }
 
 // Append-only: numeric values are stable. Never reorder or delete entries.
 public enum Unit { Box = 1, Piece = 2, Crt = 3, Bag = 4, Pallet = 5 }
+public enum ShipmentSnapshotEvent { Departed, Arrived, Manual }
