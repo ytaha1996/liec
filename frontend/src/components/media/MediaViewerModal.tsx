@@ -77,6 +77,7 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
 
   const handleDelete = (item: MediaItem) => {
     dispatch(OpenConfirmation({
+      open: true,
       title: 'Delete Photo',
       message: `Delete this ${stage} photo?`,
       onSubmit: () => deleteMedia.mutate(item.id),

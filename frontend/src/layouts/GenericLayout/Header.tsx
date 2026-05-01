@@ -220,8 +220,8 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
                 <SearchIcon />
               </IconButton>
             </Tooltip>
-            {currentUser?.user?.role && (
-              <Chip label={currentUser.user.role} size="small" sx={{ mr: 1, color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} variant="outlined" />
+            {currentUser?.role && (
+              <Chip label={currentUser.role} size="small" sx={{ mr: 1, color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} variant="outlined" />
             )}
             <Tooltip title={currentUser ? `${currentUser.user.username}` : 'User'}>
               <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>

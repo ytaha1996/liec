@@ -242,7 +242,14 @@ const SupplyOrdersPage = () => {
 
   const handleSubmit = async (values: Record<string, any>): Promise<boolean> => {
     try {
-      await save.mutateAsync(values);
+      await save.mutateAsync({
+        customerId: Number(values.customerId),
+        supplierId: Number(values.supplierId),
+        packageId: values.packageId ? Number(values.packageId) : null,
+        name: values.name,
+        purchasePrice: Number(values.purchasePrice),
+        details: values.details || null,
+      });
       return true;
     } catch {
       return false;

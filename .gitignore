@@ -41,6 +41,11 @@ TestResults/
 *.db
 *.db-journal
 
+# Playwright
+e2e/.auth/
+playwright-report/
+test-results/
+
 # Build artifacts
 artifacts/
 tmp/

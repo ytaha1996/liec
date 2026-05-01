@@ -187,9 +187,7 @@ const GoodTypesPage: React.FC = () => {
           action={canWriteMasterData(role) ? { title: 'Create Good Type', onClick: openCreate } : undefined}
         />
       </PageTitleWrapper>
-      <MainPageSection title="Good Types">
         <EnhancedTable header={header} data={tableData} title="Good Types" />
-      </MainPageSection>
       <GenericDialog
         open={open}
         onClose={() => setOpen(false)}

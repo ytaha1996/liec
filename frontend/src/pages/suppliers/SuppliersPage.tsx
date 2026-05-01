@@ -148,9 +148,7 @@ const SuppliersPage: React.FC = () => {
           action={canWriteMasterData(role) ? { title: 'Create Supplier', onClick: openCreate } : undefined}
         />
       </PageTitleWrapper>
-      <MainPageSection title="Suppliers">
         <EnhancedTable header={header} data={tableData} title="Suppliers" />
-      </MainPageSection>
       <GenericDialog
         open={open}
         onClose={() => setOpen(false)}
