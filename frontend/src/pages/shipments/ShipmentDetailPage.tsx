@@ -14,7 +14,6 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  TextField,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -40,6 +39,7 @@ import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog'
 import WhatsAppCampaignCards from './components/WhatsAppCampaignCards';
 import FxSnapshotsSection from './components/FxSnapshotsSection';
 import { useUserRole, canManageShipments, canSendWhatsApp, canExport } from '../../helpers/rbac';
+import { formatAuditEntry } from '../../helpers/audit-utils';
 
 interface Props {
   id: string;
@@ -83,7 +83,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const qc = useQueryClient();
   const role = useUserRole();
   const [gate, setGate] = useState<GateError | null>(null);
-  const [trackingCode, setTrackingCode] = useState('');
   const [addPkgOpen, setAddPkgOpen] = useState(false);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   const [photosPkgId, setPhotosPkgId] = useState<number | null>(null);
@@ -208,12 +207,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
       }
       toast.error(payload.message ?? 'Transition failed');
     },
-  });
-
-  const syncTracking = useMutation({
-    mutationFn: (code: string) => postJson(`/api/shipments/${id}/tracking/sync`, { code }),
-    onSuccess: () => { toast.success('Tracking synced'); qc.invalidateQueries({ queryKey: ['/api/shipments', id] }); },
-    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Tracking sync failed'),
   });
 
   const uniqueCustomerCount = new Set(shipmentPackages.map((p: any) => p.customerId)).size;
@@ -472,14 +465,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
           <InformationWidget title="Financial Summary" fields={financialFields} data={financialData} />
         )}
 
-        <MainPageSection title="External Tracking Sync">
-          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-            <TextField size="small" label="Tracking code" value={trackingCode} onChange={(e) => setTrackingCode(e.target.value)} />
-            <Button variant="outlined" onClick={() => syncTracking.mutate(trackingCode)} disabled={syncTracking.isPending || !trackingCode.trim()}>Sync Tracking</Button>
-            <Typography variant="body2">Current: {data.externalTrackingCode ?? '-'} / ETA: {data.externalEstimatedArrivalAt ? new Date(data.externalEstimatedArrivalAt).toLocaleString() : '-'}</Typography>
-          </Stack>
-        </MainPageSection>
-
         {canSendWhatsApp(role) && <WhatsAppCampaignCards shipmentId={id} shipmentStatus={data.status} customerCount={uniqueCustomerCount} />}
 
         <FxSnapshotsSection shipmentId={id} canManage={canManageShipments(role)} />
@@ -488,7 +473,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
           <MainPageSection title="Shipment Reports">
             <Stack direction="row" gap={1} flexWrap="wrap">
               <Button variant="outlined" onClick={() => exportBol.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>BOL report</Button>
-              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>customer-invoices-excel</Button>
+              <Button variant="outlined" onClick={() => exportCustomerInvoices.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>Customer Invoices</Button>
               <Button variant="outlined" onClick={() => exportCommercialDocs.mutate()} disabled={exportBol.isPending || exportCustomerInvoices.isPending || exportCommercialDocs.isPending}>Commercial Invoice + Packing List</Button>
             </Stack>
           </MainPageSection>
@@ -499,21 +484,22 @@ const ShipmentDetailPage = ({ id }: Props) => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Action</TableCell>
-                  <TableCell>Old Value</TableCell>
-                  <TableCell>New Value</TableCell>
-                  <TableCell>Date</TableCell>
+                  <TableCell>Activity</TableCell>
+                  <TableCell>Detail</TableCell>
+                  <TableCell>When</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(auditQuery.data ?? []).map((log: any, idx: number) => (
-                  <TableRow key={log.id ?? idx}>
-                    <TableCell>{log.action}</TableCell>
-                    <TableCell>{log.oldValue ?? '—'}</TableCell>
-                    <TableCell>{log.newValue ?? '—'}</TableCell>
-                    <TableCell>{log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}</TableCell>
-                  </TableRow>
-                ))}
+                {(auditQuery.data ?? []).map((log: any, idx: number) => {
+                  const entry = formatAuditEntry(log);
+                  return (
+                    <TableRow key={log.id ?? idx}>
+                      <TableCell>{entry.title}</TableCell>
+                      <TableCell>{entry.detail || '—'}</TableCell>
+                      <TableCell>{log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </MainPageSection>

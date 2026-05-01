@@ -37,4 +37,21 @@ export const MEDIA_STAGE_CHIPS: Record<string, { color: string; backgroundColor:
   Other:      { color: '#333', backgroundColor: '#e0e0e0' },
 };
 
+export const SUPPLY_ORDER_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
+  Draft:                { color: '#333', backgroundColor: '#e0e0e0' },
+  Approved:             { color: '#fff', backgroundColor: '#0288d1' },
+  Ordered:              { color: '#fff', backgroundColor: '#ed6c02' },
+  DeliveredToWarehouse: { color: '#fff', backgroundColor: '#0097a7' },
+  PackedIntoPackage:    { color: '#fff', backgroundColor: '#7b1fa2' },
+  Closed:               { color: '#fff', backgroundColor: '#2e7d32' },
+  Cancelled:            { color: '#fff', backgroundColor: '#c62828' },
+};
+
+export const PRICING_CONFIG_STATUS_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
+  Draft:     { color: '#333', backgroundColor: '#e0e0e0' },
+  Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
+  Active:    { color: '#fff', backgroundColor: '#2e7d32' },
+  Retired:   { color: '#fff', backgroundColor: '#616161' },
+};
+
 // Status filter options moved to constants/statusLabels.ts

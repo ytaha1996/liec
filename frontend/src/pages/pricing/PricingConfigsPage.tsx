@@ -14,6 +14,7 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
 import { PRICING_CONFIG_STATUS_LABELS } from '../../constants/statusLabels';
+import { PRICING_CONFIG_STATUS_CHIPS } from '../../constants/statusColors';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
 
@@ -134,12 +135,7 @@ const PricingConfigsPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Active: { color: '#fff', backgroundColor: '#2e7d32' },
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-        Retired: { color: '#fff', backgroundColor: '#616161' },
-      },
+      chipColors: PRICING_CONFIG_STATUS_CHIPS,
       chipLabels: PRICING_CONFIG_STATUS_LABELS,
     },
     {

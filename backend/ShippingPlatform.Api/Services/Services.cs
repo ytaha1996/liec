@@ -366,7 +366,7 @@ public class ExportService(
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
-        var fileName = $"customers-{DateTime.UtcNow:yyyyMMdd-HHmm}.xlsx";
+        var fileName = $"Customers - {DateTime.UtcNow:yyyy-MM-dd}.xlsx";
         var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
@@ -472,7 +472,7 @@ public class ExportService(
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
-        var fileName = $"BOL report - {shipment.RefCode}.xlsx";
+        var fileName = $"BOL Report - {shipment.RefCode}.xlsx";
         var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
@@ -504,7 +504,7 @@ public class ExportService(
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
-        var fileName = $"customer-invoices-excel - {shipment.RefCode}.xlsx";
+        var fileName = $"Customer Invoices - {shipment.RefCode}.xlsx";
         var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
@@ -653,7 +653,7 @@ public class ExportService(
         workbook.SaveAs(ms);
         ms.Position = 0;
         var destCountry = ShippingPlatform.Api.Services.Exports.CountryCodeHelper.FromWarehouseCountry(shipment.DestinationWarehouse?.Country);
-        var fileName = $"{shipment.RefCode}_INVOICE_PL_{destCountry}.xlsx";
+        var fileName = $"Commercial Invoice ({destCountry}) - {shipment.RefCode}.xlsx";
         var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
@@ -677,32 +677,5 @@ public class ExportService(
             throw new KeyNotFoundException("Shipment not found.");
 
         return shipment;
-    }
-}
-
-
-public record ShipmentTrackingSnapshot(string Code, string? Name, string? Origin, string? Destination, DateTime? EstimatedArrivalAt, string? Status);
-
-public interface IShipmentTrackingLookupService
-{
-    Task<ShipmentTrackingSnapshot?> LookupAsync(string code, CancellationToken ct = default);
-}
-
-public class ShipmentTrackingLookupService(HttpClient http) : IShipmentTrackingLookupService
-{
-    public async Task<ShipmentTrackingSnapshot?> LookupAsync(string code, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(code)) return null;
-        try
-        {
-            var res = await http.GetAsync($"https://api.maerskline.com/track/{Uri.EscapeDataString(code)}", ct);
-            // Public free APIs are inconsistent; fail-open and return unknown when unavailable.
-            if (!res.IsSuccessStatusCode) return new ShipmentTrackingSnapshot(code, null, null, null, null, "Unknown");
-            return new ShipmentTrackingSnapshot(code, null, null, null, null, "Unknown");
-        }
-        catch
-        {
-            return new ShipmentTrackingSnapshot(code, null, null, null, null, "Unknown");
-        }
     }
 }

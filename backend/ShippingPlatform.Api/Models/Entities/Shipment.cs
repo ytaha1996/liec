@@ -20,13 +20,6 @@ public class Shipment
     public decimal MaxCbm { get; set; } = 0;
     public decimal TotalWeightKg { get; set; }
     public decimal TotalCbm { get; set; }
-    [MaxLength(200)] public string? ExternalTrackingCode { get; set; }
-    [MaxLength(200)] public string? ExternalCarrierName { get; set; }
-    [MaxLength(200)] public string? ExternalOrigin { get; set; }
-    [MaxLength(200)] public string? ExternalDestination { get; set; }
-    public DateTime? ExternalEstimatedArrivalAt { get; set; }
-    [MaxLength(200)] public string? ExternalStatus { get; set; }
-    public DateTime? ExternalLastSyncedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int? InvoiceNumber { get; set; }
     public int? InvoiceYear { get; set; }

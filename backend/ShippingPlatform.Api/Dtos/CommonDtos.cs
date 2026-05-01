@@ -9,7 +9,6 @@ public record MissingGateItem(int PackageId, string CustomerName, MediaStage Sta
 public record StatusRequest(string Status);
 public record ExportRequest(string Format);
 
-public record ShipmentTrackingSyncRequest(string Code);
 public record UpdateShipmentRequest(string? TiiuCode, DateTime? PlannedDepartureDate, DateTime? PlannedArrivalDate, decimal? MaxWeightKg = null, decimal? MaxCbm = null);
 
 public record BulkTransitionRequest(int[] PackageIds, string Action);

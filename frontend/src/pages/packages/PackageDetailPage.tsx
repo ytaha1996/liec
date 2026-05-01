@@ -39,6 +39,7 @@ import BulkAddItemsDialog from './components/BulkAddItemsDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
 import { useUserRole, canTransitionPackage, canEditPackageItems, canUploadPhotos, canOverridePricing } from '../../helpers/rbac';
+import { formatAuditEntry } from '../../helpers/audit-utils';
 import { UNIT_LABEL_EN } from '../../api/lookups';
 
 interface Props {
@@ -414,21 +415,22 @@ const PackageDetailPage = ({ id }: Props) => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Action</TableCell>
-                    <TableCell>Old Value</TableCell>
-                    <TableCell>New Value</TableCell>
-                    <TableCell>Date</TableCell>
+                    <TableCell>Activity</TableCell>
+                    <TableCell>Detail</TableCell>
+                    <TableCell>When</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(auditQuery.data ?? []).map((log: any, idx: number) => (
-                    <TableRow key={log.id ?? idx}>
-                      <TableCell>{log.action}</TableCell>
-                      <TableCell>{log.oldValue ?? '—'}</TableCell>
-                      <TableCell>{log.newValue ?? '—'}</TableCell>
-                      <TableCell>{log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {(auditQuery.data ?? []).map((log: any, idx: number) => {
+                    const entry = formatAuditEntry(log);
+                    return (
+                      <TableRow key={log.id ?? idx}>
+                        <TableCell>{entry.title}</TableCell>
+                        <TableCell>{entry.detail || '—'}</TableCell>
+                        <TableCell>{log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : (

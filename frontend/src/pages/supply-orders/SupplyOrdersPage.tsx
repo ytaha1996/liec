@@ -4,6 +4,7 @@ import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import { SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
+import { SUPPLY_ORDER_STATUS_CHIPS } from '../../constants/statusColors';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import EmptyState from '../../components/EmptyState';
 import {
@@ -206,15 +207,7 @@ const SupplyOrdersPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Approved: { color: '#fff', backgroundColor: '#0288d1' },
-        Ordered: { color: '#fff', backgroundColor: '#ed6c02' },
-        DeliveredToWarehouse: { color: '#fff', backgroundColor: '#1565c0' },
-        PackedIntoPackage: { color: '#fff', backgroundColor: '#616161' },
-        Closed: { color: '#fff', backgroundColor: '#2e7d32' },
-        Cancelled: { color: '#fff', backgroundColor: '#c62828' },
-      },
+      chipColors: SUPPLY_ORDER_STATUS_CHIPS,
       chipLabels: SUPPLY_ORDER_STATUS_LABELS,
     },
     {

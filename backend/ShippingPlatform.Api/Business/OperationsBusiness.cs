@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Dtos;
@@ -16,12 +15,11 @@ public interface IShipmentBusiness
     Task<(ShipmentDto? dto, object? error)> UpdateAsync(int id, UpdateShipmentRequest req);
     Task<(ShipmentDto? dto, GateFailure? gate, object? error)> DepartAsync(int id);
     Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id);
-    Task<(ShipmentDto? dto, object? error)> SyncTrackingAsync(int id, string code, CancellationToken ct = default);
     Task<List<object>> MediaAsync(int id);
     Task<object> PreviewReadyToDepartAsync(int id);
 }
 
-public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, IShipmentTrackingLookupService tracking, ICapacityService capacity, IAuditService audit, ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fxSnapshot) : IShipmentBusiness
+public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, ICapacityService capacity, IAuditService audit, ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fxSnapshot) : IShipmentBusiness
 {
     public async Task<object> ListAsync(ShipmentStatus? status, string? q = null, DateTime? dateFrom = null, DateTime? dateTo = null, int? page = null, int pageSize = 25)
     {
@@ -47,12 +45,6 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (input.OriginWarehouseId == input.DestinationWarehouseId) return (null, "Origin and destination warehouse must be different.");
         var origin = await db.Warehouses.FirstOrDefaultAsync(x => x.Id == input.OriginWarehouseId);
         if (origin is null) return (null, "Origin warehouse not found.");
-        if (!string.IsNullOrWhiteSpace(input.TiiuCode))
-        {
-            var normalized = input.TiiuCode.Trim().ToUpperInvariant();
-            if (!Regex.IsMatch(normalized, @"^[A-Z]{3,4}\d{4,7}$"))
-                return (null, "TIIU code must be 3-4 letters followed by 4-7 digits (e.g., MSCU1234567).");
-        }
         // Capacity caps must not exceed the origin warehouse's caps. 0 = unbounded shipment, skips check.
         if (origin.MaxWeightKg > 0 && input.MaxWeightKg > 0 && input.MaxWeightKg > origin.MaxWeightKg)
             return (null, $"Shipment MaxWeightKg ({input.MaxWeightKg}) exceeds origin warehouse capacity ({origin.MaxWeightKg}).");
@@ -87,8 +79,6 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (req.TiiuCode is not null)
         {
             var normalized = req.TiiuCode.Trim().ToUpperInvariant();
-            if (normalized.Length > 0 && !Regex.IsMatch(normalized, @"^[A-Z]{3,4}\d{4,7}$"))
-                return (null, new { code = "VALIDATION_ERROR", message = "TIIU code must be 3-4 letters followed by 4-7 digits (e.g., MSCU1234567)." });
             s.TiiuCode = normalized.Length == 0 ? null : normalized;
         }
 
@@ -132,7 +122,6 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
     {
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null);
-        if (status == ShipmentStatus.Scheduled && string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling shipment." });
         if (!transitions.CanMove(s.Status, status)) return (null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to {status}." });
 
         var oldStatus = s.Status;
@@ -222,7 +211,6 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (missing.Count > 0) return (null, new GateFailure("PHOTO_GATE_FAILED", "Shipment cannot be set to Departed until all packages have departure photos.", missing), null);
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null, null);
-        if (string.IsNullOrWhiteSpace(s.TiiuCode)) return (null, null, new { code = "VALIDATION_ERROR", message = "TIIU code is required before scheduling/departing." });
         if (!transitions.CanMove(s.Status, ShipmentStatus.Departed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Departed." });
         var oldStatus = s.Status;
         s.Status = ShipmentStatus.Departed; s.ActualDepartureAt = DateTime.UtcNow;
@@ -243,25 +231,6 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         s.Status = ShipmentStatus.Closed; await db.SaveChangesAsync();
         await audit.LogAsync("Shipment", id, $"Status → {ShipmentStatus.Closed}", oldStatus.ToString(), ShipmentStatus.Closed.ToString());
         return (s.ToDto(), null, null);
-    }
-
-    public async Task<(ShipmentDto? dto, object? error)> SyncTrackingAsync(int id, string code, CancellationToken ct = default)
-    {
-        var s = await db.Shipments.FindAsync(id);
-        if (s is null) return (null, null);
-        if (s.Status is ShipmentStatus.Draft or ShipmentStatus.Cancelled)
-            return (null, new { code = "INVALID_STATUS", message = "Tracking can be synced only for Scheduled/ReadyToDepart/Departed shipments." });
-        var snap = await tracking.LookupAsync(code, ct);
-        if (snap is null) return (null, new { code = "TRACKING_NOT_FOUND", message = "Tracking details were not found." });
-        s.ExternalTrackingCode = snap.Code;
-        s.ExternalCarrierName = snap.Name;
-        s.ExternalOrigin = snap.Origin;
-        s.ExternalDestination = snap.Destination;
-        s.ExternalEstimatedArrivalAt = snap.EstimatedArrivalAt;
-        s.ExternalStatus = snap.Status;
-        s.ExternalLastSyncedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-        return (s.ToDto(), null);
     }
 
     public async Task<List<object>> MediaAsync(int id)

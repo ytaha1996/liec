@@ -70,7 +70,6 @@ builder.Services.AddSingleton(sp => InvoiceTemplateConstants.FromConfig(sp.GetRe
 builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IFxRateService, ShippingPlatform.Api.Services.FxRates.FxRateService>();
 builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService, ShippingPlatform.Api.Services.FxRates.ShipmentSnapshotService>();
 builder.Services.AddScoped<ICurrencyBusiness, CurrencyBusiness>();
-builder.Services.AddHttpClient<IShipmentTrackingLookupService, ShipmentTrackingLookupService>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
 builder.Services.AddScoped<IAuthBusiness, AuthBusiness>();
 builder.Services.AddScoped<IMasterDataBusiness, MasterDataBusiness>();

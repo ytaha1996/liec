@@ -73,15 +73,6 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
     }
 
     [Authorize(Roles = "Admin,Manager")]
-    [HttpPost("{id:int}/tracking/sync")]
-    public async Task<IActionResult> SyncTracking(int id, ShipmentTrackingSyncRequest req, CancellationToken ct)
-    {
-        var (dto, err) = await business.SyncTrackingAsync(id, req.Code, ct);
-        if (dto is null && err is null) return NotFound();
-        return err is null ? Ok(dto) : Conflict(err);
-    }
-
-    [Authorize(Roles = "Admin,Manager")]
     [HttpGet("{id:int}/audit-log")]
     public async Task<IActionResult> AuditLog(int id, [FromServices] ShippingPlatform.Api.Services.IAuditService audit) => Ok(await audit.GetLogsAsync("Shipment", id));
 

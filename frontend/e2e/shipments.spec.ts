@@ -97,7 +97,7 @@ test.describe('Shipments', () => {
     await expect(page.getByText('No shipments found.')).toBeVisible({ timeout: 5000 });
   });
 
-  test('schedule shipment requires TIIU code', async ({ page }) => {
+  test('schedule shipment from Draft', async ({ page }) => {
     await page.goto('/ops/shipments');
     await page.waitForLoadState('networkidle');
     const clickableCell = page.locator('table tbody tr td button, table tbody tr td a').first();
@@ -107,11 +107,9 @@ test.describe('Shipments', () => {
       const scheduleBtn = page.getByRole('button', { name: 'Schedule' });
       if (await scheduleBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await scheduleBtn.click();
-        // ConfirmationBox has "Confirm" button
         const confirmBtn = page.getByRole('button', { name: 'Confirm' });
         if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           await confirmBtn.click();
-          // Should fail if no TIIU code -- confirmation dialog closes but page stays
           await expect(confirmBtn).not.toBeVisible({ timeout: 10000 });
         }
       }

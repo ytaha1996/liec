@@ -77,11 +77,10 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
   tiiuCode: {
     type: DynamicField.TEXT,
     name: 'tiiuCode',
-    title: 'TIIU Code (e.g., MSCU1234567)',
+    title: 'TIIU Code',
     required: false,
     disabled: false,
     value: '',
-    regex: /^[A-Za-z]{3,4}\d{4,7}$/,
   },
 });
 
