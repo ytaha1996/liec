@@ -237,7 +237,9 @@ public static class CommercialDocumentBuilder
 
         fr++;
         ws.Cell($"A{fr}").Value = "NO OF PACKAGES:";
-        ws.Range($"C{fr}:D{fr}").Merge().FormulaA1 = $"=SUM({col.Qty}{firstItemRow}:{col.Qty}{lastItemRow})";
+        // ClosedXML doesn't accept FormulaA1 on a merged range — set on the first cell, then merge.
+        ws.Cell($"C{fr}").FormulaA1 = $"=SUM({col.Qty}{firstItemRow}:{col.Qty}{lastItemRow})";
+        ws.Range($"C{fr}:D{fr}").Merge();
 
         fr++;
         ws.Cell($"A{fr}").Value = "DELIVERY TERM:";

@@ -41,14 +41,11 @@ test.describe('Currencies', () => {
   });
 
   test('cannot delete the base currency (USD)', async ({ page }) => {
-    const token = await page.evaluate(() => localStorage.getItem('token')) ?? '';
-    if (!token) {
-      await page.goto('/master/currencies');
-      await page.waitForLoadState('networkidle');
-    }
-    const t = await page.evaluate(() => localStorage.getItem('token'));
+    await page.goto('/ops/dashboard');
+    await page.waitForLoadState('networkidle');
+    const token = await page.evaluate(() => localStorage.getItem('token'));
     const del = await page.request.delete('http://localhost:51295/api/currencies/USD', {
-      headers: { Authorization: `Bearer ${t}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     expect(del.status()).toBe(409);
   });

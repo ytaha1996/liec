@@ -449,7 +449,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
     public async Task<object?> GetAsync(int id)
     {
-        var p = await db.Packages.Include(x => x.Items).ThenInclude(i => i.GoodType).Include(x => x.Media).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await db.Packages
+            .Include(x => x.Items).ThenInclude(i => i.GoodType)
+            .Include(x => x.Media)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
         return new { package = p.ToDto(), items = p.Items.Select(i => i.ToDto()), media = p.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes }) };
     }
@@ -459,7 +463,12 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
     private async Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusInternalAsync(int id, PackageStatus status, bool checkDepartureGate, bool checkArrivalGate, bool deferCapacity)
     {
-        var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await db.Packages
+            .Include(x => x.Customer)
+            .Include(x => x.Media)
+            .Include(x => x.Items)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return (null, null, null);
 
         // Shipment-gated transitions: package transitions must respect parent shipment status

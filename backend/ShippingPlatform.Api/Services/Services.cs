@@ -74,7 +74,9 @@ public class RefCodeService(AppDbContext db) : IRefCodeService
     {
         var origin = await db.Warehouses.FirstAsync(x => x.Id == originWarehouseId);
         var year = DateTime.UtcNow.Year;
-        var yy = year.ToString("yy");
+        // Two-digit year. Note: int.ToString("yy") treats "yy" as a numeric custom format
+        // and emits the literal string "yy" — only date types know that specifier.
+        var yy = (year % 100).ToString("D2");
 
         // Serializable transaction with one retry on unique-index conflict — protects against
         // concurrent GenerateAsync calls clobbering LastNumber for the same warehouse+year.

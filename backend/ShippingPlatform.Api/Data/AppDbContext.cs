@@ -118,12 +118,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(x => x.RecordedByAdminUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Package's child collections are exposed as IReadOnlyList projections backed by
-        // private List<T> fields. EF needs to use field-access to populate them.
-        modelBuilder.Entity<Package>().Navigation(p => p.Items).UsePropertyAccessMode(PropertyAccessMode.Field);
-        modelBuilder.Entity<Package>().Navigation(p => p.Media).UsePropertyAccessMode(PropertyAccessMode.Field);
-        modelBuilder.Entity<Package>().Navigation(p => p.PricingOverrides).UsePropertyAccessMode(PropertyAccessMode.Field);
-
         // Package.Currency / PricingConfig.Currency → Currencies.Code (alternate key).
         // Currency rows can't be deleted while referenced — see CurrencyBusiness.DeleteAsync.
         modelBuilder.Entity<Currency>().HasAlternateKey(c => c.Code);

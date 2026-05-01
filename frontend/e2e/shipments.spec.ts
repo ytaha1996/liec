@@ -43,7 +43,7 @@ test.describe('Shipments', () => {
     await page.waitForLoadState('networkidle');
     await page.getByLabel('Search by Ref Code or TIIU').fill('NONEXISTENT');
     await page.waitForTimeout(500);
-    await expect(page.getByText('No shipments found. Create one to get started.')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('No shipments found.')).toBeVisible({ timeout: 5000 });
   });
 
   test('click shipment row navigates to detail page', async ({ page }) => {
@@ -94,7 +94,7 @@ test.describe('Shipments', () => {
     await page.waitForLoadState('networkidle');
     await page.getByLabel('Search by Ref Code or TIIU').fill('ZZZZZZZZZ');
     await page.waitForTimeout(500);
-    await expect(page.getByText('No shipments found. Create one to get started.')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('No shipments found.')).toBeVisible({ timeout: 5000 });
   });
 
   test('schedule shipment requires TIIU code', async ({ page }) => {

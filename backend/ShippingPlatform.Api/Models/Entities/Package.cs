@@ -25,13 +25,11 @@ public class Package
     [MaxLength(1000)] public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    // Children populated by EF via the backing fields below. Exposed as readonly
-    // projections so consumers cannot mutate the lists; modifications go through
-    // the corresponding DbSet (db.PackageItems.Add(...), db.Media.Add(...), etc.).
-    private readonly List<PackageItem> _items = new();
-    public IReadOnlyList<PackageItem> Items => _items;
-    private readonly List<Media> _media = new();
-    public IReadOnlyList<Media> Media => _media;
-    private readonly List<PackagePricingOverride> _pricingOverrides = new();
-    public IReadOnlyList<PackagePricingOverride> PricingOverrides => _pricingOverrides;
+    // Children. Setters are private so the reference can't be reassigned externally; .Add() is
+    // still possible via the navigation but in practice mutations go through the DbSets
+    // (db.PackageItems.Add(...), db.Media.Add(...), etc.). A full IReadOnlyList projection
+    // requires a deeper EF Core configuration that we deferred — see gap #18.
+    public List<PackageItem> Items { get; private set; } = [];
+    public List<Media> Media { get; private set; } = [];
+    public List<PackagePricingOverride> PricingOverrides { get; private set; } = [];
 }

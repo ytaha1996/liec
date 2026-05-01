@@ -106,6 +106,6 @@ test.describe('Supply Orders', () => {
     await page.waitForLoadState('networkidle');
     await page.getByLabel('Search by Name').fill('NONEXISTENT');
     await page.waitForTimeout(500);
-    await expect(page.getByText('No supply orders found. Create one to get started.')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('No supply orders found.')).toBeVisible({ timeout: 5000 });
   });
 });

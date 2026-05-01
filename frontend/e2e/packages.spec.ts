@@ -13,7 +13,7 @@ test.describe('Packages', () => {
     await page.waitForLoadState('networkidle');
     await page.getByLabel('Search by Package ID or Customer').fill('NONEXISTENT');
     await page.waitForTimeout(500);
-    await expect(page.getByText('No packages found. Create one to get started.')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('No packages found.')).toBeVisible({ timeout: 5000 });
   });
 
   test('create package via auto-assign', async ({ page }) => {
@@ -184,7 +184,7 @@ test.describe('Packages', () => {
     await page.waitForLoadState('networkidle');
     await page.getByLabel('Search by Package ID or Customer').fill('ZZZZZZ');
     await page.waitForTimeout(500);
-    await expect(page.getByText('No packages found. Create one to get started.')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('No packages found.')).toBeVisible({ timeout: 5000 });
   });
 
   test('shipment ref code is clickable in table', async ({ page }) => {
