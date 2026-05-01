@@ -18,6 +18,7 @@ import MainPageSection from '../../components/layout-components/main-layout/Main
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
+import EmptyState from '../../components/EmptyState';
 import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
@@ -261,9 +262,7 @@ const CustomerDetailPage = ({ id }: Props) => {
 
         <MainPageSection title="Packages">
           {Object.keys(packagesTableData).length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-              No packages found for this customer.
-            </Typography>
+            <EmptyState message="No packages found for this customer." />
           ) : (
             <EnhancedTable
               title="Customer Packages"

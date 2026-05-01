@@ -74,12 +74,33 @@ public class RefCodeService(AppDbContext db) : IRefCodeService
     {
         var origin = await db.Warehouses.FirstAsync(x => x.Id == originWarehouseId);
         var year = DateTime.UtcNow.Year;
-        var yy = year % 100;
-        var seq = await db.ShipmentSequences.FirstOrDefaultAsync(x => x.Year == year && x.OriginWarehouseCode == origin.Code);
-        if (seq is null) { seq = new ShipmentSequence { OriginWarehouseCode = origin.Code, Year = year, LastNumber = 0 }; db.ShipmentSequences.Add(seq); }
-        seq.LastNumber++;
-        await db.SaveChangesAsync();
-        return $"{origin.Code}-{yy:D2}{seq.LastNumber:D2}";
+        var yy = year.ToString("yy");
+
+        // Serializable transaction with one retry on unique-index conflict — protects against
+        // concurrent GenerateAsync calls clobbering LastNumber for the same warehouse+year.
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var useTx = db.Database.IsRelational();
+            await using var tx = useTx
+                ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable)
+                : null;
+            try
+            {
+                var seq = await db.ShipmentSequences.FirstOrDefaultAsync(x => x.Year == year && x.OriginWarehouseCode == origin.Code);
+                if (seq is null) { seq = new ShipmentSequence { OriginWarehouseCode = origin.Code, Year = year, LastNumber = 0 }; db.ShipmentSequences.Add(seq); }
+                seq.LastNumber++;
+                await db.SaveChangesAsync();
+                if (tx is not null) await tx.CommitAsync();
+                return $"{origin.Code}-{yy}{seq.LastNumber:D2}";
+            }
+            catch (DbUpdateException) when (attempt == 0)
+            {
+                if (tx is not null) await tx.RollbackAsync();
+                foreach (var entry in db.ChangeTracker.Entries<ShipmentSequence>().ToList())
+                    entry.State = EntityState.Detached;
+            }
+        }
+        throw new InvalidOperationException($"Failed to allocate next ref-code for {origin.Code}/{year} after retry.");
     }
 }
 

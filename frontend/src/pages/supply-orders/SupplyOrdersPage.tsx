@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { getJson, postJson, putJson } from '../../api/client';
 import { SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
+import EmptyState from '../../components/EmptyState';
 import {
   EnhanceTableHeaderTypes,
   EnhancedTableColumnType,
@@ -275,9 +276,7 @@ const SupplyOrdersPage = () => {
           sx={{ mb: 2, minWidth: 300 }}
         />
         {Object.keys(tableData).length === 0 && (
-          <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-            No supply orders found. Create one to get started.
-          </Typography>
+          <EmptyState message="No supply orders found." hint="Create one to get started." />
         )}
         <EnhancedTable title="Supply Orders" header={tableHeaders} data={tableData} defaultOrder="name" />
       </Box>

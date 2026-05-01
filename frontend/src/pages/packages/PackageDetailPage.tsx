@@ -269,7 +269,9 @@ const PackageDetailPage = ({ id }: Props) => {
   const pricingFields: IInformationWidgetField[] = [
     { type: InformationWidgetFieldTypes.Text, name: 'cbm', title: 'CBM', width: 'third' },
     { type: InformationWidgetFieldTypes.Text, name: 'weightTons', title: 'Weight (t)', width: 'third' },
-    { type: InformationWidgetFieldTypes.Text, name: 'currency', title: 'Currency', width: 'third' },
+    // `Package.Currency` is the freight-charge currency from the active pricing config; it is
+    // unrelated to PackageItem.UnitPrice (always USD). Hidden here to avoid confusing operators —
+    // unit prices in the items table render as "$ X.XX" by contract.
     { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } } : {}) },
     { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } } : {}) },
     { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } } : {}) },

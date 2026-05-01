@@ -13,6 +13,7 @@ public class Media
     [MaxLength(1000)] public string? Notes { get; set; }
     public DateTime? CapturedAt { get; set; }
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
-    public int RecordedByAdminUserId { get; set; }
+    public int? RecordedByAdminUserId { get; set; }
+    public AdminUser? RecordedByAdminUser { get; set; }
     [MaxLength(200)] public string? OperatorName { get; set; }
 }

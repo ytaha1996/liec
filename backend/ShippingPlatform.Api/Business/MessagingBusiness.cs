@@ -17,6 +17,9 @@ public class WhatsAppBusiness(AppDbContext db, IWhatsAppSender sender) : IWhatsA
 {
     public async Task<object> SendBulkAsync(int shipmentId, CampaignType type, int adminUserId = 1)
     {
+        // Sweep stale Pending logs from a previously-interrupted run (older than 5 min).
+        await SweepStalePendingAsync();
+
         var shipment = await db.Shipments.Include(x => x.OriginWarehouse).Include(x => x.DestinationWarehouse)
             .FirstOrDefaultAsync(x => x.Id == shipmentId)
             ?? throw new InvalidOperationException("Shipment not found");
@@ -33,8 +36,35 @@ public class WhatsAppBusiness(AppDbContext db, IWhatsAppSender sender) : IWhatsA
             if (customers.Count > 1) await Task.Delay(200);
         }
 
+        // Defensive: any rows still Pending after the loop (e.g., an unexpected throw bypassed
+        // the per-recipient setter) get flipped to Failed so they don't sit forever.
+        var stuckRows = await db.WhatsAppDeliveryLogs.Where(x => x.CampaignId == camp.Id && x.Result == DeliveryResult.Pending).ToListAsync();
+        foreach (var row in stuckRows)
+        {
+            row.Result = DeliveryResult.Failed;
+            row.FailureReason = "Loop completed without final result";
+        }
+
         camp.Completed = true; await db.SaveChangesAsync();
         return new { camp.Id, camp.Type, camp.ShipmentId, camp.CreatedAt, camp.RecipientCount, camp.Completed };
+    }
+
+    private async Task SweepStalePendingAsync()
+    {
+        var cutoff = DateTime.UtcNow.AddMinutes(-5);
+        var stale = await db.WhatsAppDeliveryLogs
+            .Where(x => x.Result == DeliveryResult.Pending && x.SentAt == null)
+            .Join(db.WhatsAppCampaigns, log => log.CampaignId, camp => camp.Id, (log, camp) => new { log, camp })
+            .Where(x => x.camp.CreatedAt < cutoff)
+            .Select(x => x.log)
+            .ToListAsync();
+        if (stale.Count == 0) return;
+        foreach (var row in stale)
+        {
+            row.Result = DeliveryResult.Failed;
+            row.FailureReason = "Loop interrupted (swept on next campaign launch)";
+        }
+        await db.SaveChangesAsync();
     }
 
     public async Task<object> SendIndividualAsync(int customerId, int shipmentId, CampaignType type, int adminUserId = 1)

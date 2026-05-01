@@ -4,8 +4,7 @@ import { getJson } from './client';
 export interface LookupItem {
   value: number;
   code: string;
-  labelEn: string;
-  labelAr: string;
+  label: string;
 }
 
 export const UNIT_LABEL_EN: Record<string, string> = {

@@ -6,21 +6,45 @@ using ShippingPlatform.Api.Services;
 
 namespace ShippingPlatform.Api.Business;
 
+public enum LoginOutcome { Success, BadCredentials, Locked }
+
 public interface IAuthBusiness
 {
-    Task<LoginResponse?> LoginAsync(LoginRequest request);
+    Task<(LoginOutcome outcome, LoginResponse? response, DateTime? lockedUntil)> LoginAsync(LoginRequest request);
 }
 
-public class AuthBusiness(AppDbContext db, ITokenService tokens) : IAuthBusiness
+public class AuthBusiness(AppDbContext db, ITokenService tokens, IConfiguration cfg) : IAuthBusiness
 {
-    public async Task<LoginResponse?> LoginAsync(LoginRequest request)
+    public async Task<(LoginOutcome outcome, LoginResponse? response, DateTime? lockedUntil)> LoginAsync(LoginRequest request)
     {
         var user = await db.AdminUsers.FirstOrDefaultAsync(x => x.Email == request.Email && x.IsActive);
-        if (user is null) return null;
-        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash)) return null;
-        user.LastLoginAt = DateTime.UtcNow;
+        if (user is null) return (LoginOutcome.BadCredentials, null, null);
+
+        var now = DateTime.UtcNow;
+        if (user.LockedUntil.HasValue && user.LockedUntil.Value > now)
+            return (LoginOutcome.Locked, null, user.LockedUntil);
+
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            var threshold = int.TryParse(cfg["Auth:LockoutThreshold"], out var t) && t > 0 ? t : 5;
+            var minutes = int.TryParse(cfg["Auth:LockoutMinutes"], out var m) && m > 0 ? m : 15;
+            user.FailedLoginCount++;
+            if (user.FailedLoginCount >= threshold)
+            {
+                user.LockedUntil = now.AddMinutes(minutes);
+                user.FailedLoginCount = 0; // reset counter; LockedUntil now governs.
+                await db.SaveChangesAsync();
+                return (LoginOutcome.Locked, null, user.LockedUntil);
+            }
+            await db.SaveChangesAsync();
+            return (LoginOutcome.BadCredentials, null, null);
+        }
+
+        user.LastLoginAt = now;
+        user.FailedLoginCount = 0;
+        user.LockedUntil = null;
         await db.SaveChangesAsync();
-        return new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString());
+        return (LoginOutcome.Success, new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString()), null);
     }
 }
 
@@ -49,7 +73,7 @@ public interface IMasterDataBusiness
     Task<PricingConfigDto?> RetirePricingConfigAsync(int id);
 }
 
-public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
+public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterDataBusiness
 {
     public async Task<List<WarehouseDto>> ListWarehousesAsync() => (await db.Warehouses.ToListAsync()).Select(x => x.ToDto()).ToList();
     public async Task<WarehouseDto?> GetWarehouseAsync(int id) => (await db.Warehouses.FindAsync(id))?.ToDto();
@@ -109,13 +133,20 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<PricingConfigDto?> ActivatePricingConfigAsync(int id)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        foreach (var p in db.PricingConfigs.Where(x => x.Status == PricingConfigStatus.Active)) p.Status = PricingConfigStatus.Retired;
-        e.Status = PricingConfigStatus.Active; await db.SaveChangesAsync(); return e.ToDto();
+        var oldStatus = e.Status.ToString();
+        var retiredIds = new List<int>();
+        foreach (var p in db.PricingConfigs.Where(x => x.Status == PricingConfigStatus.Active)) { p.Status = PricingConfigStatus.Retired; retiredIds.Add(p.Id); }
+        e.Status = PricingConfigStatus.Active; await db.SaveChangesAsync();
+        await audit.LogAsync("PricingConfig", e.Id, "Activate", oldStatus, $"Active; retired ids=[{string.Join(',', retiredIds)}]");
+        return e.ToDto();
     }
     public async Task<PricingConfigDto?> RetirePricingConfigAsync(int id)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        e.Status = PricingConfigStatus.Retired; await db.SaveChangesAsync(); return e.ToDto();
+        var oldStatus = e.Status.ToString();
+        e.Status = PricingConfigStatus.Retired; await db.SaveChangesAsync();
+        await audit.LogAsync("PricingConfig", e.Id, "Retire", oldStatus, "Retired");
+        return e.ToDto();
     }
 }
 
@@ -127,7 +158,7 @@ public interface IUserBusiness
     Task<(AdminUserDto? dto, object? err)> UpdateAsync(int id, UpdateUserRequest req, int callerUserId);
 }
 
-public class UserBusiness(AppDbContext db) : IUserBusiness
+public class UserBusiness(AppDbContext db, IAuditService audit) : IUserBusiness
 {
     public async Task<List<AdminUserDto>> ListAsync() =>
         (await db.AdminUsers.OrderBy(x => x.Email).ToListAsync()).Select(x => x.ToDto()).ToList();
@@ -149,6 +180,7 @@ public class UserBusiness(AppDbContext db) : IUserBusiness
         };
         db.AdminUsers.Add(user);
         await db.SaveChangesAsync();
+        await audit.LogAsync("AdminUser", user.Id, "Create", null, $"email={user.Email} role={user.Role} active={user.IsActive}");
         return (user.ToDto(), null);
     }
 
@@ -170,10 +202,13 @@ public class UserBusiness(AppDbContext db) : IUserBusiness
                 return (null, new { code = "LAST_ADMIN", message = "Cannot deactivate the last active admin." });
         }
 
+        var oldSnapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";
         user.Email = req.Email;
         user.Role = req.Role;
         user.IsActive = req.IsActive;
         await db.SaveChangesAsync();
+        var newSnapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";
+        await audit.LogAsync("AdminUser", user.Id, "Update", oldSnapshot, newSnapshot, callerUserId);
         return (user.ToDto(), null);
     }
 }

@@ -13,7 +13,7 @@ public interface IShipmentSnapshotService
     Task<ShipmentRateSnapshot?> ResolveForInvoiceAsync(int shipmentId, string currencyCode);
 }
 
-public class ShipmentSnapshotService(AppDbContext db, IFxRateService fx) : IShipmentSnapshotService
+public class ShipmentSnapshotService(AppDbContext db, IFxRateService fx, IAuditService audit) : IShipmentSnapshotService
 {
     public async Task CaptureAsync(int shipmentId, ShipmentSnapshotEvent ev)
     {
@@ -49,6 +49,7 @@ public class ShipmentSnapshotService(AppDbContext db, IFxRateService fx) : IShip
     {
         var existing = await db.ShipmentRateSnapshots
             .FirstOrDefaultAsync(x => x.ShipmentId == shipmentId && x.Event == ShipmentSnapshotEvent.Manual && x.CurrencyCode == currencyCode);
+        decimal? oldRate = existing?.RateToBase;
         if (existing is null)
         {
             db.ShipmentRateSnapshots.Add(new ShipmentRateSnapshot
@@ -65,6 +66,9 @@ public class ShipmentSnapshotService(AppDbContext db, IFxRateService fx) : IShip
             existing.CapturedAt = DateTime.UtcNow;
         }
         await db.SaveChangesAsync();
+        await audit.LogAsync("Shipment", shipmentId, "FxOverride",
+            oldRate is null ? null : $"{currencyCode}={oldRate}",
+            $"{currencyCode}={rateToBase}");
     }
 
     public async Task DeleteManualAsync(int shipmentId, string currencyCode)
@@ -73,8 +77,10 @@ public class ShipmentSnapshotService(AppDbContext db, IFxRateService fx) : IShip
             .FirstOrDefaultAsync(x => x.ShipmentId == shipmentId && x.Event == ShipmentSnapshotEvent.Manual && x.CurrencyCode == currencyCode);
         if (existing is not null)
         {
+            var oldRate = existing.RateToBase;
             db.ShipmentRateSnapshots.Remove(existing);
             await db.SaveChangesAsync();
+            await audit.LogAsync("Shipment", shipmentId, "FxOverrideRemoved", $"{currencyCode}={oldRate}", null);
         }
     }
 
@@ -102,7 +108,7 @@ public class ShipmentSnapshotService(AppDbContext db, IFxRateService fx) : IShip
             return new ShipmentRateSnapshot
             {
                 ShipmentId = shipmentId,
-                Event = ShipmentSnapshotEvent.Manual, // not actually persisted; flag is meaningless here
+                Event = ShipmentSnapshotEvent.Live, // synthetic; not persisted
                 CurrencyCode = currencyCode,
                 RateToBase = liveRate,
                 CapturedAt = DateTime.UtcNow,

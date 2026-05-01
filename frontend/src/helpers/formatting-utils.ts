@@ -2,17 +2,22 @@ import dayjs from "dayjs";
 import { isEmpty, isValidNumber } from "./validation-utils";
 
 
-export function formatCurrencyNumber(value: any, decimals = 2): string {
+export function formatCurrencyNumber(value: any, currency: string = 'USD', decimals = 2): string {
     if (!isValidNumber(value)) {
         return "--";
     }
 
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-    }).format(parseFloat(value.toString()));
+    // Falls back gracefully if the runtime doesn't recognize the currency code.
+    try {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        }).format(parseFloat(value.toString()));
+    } catch {
+        return `${currency} ${parseFloat(value.toString()).toFixed(decimals)}`;
+    }
 }
 
 export function formatDate(date: any, format: string = "DD/MM/YYYY"): string {

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Dtos;
 using ShippingPlatform.Api.Models;
+using ShippingPlatform.Api.Services;
 
 namespace ShippingPlatform.Api.Business;
 
@@ -14,7 +15,7 @@ public interface ICurrencyBusiness
     Task<object?> DeleteAsync(string code);
 }
 
-public class CurrencyBusiness(AppDbContext db) : ICurrencyBusiness
+public class CurrencyBusiness(AppDbContext db, IAuditService audit) : ICurrencyBusiness
 {
     public async Task<List<CurrencyDto>> ListAsync() =>
         (await db.Currencies.OrderBy(x => x.Code).ToListAsync()).Select(x => x.ToDto()).ToList();
@@ -51,6 +52,7 @@ public class CurrencyBusiness(AppDbContext db) : ICurrencyBusiness
         };
         db.Currencies.Add(entity);
         await db.SaveChangesAsync();
+        await audit.LogAsync("Currency", entity.Id, "Create", null, $"{entity.Code} {entity.Name} rate={entity.Rate} anchor={entity.AnchorCurrencyCode} isBase={entity.IsBase}");
         return (entity.ToDto(), null);
     }
 
@@ -73,6 +75,7 @@ public class CurrencyBusiness(AppDbContext db) : ICurrencyBusiness
                 return (null, new { code = "SELF_ANCHOR", message = "Currency cannot anchor to itself." });
         }
 
+        var oldSnapshot = $"rate={c.Rate} anchor={c.AnchorCurrencyCode} isActive={c.IsActive}";
         c.Name = req.Name;
         c.Symbol = req.Symbol;
         c.IsBase = req.IsBase;
@@ -81,6 +84,8 @@ public class CurrencyBusiness(AppDbContext db) : ICurrencyBusiness
         c.IsActive = req.IsActive;
         c.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        var newSnapshot = $"rate={c.Rate} anchor={c.AnchorCurrencyCode} isActive={c.IsActive}";
+        await audit.LogAsync("Currency", c.Id, "Update", oldSnapshot, newSnapshot);
         return (c.ToDto(), null);
     }
 
@@ -91,8 +96,14 @@ public class CurrencyBusiness(AppDbContext db) : ICurrencyBusiness
         if (c.IsBase) return new { code = "DELETE_BASE", message = "Cannot delete the base currency." };
         if (await db.Currencies.AnyAsync(x => x.AnchorCurrencyCode == code))
             return new { code = "ANCHOR_REFERENCED", message = $"Currency '{code}' is referenced as an anchor by another currency." };
+        if (await db.Packages.AnyAsync(x => x.Currency == code))
+            return new { code = "CURRENCY_REFERENCED", message = $"Currency '{code}' is referenced by one or more packages." };
+        if (await db.PricingConfigs.AnyAsync(x => x.Currency == code))
+            return new { code = "CURRENCY_REFERENCED", message = $"Currency '{code}' is referenced by one or more pricing configs." };
+        var snapshot = $"{c.Code} {c.Name}";
         db.Currencies.Remove(c);
         await db.SaveChangesAsync();
+        await audit.LogAsync("Currency", c.Id, "Delete", snapshot, null);
         return new { ok = true };
     }
 }

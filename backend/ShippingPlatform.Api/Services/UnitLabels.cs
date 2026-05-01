@@ -13,15 +13,6 @@ public static class UnitLabels
         [Unit.Pallet] = "Pallet",
     };
 
-    public static readonly IReadOnlyDictionary<Unit, string> Ar = new Dictionary<Unit, string>
-    {
-        [Unit.Box]    = "صندوق",
-        [Unit.Piece]  = "قطعة",
-        [Unit.Crt]    = "كرتونة",
-        [Unit.Bag]    = "كيس",
-        [Unit.Pallet] = "منصة",
-    };
-
     public static readonly IReadOnlyDictionary<Unit, string> ExcelCode = new Dictionary<Unit, string>
     {
         [Unit.Box]    = "BOX",

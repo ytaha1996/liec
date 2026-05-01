@@ -45,14 +45,20 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
     public async Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input)
     {
         if (input.OriginWarehouseId == input.DestinationWarehouseId) return (null, "Origin and destination warehouse must be different.");
-        var originExists = await db.Warehouses.AnyAsync(x => x.Id == input.OriginWarehouseId);
-        if (!originExists) return (null, "Origin warehouse not found.");
+        var origin = await db.Warehouses.FirstOrDefaultAsync(x => x.Id == input.OriginWarehouseId);
+        if (origin is null) return (null, "Origin warehouse not found.");
         if (!string.IsNullOrWhiteSpace(input.TiiuCode))
         {
             var normalized = input.TiiuCode.Trim().ToUpperInvariant();
             if (!Regex.IsMatch(normalized, @"^[A-Z]{3,4}\d{4,7}$"))
                 return (null, "TIIU code must be 3-4 letters followed by 4-7 digits (e.g., MSCU1234567).");
         }
+        // Capacity caps must not exceed the origin warehouse's caps. 0 = unbounded shipment, skips check.
+        if (origin.MaxWeightKg > 0 && input.MaxWeightKg > 0 && input.MaxWeightKg > origin.MaxWeightKg)
+            return (null, $"Shipment MaxWeightKg ({input.MaxWeightKg}) exceeds origin warehouse capacity ({origin.MaxWeightKg}).");
+        if (origin.MaxCbm > 0 && input.MaxCbm > 0 && input.MaxCbm > origin.MaxCbm)
+            return (null, $"Shipment MaxCbm ({input.MaxCbm}) exceeds origin warehouse capacity ({origin.MaxCbm}).");
+
         var shipment = new Shipment
         {
             OriginWarehouseId = input.OriginWarehouseId,
@@ -448,7 +454,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         return new { package = p.ToDto(), items = p.Items.Select(i => i.ToDto()), media = p.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.BlobKey, m.CapturedAt, m.OperatorName, m.Notes }) };
     }
 
-    public async Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
+    public Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false)
+        => ChangeStatusInternalAsync(id, status, checkDepartureGate, checkArrivalGate, deferCapacity: false);
+
+    private async Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusInternalAsync(int id, PackageStatus status, bool checkDepartureGate, bool checkArrivalGate, bool deferCapacity)
     {
         var p = await db.Packages.Include(x => x.Customer).Include(x => x.Media).Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return (null, null, null);
@@ -489,10 +498,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (status == PackageStatus.Packed) await pricing.RecalculateAsync(p);
         await db.SaveChangesAsync();
 
-        // Recalculate shipment capacity when a package is cancelled
+        // Recalculate shipment capacity when a package is cancelled. Skip for bulk callers
+        // (deferCapacity=true) — they batch the recalc once at the end.
         if (status == PackageStatus.Cancelled)
         {
-            await capacity.RecalculateAsync(p.ShipmentId);
+            if (!deferCapacity) await capacity.RecalculateAsync(p.ShipmentId);
             // Cancel cascade: unlink supply order
             var linkedSo = await db.SupplyOrders.FirstOrDefaultAsync(x => x.PackageId == id);
             if (linkedSo is not null) { linkedSo.PackageId = null; await db.SaveChangesAsync(); }
@@ -548,7 +558,9 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             GoodTypeId = item.GoodTypeId,
             Quantity = item.Quantity,
             Unit = item.Unit,
-            UnitPrice = item.UnitPrice ?? 10m,
+            // UnitPrice is nullable end-to-end; null means "not specified". Display layers
+            // (e.g., the commercial invoice) handle null with a documented fallback.
+            UnitPrice = item.UnitPrice,
             Note = item.Note,
         };
         db.PackageItems.Add(entity);
@@ -601,6 +613,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         p.HasDeparturePhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Departure);
         p.HasArrivalPhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Arrival);
         await db.SaveChangesAsync();
+        await audit.LogAsync("Package", id, "MediaUpload", null, $"stage={media.Stage} key={media.BlobKey}", req.AdminUserId);
         return new { media.Id, media.Stage, media.PublicUrl, media.BlobKey, media.CapturedAt, media.OperatorName, media.Notes };
     }
 
@@ -714,16 +727,20 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (errors.Count > 0)
             return (0, new { code = "BULK_VALIDATION_FAILED", message = $"{errors.Count} package(s) cannot be transitioned.", errors });
 
-        // All validated — execute transitions
+        // All validated — execute transitions, deferring capacity recalc to the end.
         foreach (var pkgId in request.PackageIds)
         {
-            var (dto, err, gate) = await ChangeStatusAsync(pkgId, targetStatus);
+            var (dto, err, gate) = await ChangeStatusInternalAsync(pkgId, targetStatus, false, false, deferCapacity: true);
             if (dto is null)
             {
                 var msg = gate?.Message ?? err?.GetType().GetProperty("message")?.GetValue(err)?.ToString() ?? "Transition failed.";
                 return (0, new { code = "TRANSITION_FAILED", message = $"Package #{pkgId}: {msg}" });
             }
         }
+
+        // One capacity recalc for the whole batch (was previously running per-package on Cancel).
+        if (targetStatus == PackageStatus.Cancelled)
+            await capacity.RecalculateAsync(shipmentId);
 
         return (request.PackageIds.Length, null);
     }

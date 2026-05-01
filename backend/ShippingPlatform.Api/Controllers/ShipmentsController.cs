@@ -81,6 +81,7 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
         return err is null ? Ok(dto) : Conflict(err);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpGet("{id:int}/audit-log")]
     public async Task<IActionResult> AuditLog(int id, [FromServices] ShippingPlatform.Api.Services.IAuditService audit) => Ok(await audit.GetLogsAsync("Shipment", id));
 

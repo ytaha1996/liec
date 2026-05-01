@@ -111,5 +111,31 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Supplier).WithMany()
             .HasForeignKey(x => x.SupplierId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Media → AdminUser (uploader). Restrict so deleted users don't blow away media history.
+        modelBuilder.Entity<Media>()
+            .HasOne(x => x.RecordedByAdminUser).WithMany()
+            .HasForeignKey(x => x.RecordedByAdminUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Package's child collections are exposed as IReadOnlyList projections backed by
+        // private List<T> fields. EF needs to use field-access to populate them.
+        modelBuilder.Entity<Package>().Navigation(p => p.Items).UsePropertyAccessMode(PropertyAccessMode.Field);
+        modelBuilder.Entity<Package>().Navigation(p => p.Media).UsePropertyAccessMode(PropertyAccessMode.Field);
+        modelBuilder.Entity<Package>().Navigation(p => p.PricingOverrides).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // Package.Currency / PricingConfig.Currency → Currencies.Code (alternate key).
+        // Currency rows can't be deleted while referenced — see CurrencyBusiness.DeleteAsync.
+        modelBuilder.Entity<Currency>().HasAlternateKey(c => c.Code);
+        modelBuilder.Entity<Package>()
+            .HasOne(p => p.CurrencyEntity).WithMany()
+            .HasForeignKey(p => p.Currency)
+            .HasPrincipalKey(c => c.Code)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PricingConfig>()
+            .HasOne(p => p.CurrencyEntity).WithMany()
+            .HasForeignKey(p => p.Currency)
+            .HasPrincipalKey(c => c.Code)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

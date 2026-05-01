@@ -32,6 +32,9 @@ export const canManageShipments = (role: UserRole): boolean =>
 export const canManageUsers = (role: UserRole): boolean =>
   role === 'Admin';
 
+export const canManageCurrencies = (role: UserRole): boolean =>
+  role === 'Admin';
+
 export const FIELD_PKG_TRANSITIONS = new Set(['receive', 'pack', 'ready-to-ship']);
 
 export const canTransitionPackage = (role: UserRole, action: string): boolean => {

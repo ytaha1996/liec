@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ShippingPlatform.Api.Data;
 
@@ -11,9 +12,11 @@ using ShippingPlatform.Api.Data;
 namespace ShippingPlatform.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260501082236_AddMediaRecordedByForeignKey")]
+    partial class AddMediaRecordedByForeignKey
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -35,16 +38,10 @@ namespace ShippingPlatform.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<int>("FailedLoginCount")
-                        .HasColumnType("int");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime?>("LastLoginAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("LockedUntil")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("PasswordHash")
@@ -371,8 +368,6 @@ namespace ShippingPlatform.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Currency");
-
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("ShipmentId");
@@ -503,8 +498,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Currency");
 
                     b.ToTable("PricingConfigs");
                 });
@@ -909,13 +902,6 @@ namespace ShippingPlatform.Api.Migrations
 
             modelBuilder.Entity("ShippingPlatform.Api.Models.Package", b =>
                 {
-                    b.HasOne("ShippingPlatform.Api.Models.Currency", "CurrencyEntity")
-                        .WithMany()
-                        .HasForeignKey("Currency")
-                        .HasPrincipalKey("Code")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("ShippingPlatform.Api.Models.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
@@ -927,8 +913,6 @@ namespace ShippingPlatform.Api.Migrations
                         .HasForeignKey("ShipmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("CurrencyEntity");
 
                     b.Navigation("Customer");
 
@@ -963,18 +947,6 @@ namespace ShippingPlatform.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Package");
-                });
-
-            modelBuilder.Entity("ShippingPlatform.Api.Models.PricingConfig", b =>
-                {
-                    b.HasOne("ShippingPlatform.Api.Models.Currency", "CurrencyEntity")
-                        .WithMany()
-                        .HasForeignKey("Currency")
-                        .HasPrincipalKey("Code")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("CurrencyEntity");
                 });
 
             modelBuilder.Entity("ShippingPlatform.Api.Models.Shipment", b =>

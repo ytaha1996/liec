@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
+import EmptyState from '../../components/EmptyState';
 import {
   EnhanceTableHeaderTypes,
   EnhancedTableColumnType,
@@ -244,9 +245,7 @@ const PackagesPage = () => {
           sx={{ mb: 2, minWidth: 300 }}
         />
         {Object.keys(tableData).length === 0 && (
-          <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-            No packages found. Create one to get started.
-          </Typography>
+          <EmptyState message="No packages found." hint="Create one to get started." />
         )}
         <EnhancedTable
           title="Packages"

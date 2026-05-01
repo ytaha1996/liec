@@ -126,6 +126,10 @@ public static class CommercialDocumentBuilder
         ws.Cell("C8").Value = "Customer ID ";
         ws.Cell("D8").Value = $": {country2}{primaryCustomer.Id} \\\\  {shipment.RefCode}";
         ws.Cell("F8").Value = rates.F8DisplayRate;
+        // Document the source of the rate for ops who reference the legacy template (which had a
+        // hardcoded 1.3496503 in F8). Now sourced from the shipment's Departed FX snapshot, with
+        // live-rate fallback if the shipment hasn't departed.
+        ws.Cell("F8").CreateComment().AddText("USD-per-EUR rate from the Departed FX snapshot (or live rate if not yet departed). Replaces the legacy hardcoded 1.3496503.");
 
         ws.Cell("A9").Value = $"CONTAINER : {shipment.TiiuCode ?? string.Empty}";
 

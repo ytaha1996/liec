@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../../api/client';
 import GenericDialog from '../../../components/GenericDialog/GenericDialog';
 import DynamicFormWidget from '../../../components/dynamic-widget/DynamicFormWidget';
 import { DynamicField, DynamicFieldTypes } from '../../../components/dynamic-widget';
@@ -17,7 +17,6 @@ const buildItemFields = (
   initial: Record<string, any> | undefined,
   goodsItems: Record<string, string>,
   unitItems: Record<string, string>,
-  isEditing: boolean,
 ): Record<string, DynamicFieldTypes> => ({
   goodTypeId: {
     type: DynamicField.SELECT,
@@ -52,10 +51,8 @@ const buildItemFields = (
     title: 'Unit Price ($)',
     required: false,
     disabled: false,
-    // On create: default to 10. On edit: prefill from existing value, or empty when null.
-    value: isEditing
-      ? (initial?.unitPrice ?? '')
-      : (initial?.unitPrice ?? 10),
+    // Optional. Leave empty if not specified — backend stores null. Display layers handle null fallbacks.
+    value: initial?.unitPrice ?? '',
     min: 0,
     step: 0.01,
   },
@@ -84,7 +81,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
   );
 
   const unitItems: Record<string, string> = (unitsQuery.data ?? []).reduce(
-    (acc: Record<string, string>, u) => { acc[u.code] = u.labelEn; return acc; }, {},
+    (acc: Record<string, string>, u) => { acc[u.code] = u.label; return acc; }, {},
   );
 
   const buildBody = (values: Record<string, any>) => {
@@ -108,7 +105,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
       onClose();
     },
-    onError: () => toast.error('Add item failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Add item failed'),
   });
 
   const putItem = useMutation({
@@ -119,7 +116,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
       onClose();
     },
-    onError: () => toast.error('Update failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Update failed'),
   });
 
   const handleSubmit = async (values: Record<string, any>): Promise<boolean> => {
@@ -141,7 +138,7 @@ const ItemDialog = ({ open, onClose, packageId, editingItem }: ItemDialogProps) 
       <DynamicFormWidget
         title=""
         drawerMode
-        fields={buildItemFields(editingItem ?? undefined, goodsItems, unitItems, !!editingItem)}
+        fields={buildItemFields(editingItem ?? undefined, goodsItems, unitItems)}
         onSubmit={handleSubmit}
       />
     </GenericDialog>

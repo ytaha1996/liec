@@ -25,4 +25,7 @@ export const useCurrenciesQuery = () =>
   useQuery<Currency[]>({
     queryKey: ['/api/currencies'],
     queryFn: () => getJson<Currency[]>('/api/currencies'),
+    // Currencies are effectively static across a session. Mutations explicitly invalidate
+    // this key, so a 5-minute staleTime is safe and cheap.
+    staleTime: 5 * 60 * 1000,
   });

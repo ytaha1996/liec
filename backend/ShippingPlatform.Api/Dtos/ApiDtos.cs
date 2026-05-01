@@ -45,7 +45,7 @@ public record UpsertPackageItemRequest(int GoodTypeId, int Quantity = 1, Unit Un
 public record ApplyPricingOverrideRequest(PricingOverrideType OverrideType, decimal NewValue, string Reason);
 public record PricingOverrideDto(int Id, PricingOverrideType OverrideType, decimal OriginalValue, decimal NewValue, string Reason, DateTime CreatedAt);
 
-public record LookupItemDto(int Value, string Code, string LabelEn, string LabelAr);
+public record LookupItemDto(int Value, string Code, string Label);
 
 public record CurrencyDto(int Id, string Code, string Name, string? Symbol, bool IsBase, string? AnchorCurrencyCode, decimal? Rate, bool IsActive, DateTime UpdatedAt);
 public record UpsertCurrencyRequest(string Code, string Name, string? Symbol, bool IsBase, string? AnchorCurrencyCode, decimal? Rate, bool IsActive = true);

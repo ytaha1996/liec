@@ -14,6 +14,7 @@ public class Package
     public decimal WeightKg { get; set; }
     public decimal Cbm { get; set; }
     [MaxLength(3)] public string Currency { get; set; } = "EUR";
+    public Currency? CurrencyEntity { get; set; }
     public decimal AppliedRatePerKg { get; set; }
     public decimal AppliedRatePerCbm { get; set; }
     public decimal ChargeAmount { get; set; }
@@ -23,7 +24,14 @@ public class Package
     public int? SupplyOrderId { get; set; }
     [MaxLength(1000)] public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<PackageItem> Items { get; set; } = [];
-    public List<Media> Media { get; set; } = [];
-    public List<PackagePricingOverride> PricingOverrides { get; set; } = [];
+
+    // Children populated by EF via the backing fields below. Exposed as readonly
+    // projections so consumers cannot mutate the lists; modifications go through
+    // the corresponding DbSet (db.PackageItems.Add(...), db.Media.Add(...), etc.).
+    private readonly List<PackageItem> _items = new();
+    public IReadOnlyList<PackageItem> Items => _items;
+    private readonly List<Media> _media = new();
+    public IReadOnlyList<Media> Media => _media;
+    private readonly List<PackagePricingOverride> _pricingOverrides = new();
+    public IReadOnlyList<PackagePricingOverride> PricingOverrides => _pricingOverrides;
 }

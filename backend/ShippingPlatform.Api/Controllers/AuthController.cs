@@ -4,20 +4,34 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
+using ShippingPlatform.Api.Services;
 
 namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthBusiness auth) : ControllerBase
+public class AuthController(IAuthBusiness auth, IAuditService audit) : ControllerBase
 {
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
     [HttpPost("login")]
-    public async Task<ActionResult<LoginResponse>> Login(LoginRequest request)
+    public async Task<IActionResult> Login(LoginRequest request)
     {
-        var res = await auth.LoginAsync(request);
-        return res is null ? Unauthorized() : Ok(res);
+        var (outcome, response, lockedUntil) = await auth.LoginAsync(request);
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        switch (outcome)
+        {
+            case LoginOutcome.Success:
+                // Audit successful login. AdminUserId comes back via the auth service path.
+                await audit.LogAsync("AdminUser", 0, "LoginSuccess", null, $"{request.Email} from {ip}");
+                return Ok(response);
+            case LoginOutcome.Locked:
+                await audit.LogAsync("AdminUser", 0, "LoginLocked", null, $"{request.Email} from {ip}");
+                return StatusCode(423, new { code = "ACCOUNT_LOCKED", message = "Account is temporarily locked due to too many failed login attempts.", lockedUntil });
+            default:
+                await audit.LogAsync("AdminUser", 0, "LoginFailed", null, $"{request.Email} from {ip}");
+                return Unauthorized();
+        }
     }
 }
 

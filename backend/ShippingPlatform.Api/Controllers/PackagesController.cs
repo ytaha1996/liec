@@ -84,7 +84,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpPost("api/packages/{id:int}/media")]
     public async Task<IActionResult> UploadMedia(int id, [FromForm] MediaUploadRequest req)
     {
-        req.AdminUserId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : 1;
+        req.AdminUserId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : (int?)null;
         var result = await business.UploadMediaAsync(id, req);
         if (result is null) return NotFound();
         if (result.GetType().GetProperty("code") is not null) return BadRequest(result);
@@ -117,6 +117,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpGet("api/packages/{id:int}/pricing-overrides")]
     public async Task<IActionResult> GetPricingOverrides(int id) => Ok(await business.GetPricingOverridesAsync(id));
 
+    [Authorize(Roles = "Admin,Manager")]
     [HttpGet("api/packages/{id:int}/audit-log")]
     public async Task<IActionResult> AuditLog(int id, [FromServices] ShippingPlatform.Api.Services.IAuditService audit) => Ok(await audit.GetLogsAsync("Package", id));
 

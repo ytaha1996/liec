@@ -10,4 +10,6 @@ public class AdminUser
     public bool IsActive { get; set; } = true;
     public UserRole Role { get; set; } = UserRole.Admin;
     public DateTime? LastLoginAt { get; set; }
+    public int FailedLoginCount { get; set; }
+    public DateTime? LockedUntil { get; set; }
 }

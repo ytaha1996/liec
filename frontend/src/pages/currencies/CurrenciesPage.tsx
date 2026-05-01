@@ -25,14 +25,14 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import { useAppDispatch } from '../../redux/hooks';
-import { useUserRole, canManageUsers } from '../../helpers/rbac';
+import { useUserRole, canManageCurrencies } from '../../helpers/rbac';
 import type { Currency } from '../../api/currencies';
 
 const CurrenciesPage: React.FC = () => {
   const qc = useQueryClient();
   const dispatch = useAppDispatch();
   const role = useUserRole();
-  const isAdmin = canManageUsers(role); // Admin-only writes (matches backend [Authorize(Roles="Admin")] on POST/PUT/DELETE)
+  const isAdmin = canManageCurrencies(role); // matches backend [Authorize(Roles="Admin")] on POST/PUT/DELETE
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Currency | null>(null);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
