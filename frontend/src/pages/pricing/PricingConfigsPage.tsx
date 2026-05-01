@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, CircularProgress } from '@mui/material';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -97,7 +97,7 @@ const PricingConfigsPage = () => {
       setDialogOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
   });
 
   const activate = useMutation({
@@ -106,7 +106,7 @@ const PricingConfigsPage = () => {
       toast.success('Config activated');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Activate failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Activate failed'),
   });
 
   const retire = useMutation({
@@ -115,7 +115,7 @@ const PricingConfigsPage = () => {
       toast.success('Config retired');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Retire failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Retire failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {

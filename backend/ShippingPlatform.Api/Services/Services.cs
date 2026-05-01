@@ -297,6 +297,7 @@ public interface IExportService
     Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default);
     Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default);
     Task<string> GenerateShipmentCommercialDocumentsAsync(int shipmentId, CancellationToken ct = default);
+    Task<string> GenerateCustomersExcelAsync(CancellationToken ct = default);
 }
 
 public class ExportService(
@@ -322,6 +323,53 @@ public class ExportService(
         var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}." + ext;
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, $"group-helper.{ext}", ms, "text/plain", key, ct);
+        return url;
+    }
+
+    public async Task<string> GenerateCustomersExcelAsync(CancellationToken ct = default)
+    {
+        var customers = await db.Customers.Include(x => x.WhatsAppConsent)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Customers");
+
+        var headers = new[] { "Id", "Name", "Primary Phone", "Email", "Company", "Tax Id", "Billing Address", "Active", "Opt-In Status Updates", "Opt-In Departure Photos", "Opt-In Arrival Photos" };
+        for (var c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
+        StyleColumnHeaders(ws.Range(1, 1, 1, headers.Length));
+
+        var row = 2;
+        foreach (var c in customers)
+        {
+            ws.Cell(row, 1).Value = c.Id;
+            ws.Cell(row, 2).Value = c.Name;
+            ws.Cell(row, 3).Value = c.PrimaryPhone;
+            ws.Cell(row, 4).Value = c.Email ?? string.Empty;
+            ws.Cell(row, 5).Value = c.CompanyName ?? string.Empty;
+            ws.Cell(row, 6).Value = c.TaxId ?? string.Empty;
+            ws.Cell(row, 7).Value = c.BillingAddress ?? string.Empty;
+            ws.Cell(row, 8).Value = c.IsActive ? "Yes" : "No";
+            ws.Cell(row, 9).Value = c.WhatsAppConsent?.OptInStatusUpdates == true ? "Yes" : "No";
+            ws.Cell(row, 10).Value = c.WhatsAppConsent?.OptInDeparturePhotos == true ? "Yes" : "No";
+            ws.Cell(row, 11).Value = c.WhatsAppConsent?.OptInArrivalPhotos == true ? "Yes" : "No";
+            StyleDataRow(ws.Range(row, 1, row, headers.Length), row);
+            row++;
+        }
+
+        ws.Column(1).Width = 6;  ws.Column(2).Width = 28; ws.Column(3).Width = 16;
+        ws.Column(4).Width = 28; ws.Column(5).Width = 24; ws.Column(6).Width = 14;
+        ws.Column(7).Width = 36; ws.Column(8).Width = 8;
+        ws.Column(9).Width = 14; ws.Column(10).Width = 14; ws.Column(11).Width = 14;
+        ws.SheetView.FreezeRows(1);
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        var fileName = $"customers-{DateTime.UtcNow:yyyyMMdd-HHmm}.xlsx";
+        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
+        var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
         return url;
     }
 

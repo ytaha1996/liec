@@ -3,13 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Divider, IconButton, Stack, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { toast } from 'react-toastify';
-import { getJson, postJson } from '../../../api/client';
+import { getJson, postJson, parseApiError } from '../../../api/client';
 import GenericDialog from '../../../components/GenericDialog/GenericDialog';
 import DynamicFormWidget from '../../../components/dynamic-widget/DynamicFormWidget';
 import { DynamicField } from '../../../components/dynamic-widget';
 import GenericInput from '../../../components/input-components/GenericTextInput';
 import GenericNumberInput from '../../../components/input-components/GenericNumberInput';
 import GenericSelectInput from '../../../components/input-components/GenericSelectInput';
+import { useUnitsLookup } from '../../../api/lookups';
 
 interface AddPackageDialogProps {
   open: boolean;
@@ -17,10 +18,23 @@ interface AddPackageDialogProps {
   shipmentId: string;
 }
 
+interface InlineItem {
+  goodTypeId: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  note: string;
+}
+
 const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) => {
   const qc = useQueryClient();
-  const [newPkgItems, setNewPkgItems] = useState<{ goodTypeId: string; quantity: string; note: string }[]>([]);
+  const [newPkgItems, setNewPkgItems] = useState<InlineItem[]>([]);
   const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
+
+  const unitsQuery = useUnitsLookup();
+  const unitItems: Record<string, string> = (unitsQuery.data ?? []).reduce(
+    (acc: Record<string, string>, u) => { acc[u.code] = u.label; return acc; }, {},
+  );
 
   const customersQuery = useQuery<any[]>({
     queryKey: ['/api/customers'],
@@ -69,6 +83,8 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
         items: newPkgItems.filter(i => i.goodTypeId).map(i => ({
           goodTypeId: Number(i.goodTypeId),
           quantity: Number(i.quantity) || 1,
+          unit: i.unit || 'Box',
+          unitPrice: i.unitPrice === '' || i.unitPrice == null ? null : Number(i.unitPrice),
           note: i.note || null,
         })),
       };
@@ -87,7 +103,7 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
       handleClose();
       return true;
     } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Failed to create package');
+      toast.error(parseApiError(e).message ?? 'Failed to create package');
       return false;
     }
   };
@@ -100,8 +116,8 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
         fields={{
           customerId: { type: DynamicField.SELECT, name: 'customerId', title: 'Customer', required: true, disabled: false, value: '', items: customersItems, grid: { xs: 6 } },
           provisionMethod: { type: DynamicField.SELECT, name: 'provisionMethod', title: 'Provision Method', required: true, disabled: false, value: 'CustomerProvided', items: { CustomerProvided: 'Customer Provided', ProcuredForCustomer: 'Procured For Customer' }, grid: { xs: 6 } },
-          weightKg: { type: DynamicField.NUMBER, name: 'weightKg', title: 'Weight (kg)', required: false, disabled: false, value: '', min: 0, grid: { xs: 6 } },
-          cbm: { type: DynamicField.NUMBER, name: 'cbm', title: 'CBM', required: false, disabled: false, value: '', min: 0, grid: { xs: 6 } },
+          weightKg: { type: DynamicField.NUMBER, name: 'weightKg', title: 'Weight (kg)', required: false, disabled: false, value: 0, min: 0, grid: { xs: 6 } },
+          cbm: { type: DynamicField.NUMBER, name: 'cbm', title: 'CBM', required: false, disabled: false, value: 0, min: 0, grid: { xs: 6 } },
           note: { type: DynamicField.TEXT, name: 'note', title: 'Note', required: false, disabled: false, value: '' },
           ...(isProcured ? {
             soSupplierId: { type: DynamicField.SELECT, name: 'soSupplierId', title: 'Supplier', required: true, disabled: false, value: '', items: suppliersItems, grid: { xs: 6 } },
@@ -120,8 +136,14 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
             <GenericSelectInput name={`item-good-type-${idx}`} title="Good Type" value={item.goodTypeId} items={goodTypesItems} onChange={(v: any) => {
               const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], goodTypeId: v }; setNewPkgItems(updated);
             }} type="" error="" disabled={false} />
-            <GenericNumberInput name={`item-qty-${idx}`} title="Qty" value={item.quantity} onChange={(v: any) => {
+            <GenericNumberInput name={`item-qty-${idx}`} title="Qty" value={item.quantity} min={1} onChange={(v: any) => {
               const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], quantity: v }; setNewPkgItems(updated);
+            }} error="" disabled={false} />
+            <GenericSelectInput name={`item-unit-${idx}`} title="Unit" value={item.unit} items={unitItems} onChange={(v: any) => {
+              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unit: v ?? 'Box' }; setNewPkgItems(updated);
+            }} type="" error="" disabled={false} />
+            <GenericNumberInput name={`item-unit-price-${idx}`} title="Unit Price ($)" value={item.unitPrice} min={0} step={0.01} onChange={(v: any) => {
+              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unitPrice: v }; setNewPkgItems(updated);
             }} error="" disabled={false} />
             <GenericInput name={`item-note-${idx}`} title="Note" value={item.note} onChange={(v: any) => {
               const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], note: v }; setNewPkgItems(updated);
@@ -131,7 +153,7 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
             </IconButton>
           </Stack>
         ))}
-        <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setNewPkgItems(items => [...items, { goodTypeId: '', quantity: '1', note: '' }])}>
+        <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setNewPkgItems(items => [...items, { goodTypeId: '', quantity: '1', unit: 'Box', unitPrice: '', note: '' }])}>
           + Add Item
         </Button>
       </DynamicFormWidget>

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, CircularProgress, TextField, Typography } from '@mui/material';
 import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
-import { getJson, postJson } from '../../api/client';
+import { getJson, postJson, parseApiError } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import EmptyState from '../../components/EmptyState';
@@ -63,6 +63,7 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
     required: false,
     disabled: false,
     value: 0,
+    min: 0,
   },
   maxCbm: {
     type: DynamicField.NUMBER,
@@ -71,6 +72,7 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
     required: false,
     disabled: false,
     value: 0,
+    min: 0,
   },
   tiiuCode: {
     type: DynamicField.TEXT,
@@ -112,7 +114,7 @@ const ShipmentsPage = () => {
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
       setDialogOpen(false);
     },
-    onError: () => toast.error('Create failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Create failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {

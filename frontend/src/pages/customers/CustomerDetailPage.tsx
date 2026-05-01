@@ -11,7 +11,7 @@ import {
   Stack,
 } from '@mui/material';
 import { toast } from 'react-toastify';
-import { api, getJson, postJson } from '../../api/client';
+import { api, getJson, postJson, parseApiError } from '../../api/client';
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
@@ -81,7 +81,7 @@ const CustomerDetailPage = ({ id }: Props) => {
       toast.success('Consent updated');
       qc.invalidateQueries({ queryKey: ['/api/customers', id] });
     },
-    onError: () => toast.error('Consent update failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Consent update failed'),
   });
 
   const sendWhatsApp = useMutation({

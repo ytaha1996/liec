@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, api, getJson, postJson } from '../../api/client';
+import { GateError, api, getJson, postJson, parseApiError } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EditIcon from '@mui/icons-material/Edit';
@@ -35,6 +35,7 @@ import Loader from '../../components/Loader';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
 import ItemDialog from './components/ItemDialog';
+import BulkAddItemsDialog from './components/BulkAddItemsDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
 import { useUserRole, canTransitionPackage, canEditPackageItems, canUploadPhotos, canOverridePricing } from '../../helpers/rbac';
@@ -86,6 +87,7 @@ const PackageDetailPage = ({ id }: Props) => {
   const role = useUserRole();
   const [gate, setGate] = useState<GateError | null>(null);
   const [addItemOpen, setAddItemOpen] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Record<string, any> | null>(null);
 
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
@@ -168,7 +170,7 @@ const PackageDetailPage = ({ id }: Props) => {
       toast.success('Item deleted');
       qc.invalidateQueries({ queryKey: ['/api/packages', id] });
     },
-    onError: () => toast.error('Delete failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Delete failed'),
   });
 
 
@@ -371,11 +373,14 @@ const PackageDetailPage = ({ id }: Props) => {
           <>
             <MainPageSection title="Items">
               {canEditPackageItems(role) && (
-                <Box sx={{ mb: 2 }}>
+                <Stack direction="row" gap={1} sx={{ mb: 2 }}>
                   <Button variant="contained" size="small" onClick={() => { setEditingItem(null); setAddItemOpen(true); }}>
                     Add Item
                   </Button>
-                </Box>
+                  <Button variant="outlined" size="small" onClick={() => setBulkAddOpen(true)}>
+                    Bulk Add
+                  </Button>
+                </Stack>
               )}
               <EnhancedTable title="Package Items" header={itemHeaders} data={itemsTableData} defaultOrder="goodName" />
             </MainPageSection>
@@ -438,6 +443,12 @@ const PackageDetailPage = ({ id }: Props) => {
         onClose={() => { setAddItemOpen(false); setEditingItem(null); }}
         packageId={id}
         editingItem={editingItem}
+      />
+
+      <BulkAddItemsDialog
+        open={bulkAddOpen}
+        onClose={() => setBulkAddOpen(false)}
+        packageId={id}
       />
 
       <PricingOverrideDialog

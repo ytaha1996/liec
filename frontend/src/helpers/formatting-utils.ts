@@ -20,7 +20,7 @@ export function formatCurrencyNumber(value: any, currency: string = 'USD', decim
     }
 }
 
-export function formatDate(date: any, format: string = "DD/MM/YYYY"): string {
+export function formatDate(date: any, format: string = "DD-MM-YYYY"): string {
     if (dayjs(date).isValid()) {
         return dayjs(date).format(format);
     }

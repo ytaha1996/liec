@@ -139,7 +139,8 @@ const WarehousesPage: React.FC = () => {
       title: 'Max Weight (kg)',
       required: true,
       disabled: false,
-      value: formValues.maxWeightKg ?? '',
+      value: formValues.maxWeightKg ?? 0,
+      min: 0,
     } as IDynamicNumberField,
     maxCbm: {
       type: DynamicField.NUMBER,
@@ -147,7 +148,8 @@ const WarehousesPage: React.FC = () => {
       title: 'Max CBM',
       required: true,
       disabled: false,
-      value: formValues.maxCbm ?? '',
+      value: formValues.maxCbm ?? 0,
+      min: 0,
     } as IDynamicNumberField,
     isActive: {
       type: DynamicField.CHECKBOX,

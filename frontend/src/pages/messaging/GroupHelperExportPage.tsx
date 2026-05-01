@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { toast } from 'react-toastify';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
-import { postJson } from '../../api/client';
+import { postJson, parseApiError } from '../../api/client';
 
 const GroupHelperExportPage = () => {
   const exportMut = useMutation({
@@ -12,7 +12,7 @@ const GroupHelperExportPage = () => {
       window.open(r.publicUrl, '_blank');
       toast.success('Export generated');
     },
-    onError: () => toast.error('Export failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Export failed'),
   });
 
   return (

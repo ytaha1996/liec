@@ -11,6 +11,7 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
       title: 'Operations',
       name: 'operations',
       route: '/ops',
+      icon: '/app-icons/operations.svg',
       modules: {
         dashboard: { name: 'dashboard', route: '/ops/dashboard', title: 'Dashboard', hidden: !canSee('dashboard') },
         shipments: { name: 'shipments', route: '/ops/shipments', title: 'Shipments', hidden: !canSee('shipments') },
@@ -21,6 +22,7 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
       title: 'Master Data',
       name: 'masterData',
       route: '/master',
+      icon: '/app-icons/master-data.svg',
       modules: {
         customers: { name: 'customers', route: '/master/customers', title: 'Customers', hidden: !canSee('customers') },
         warehouses: { name: 'warehouses', route: '/master/warehouses', title: 'Warehouses', hidden: !canSee('warehouses') },
@@ -35,6 +37,7 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
       title: 'Communications',
       name: 'communications',
       route: '/comms',
+      icon: '/app-icons/communications.svg',
       modules: {
         messaging: { name: 'messaging', route: '/comms/messaging-logs', title: 'Messaging Logs', hidden: !canSee('messaging') },
         groupHelper: { name: 'groupHelper', route: '/comms/group-helper-export', title: 'Group Helper Export', hidden: !canSee('groupHelper') },
@@ -44,6 +47,7 @@ export const applications = (_user: IUserStore): Record<string, IApplication> =>
       title: 'Admin',
       name: 'admin',
       route: '/admin',
+      icon: '/app-icons/admin.svg',
       hidden: !canSee('users'),
       modules: {
         users: { name: 'users', route: '/admin/users', title: 'Users', hidden: !canSee('users') },

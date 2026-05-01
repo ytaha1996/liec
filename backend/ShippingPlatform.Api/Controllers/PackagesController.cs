@@ -62,6 +62,15 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Manager,Field")]
+    [HttpPost("api/packages/{id:int}/items/bulk")]
+    public async Task<IActionResult> AddItemsBulk(int id, [FromBody] BulkUpsertPackageItemsRequest req)
+    {
+        var (dtos, err) = await business.AddItemsBulkAsync(id, req.Items ?? new List<UpsertPackageItemRequest>());
+        if (dtos is null && err is null) return NotFound();
+        return err is null ? Ok(new { added = dtos!.Count, items = dtos }) : Conflict(err);
+    }
+
+    [Authorize(Roles = "Admin,Manager,Field")]
     [HttpPut("api/packages/{id:int}/items/{itemId:int}")]
     public async Task<IActionResult> UpdateItem(int id, int itemId, UpsertPackageItemRequest input)
     {

@@ -42,6 +42,7 @@ public record PackageItemDto(int Id, int PackageId, int GoodTypeId, string GoodT
 /// <para><c>UnitPrice</c>: when null on create, the service layer assigns 10m. On update, null preserves the existing value (no auto-default).</para>
 /// </summary>
 public record UpsertPackageItemRequest(int GoodTypeId, int Quantity = 1, Unit Unit = Unit.Box, decimal? UnitPrice = null, string? Note = null);
+public record BulkUpsertPackageItemsRequest(List<UpsertPackageItemRequest>? Items);
 public record ApplyPricingOverrideRequest(PricingOverrideType OverrideType, decimal NewValue, string Reason);
 public record PricingOverrideDto(int Id, PricingOverrideType OverrideType, decimal OriginalValue, decimal NewValue, string Reason, DateTime CreatedAt);
 

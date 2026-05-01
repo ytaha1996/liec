@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { Box, Button, Card, CardContent, Grid, Typography } from '@mui/material';
 import { toast } from 'react-toastify';
-import { postJson } from '../../../api/client';
+import { postJson, parseApiError } from '../../../api/client';
 import { useAppDispatch } from '../../../redux/hooks';
 import { OpenConfirmation } from '../../../redux/confirmation/confirmationReducer';
 import MainPageSection from '../../../components/layout-components/main-layout/MainPageSection';
@@ -31,7 +31,7 @@ const WhatsAppCampaignCards = ({ shipmentId, shipmentStatus, customerCount }: Wh
       return postJson(`/api/shipments/${shipmentId}/whatsapp/photos/${kind}/bulk`);
     },
     onSuccess: () => toast.success('Campaign sent successfully'),
-    onError: () => toast.error('Campaign send failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Campaign send failed'),
   });
 
   const currentOrder = STATUS_ORDER[shipmentStatus] ?? -1;

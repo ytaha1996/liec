@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, Stack } from '@mui/material';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
@@ -100,7 +100,7 @@ const CustomersPage = () => {
       setDialogOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
   });
 
   const exportMut = useMutation({
@@ -110,7 +110,16 @@ const CustomersPage = () => {
       window.open(r.publicUrl, '_blank');
       toast.success('Export generated');
     },
-    onError: () => toast.error('Export failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Export failed'),
+  });
+
+  const exportExcelMut = useMutation({
+    mutationFn: () => postJson<{ publicUrl: string }>('/api/exports/customers-excel'),
+    onSuccess: (r: any) => {
+      window.open(r.publicUrl, '_blank');
+      toast.success('Excel ready');
+    },
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Excel export failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
@@ -207,6 +216,9 @@ const CustomersPage = () => {
             WhatsApp groups reveal phone numbers to all members. Use export features responsibly.
           </Alert>
           <Stack direction="row" gap={2}>
+            <Button variant="contained" onClick={() => exportExcelMut.mutate()} disabled={exportExcelMut.isPending}>
+              Export Excel
+            </Button>
             <Button variant="outlined" onClick={() => exportMut.mutate('csv')} disabled={exportMut.isPending}>
               Export CSV
             </Button>

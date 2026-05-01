@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { patchJson } from '../../../api/client';
+import { patchJson, parseApiError } from '../../../api/client';
 import GenericDrawer from '../../../components/drawer/GenericDrawer';
 import DynamicFormWidget from '../../../components/dynamic-widget/DynamicFormWidget';
 import { DynamicField, DynamicFieldTypes } from '../../../components/dynamic-widget';
@@ -13,6 +13,8 @@ interface EditShipmentDrawerProps {
     tiiuCode: string | null;
     plannedDepartureDate: string | null;
     plannedArrivalDate: string | null;
+    maxWeightKg: number | null;
+    maxCbm: number | null;
   };
 }
 
@@ -25,6 +27,8 @@ const EditShipmentDrawer = ({ open, onClose, shipmentId, shipmentData }: EditShi
         tiiuCode: values.tiiuCode || null,
         plannedDepartureDate: values.plannedDepartureDate || null,
         plannedArrivalDate: values.plannedArrivalDate || null,
+        maxWeightKg: values.maxWeightKg === '' || values.maxWeightKg == null ? null : Number(values.maxWeightKg),
+        maxCbm: values.maxCbm === '' || values.maxCbm == null ? null : Number(values.maxCbm),
       }),
     onSuccess: () => {
       toast.success('Shipment info updated');
@@ -32,7 +36,7 @@ const EditShipmentDrawer = ({ open, onClose, shipmentId, shipmentData }: EditShi
       onClose();
     },
     onError: (e: any) => {
-      toast.error(e?.response?.data?.message ?? 'Update failed');
+      toast.error(parseApiError(e).message ?? 'Update failed');
     },
   });
 
@@ -61,6 +65,25 @@ const EditShipmentDrawer = ({ open, onClose, shipmentId, shipmentData }: EditShi
       required: true,
       disabled: false,
       value: shipmentData.plannedArrivalDate ?? null,
+    },
+    // CBM-first per repo convention.
+    maxCbm: {
+      type: DynamicField.NUMBER,
+      name: 'maxCbm',
+      title: 'Max CBM (0 = unlimited)',
+      required: false,
+      disabled: false,
+      value: shipmentData.maxCbm ?? 0,
+      min: 0,
+    },
+    maxWeightKg: {
+      type: DynamicField.NUMBER,
+      name: 'maxWeightKg',
+      title: 'Max Weight (Kg, 0 = unlimited)',
+      required: false,
+      disabled: false,
+      value: shipmentData.maxWeightKg ?? 0,
+      min: 0,
     },
   };
 

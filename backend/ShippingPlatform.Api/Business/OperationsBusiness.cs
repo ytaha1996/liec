@@ -100,6 +100,31 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (req.PlannedDepartureDate.HasValue) s.PlannedDepartureDate = req.PlannedDepartureDate.Value;
         if (req.PlannedArrivalDate.HasValue) s.PlannedArrivalDate = req.PlannedArrivalDate.Value;
 
+        // Capacity caps must not exceed the origin warehouse's caps. 0 = unbounded shipment.
+        if (req.MaxWeightKg.HasValue || req.MaxCbm.HasValue)
+        {
+            var origin = await db.Warehouses.FirstOrDefaultAsync(x => x.Id == s.OriginWarehouseId);
+            if (origin is not null)
+            {
+                if (req.MaxWeightKg.HasValue)
+                {
+                    if (req.MaxWeightKg.Value < 0)
+                        return (null, new { code = "VALIDATION_ERROR", message = "MaxWeightKg cannot be negative." });
+                    if (origin.MaxWeightKg > 0 && req.MaxWeightKg.Value > 0 && req.MaxWeightKg.Value > origin.MaxWeightKg)
+                        return (null, new { code = "EXCEEDS_WAREHOUSE_CAPACITY", message = $"Shipment MaxWeightKg ({req.MaxWeightKg}) exceeds origin warehouse capacity ({origin.MaxWeightKg})." });
+                    s.MaxWeightKg = req.MaxWeightKg.Value;
+                }
+                if (req.MaxCbm.HasValue)
+                {
+                    if (req.MaxCbm.Value < 0)
+                        return (null, new { code = "VALIDATION_ERROR", message = "MaxCbm cannot be negative." });
+                    if (origin.MaxCbm > 0 && req.MaxCbm.Value > 0 && req.MaxCbm.Value > origin.MaxCbm)
+                        return (null, new { code = "EXCEEDS_WAREHOUSE_CAPACITY", message = $"Shipment MaxCbm ({req.MaxCbm}) exceeds origin warehouse capacity ({origin.MaxCbm})." });
+                    s.MaxCbm = req.MaxCbm.Value;
+                }
+            }
+        }
+
         await db.SaveChangesAsync();
         return (s.ToDto(), null);
     }
@@ -284,6 +309,7 @@ public interface IPackageBusiness
     Task<object?> GetAsync(int id);
     Task<(PackageDto? dto, object? error, GateFailure? gate)> ChangeStatusAsync(int id, PackageStatus status, bool checkDepartureGate = false, bool checkArrivalGate = false);
     Task<(PackageItemDto? dto, object? error)> AddItemAsync(int id, UpsertPackageItemRequest item);
+    Task<(List<PackageItemDto>? dtos, object? error)> AddItemsBulkAsync(int id, List<UpsertPackageItemRequest> items);
     Task<(PackageItemDto? dto, object? error)> UpdateItemAsync(int id, int itemId, UpsertPackageItemRequest input);
     Task<object?> DeleteItemAsync(int id, int itemId);
     Task<object?> UploadMediaAsync(int id, MediaUploadRequest req);
@@ -576,6 +602,28 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.GoodType).LoadAsync();
         return (entity.ToDto(), null);
+    }
+
+    public async Task<(List<PackageItemDto>? dtos, object? error)> AddItemsBulkAsync(int id, List<UpsertPackageItemRequest> items)
+    {
+        var p = await db.Packages.FindAsync(id);
+        if (p is null) return (null, null);
+        if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
+        if (items.Count == 0) return (new List<PackageItemDto>(), null);
+
+        var entities = items.Select(item => new PackageItem
+        {
+            PackageId = id,
+            GoodTypeId = item.GoodTypeId,
+            Quantity = item.Quantity,
+            Unit = item.Unit,
+            UnitPrice = item.UnitPrice,
+            Note = item.Note,
+        }).ToList();
+        db.PackageItems.AddRange(entities);
+        await db.SaveChangesAsync();
+        foreach (var e in entities) await db.Entry(e).Reference(x => x.GoodType).LoadAsync();
+        return (entities.Select(e => e.ToDto()).ToList(), null);
     }
 
     public async Task<(PackageItemDto? dto, object? error)> UpdateItemAsync(int id, int itemId, UpsertPackageItemRequest input)

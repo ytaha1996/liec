@@ -21,7 +21,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { GateError, getJson, postJson } from '../../api/client';
+import { GateError, getJson, postJson, parseApiError } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -213,7 +213,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const syncTracking = useMutation({
     mutationFn: (code: string) => postJson(`/api/shipments/${id}/tracking/sync`, { code }),
     onSuccess: () => { toast.success('Tracking synced'); qc.invalidateQueries({ queryKey: ['/api/shipments', id] }); },
-    onError: () => toast.error('Tracking sync failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Tracking sync failed'),
   });
 
   const uniqueCustomerCount = new Set(shipmentPackages.map((p: any) => p.customerId)).size;
@@ -224,7 +224,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       if (res?.publicUrl) window.open(res.publicUrl, '_blank', 'noopener,noreferrer');
       toast.success('BOL report is ready');
     },
-    onError: () => toast.error('BOL export failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'BOL export failed'),
   });
 
   const exportCustomerInvoices = useMutation({
@@ -233,7 +233,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       if (res?.publicUrl) window.open(res.publicUrl, '_blank', 'noopener,noreferrer');
       toast.success('Customer invoices excel is ready');
     },
-    onError: () => toast.error('Customer invoices export failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Customer invoices export failed'),
   });
 
   const exportCommercialDocs = useMutation({
@@ -242,7 +242,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       if (res?.publicUrl) window.open(res.publicUrl, '_blank', 'noopener,noreferrer');
       toast.success('Commercial Invoice + Packing List ready');
     },
-    onError: () => toast.error('Commercial documents export failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Commercial documents export failed'),
   });
 
   const bulkTransition = useMutation({
@@ -563,7 +563,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
         open={editDrawerOpen}
         onClose={() => setEditDrawerOpen(false)}
         shipmentId={id}
-        shipmentData={{ tiiuCode: data.tiiuCode, plannedDepartureDate: data.plannedDepartureDate, plannedArrivalDate: data.plannedArrivalDate }}
+        shipmentData={{ tiiuCode: data.tiiuCode, plannedDepartureDate: data.plannedDepartureDate, plannedArrivalDate: data.plannedArrivalDate, maxWeightKg: data.maxWeightKg, maxCbm: data.maxCbm }}
       />
 
       {photosPkgId !== null && (

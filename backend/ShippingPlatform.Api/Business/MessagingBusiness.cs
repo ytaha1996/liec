@@ -143,6 +143,7 @@ public interface IExportBusiness
     Task<object> ShipmentBolReportAsync(int shipmentId);
     Task<object> ShipmentCustomerInvoicesExcelAsync(int shipmentId);
     Task<object> ShipmentCommercialDocumentsAsync(int shipmentId);
+    Task<object> CustomersExcelAsync();
 }
 
 public class ExportBusiness(IExportService exports) : IExportBusiness
@@ -168,6 +169,12 @@ public class ExportBusiness(IExportService exports) : IExportBusiness
     public async Task<object> ShipmentCommercialDocumentsAsync(int shipmentId)
     {
         var url = await exports.GenerateShipmentCommercialDocumentsAsync(shipmentId);
+        return new { publicUrl = url };
+    }
+
+    public async Task<object> CustomersExcelAsync()
+    {
+        var url = await exports.GenerateCustomersExcelAsync();
         return new { publicUrl = url };
     }
 }

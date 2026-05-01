@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import { SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import EmptyState from '../../components/EmptyState';
@@ -149,7 +149,7 @@ const SupplyOrdersPage = () => {
       setDialogOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
   });
 
   const lifecycleMut = useMutation({
@@ -161,7 +161,7 @@ const SupplyOrdersPage = () => {
       toast.success('Supply order updated');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Action failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Action failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
