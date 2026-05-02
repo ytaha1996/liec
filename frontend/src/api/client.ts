@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:53095'
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://liec-shipment.azurewebsites.net/'
 });
 
 api.interceptors.request.use((c) => {

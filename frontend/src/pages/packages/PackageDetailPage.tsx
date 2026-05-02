@@ -389,7 +389,7 @@ const PackageDetailPage = ({ id }: Props) => {
             <InformationWidget
               title={`Pricing Snapshot${pkg.hasPricingOverride ? ' (Override Active)' : ''}`}
               fields={pricingFields}
-              data={pkg}
+              data={pkgDisplay}
             >
               {canEditPackageItems(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
                 <Box sx={{ mt: 1 }}>

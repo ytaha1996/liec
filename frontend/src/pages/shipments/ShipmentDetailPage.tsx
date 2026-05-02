@@ -74,7 +74,7 @@ const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
 ];
 
 const CAN_ADD_PACKAGE = new Set(['Draft', 'Scheduled']);
-const CAN_EDIT_SHIPMENT = new Set(['Draft', 'Scheduled']);
+const CAN_EDIT_SHIPMENT = new Set(['Draft', 'Scheduled', 'ReadyToDepart']);
 const EXPORTABLE_STATUSES = new Set(['ReadyToDepart', 'Departed', 'Arrived', 'Closed']);
 
 const ShipmentDetailPage = ({ id }: Props) => {

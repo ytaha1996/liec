@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, CircularProgress, TextField, Typography } from '@mui/material';
@@ -55,6 +56,12 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
     required: true,
     disabled: false,
     value: null,
+    customValidator: (_v, values) => {
+      if (!values.plannedDepartureDate || !values.plannedArrivalDate) return '';
+      return dayjs(values.plannedArrivalDate).isBefore(dayjs(values.plannedDepartureDate), 'day')
+        ? 'Arrival must be on or after departure'
+        : '';
+    },
   },
   maxWeightKg: {
     type: DynamicField.NUMBER,

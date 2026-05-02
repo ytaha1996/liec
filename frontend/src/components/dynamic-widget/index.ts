@@ -30,7 +30,7 @@ export interface IDynamicBaseField {
   disabled: boolean;
   value: any;
   grid?: Record<string, number>;
-  customValidator?: (v: any) => string;
+  customValidator?: (v: any, values: Record<string, any>) => string;
   conditionalDisable?: (values?: Record<string, any>) => boolean;
   conditionalHidden?: (values?: Record<string, any>) => boolean;
   conditionalRequired?: (values: Record<string, any>) => boolean;
