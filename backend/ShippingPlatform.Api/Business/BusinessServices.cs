@@ -6,21 +6,45 @@ using ShippingPlatform.Api.Services;
 
 namespace ShippingPlatform.Api.Business;
 
+public enum LoginOutcome { Success, BadCredentials, Locked }
+
 public interface IAuthBusiness
 {
-    Task<LoginResponse?> LoginAsync(LoginRequest request);
+    Task<(LoginOutcome outcome, LoginResponse? response, DateTime? lockedUntil)> LoginAsync(LoginRequest request);
 }
 
-public class AuthBusiness(AppDbContext db, ITokenService tokens) : IAuthBusiness
+public class AuthBusiness(AppDbContext db, ITokenService tokens, IConfiguration cfg) : IAuthBusiness
 {
-    public async Task<LoginResponse?> LoginAsync(LoginRequest request)
+    public async Task<(LoginOutcome outcome, LoginResponse? response, DateTime? lockedUntil)> LoginAsync(LoginRequest request)
     {
         var user = await db.AdminUsers.FirstOrDefaultAsync(x => x.Email == request.Email && x.IsActive);
-        if (user is null) return null;
-        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash)) return null;
-        user.LastLoginAt = DateTime.UtcNow;
+        if (user is null) return (LoginOutcome.BadCredentials, null, null);
+
+        var now = DateTime.UtcNow;
+        if (user.LockedUntil.HasValue && user.LockedUntil.Value > now)
+            return (LoginOutcome.Locked, null, user.LockedUntil);
+
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            var threshold = int.TryParse(cfg["Auth:LockoutThreshold"], out var t) && t > 0 ? t : 5;
+            var minutes = int.TryParse(cfg["Auth:LockoutMinutes"], out var m) && m > 0 ? m : 15;
+            user.FailedLoginCount++;
+            if (user.FailedLoginCount >= threshold)
+            {
+                user.LockedUntil = now.AddMinutes(minutes);
+                user.FailedLoginCount = 0; // reset counter; LockedUntil now governs.
+                await db.SaveChangesAsync();
+                return (LoginOutcome.Locked, null, user.LockedUntil);
+            }
+            await db.SaveChangesAsync();
+            return (LoginOutcome.BadCredentials, null, null);
+        }
+
+        user.LastLoginAt = now;
+        user.FailedLoginCount = 0;
+        user.LockedUntil = null;
         await db.SaveChangesAsync();
-        return new LoginResponse(tokens.Create(user), user.Email);
+        return (LoginOutcome.Success, new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString()), null);
     }
 }
 
@@ -36,11 +60,6 @@ public interface IMasterDataBusiness
     Task<GoodTypeDto> CreateGoodTypeAsync(UpsertGoodTypeRequest req);
     Task<GoodTypeDto?> UpdateGoodTypeAsync(int id, UpsertGoodTypeRequest req);
 
-    Task<List<GoodDto>> ListGoodsAsync();
-    Task<GoodDto?> GetGoodAsync(int id);
-    Task<GoodDto> CreateGoodAsync(UpsertGoodRequest req);
-    Task<GoodDto?> UpdateGoodAsync(int id, UpsertGoodRequest req);
-
     Task<List<SupplierDto>> ListSuppliersAsync();
     Task<SupplierDto?> GetSupplierAsync(int id);
     Task<SupplierDto> CreateSupplierAsync(UpsertSupplierRequest req);
@@ -54,19 +73,19 @@ public interface IMasterDataBusiness
     Task<PricingConfigDto?> RetirePricingConfigAsync(int id);
 }
 
-public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
+public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterDataBusiness
 {
     public async Task<List<WarehouseDto>> ListWarehousesAsync() => (await db.Warehouses.ToListAsync()).Select(x => x.ToDto()).ToList();
     public async Task<WarehouseDto?> GetWarehouseAsync(int id) => (await db.Warehouses.FindAsync(id))?.ToDto();
     public async Task<WarehouseDto> CreateWarehouseAsync(UpsertWarehouseRequest req)
     {
-        var e = new Warehouse { Code = req.Code, Name = req.Name, City = req.City, Country = req.Country, MaxWeightKg = req.MaxWeightKg, MaxVolumeM3 = req.MaxVolumeM3, IsActive = req.IsActive };
+        var e = new Warehouse { Code = req.Code, Name = req.Name, City = req.City, Country = req.Country, MaxWeightKg = req.MaxWeightKg, MaxCbm = req.MaxCbm, IsActive = req.IsActive };
         db.Warehouses.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<WarehouseDto?> UpdateWarehouseAsync(int id, UpsertWarehouseRequest req)
     {
         var e = await db.Warehouses.FindAsync(id); if (e is null) return null;
-        e.Code = req.Code; e.Name = req.Name; e.City = req.City; e.Country = req.Country; e.MaxWeightKg = req.MaxWeightKg; e.MaxVolumeM3 = req.MaxVolumeM3; e.IsActive = req.IsActive;
+        e.Code = req.Code; e.Name = req.Name; e.City = req.City; e.Country = req.Country; e.MaxWeightKg = req.MaxWeightKg; e.MaxCbm = req.MaxCbm; e.IsActive = req.IsActive;
         await db.SaveChangesAsync(); return e.ToDto();
     }
 
@@ -74,27 +93,13 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<GoodTypeDto?> GetGoodTypeAsync(int id) => (await db.GoodTypes.FindAsync(id))?.ToDto();
     public async Task<GoodTypeDto> CreateGoodTypeAsync(UpsertGoodTypeRequest req)
     {
-        var e = new GoodType { NameEn = req.NameEn, NameAr = req.NameAr, RatePerKg = req.RatePerKg, RatePerM3 = req.RatePerM3, IsActive = req.IsActive };
+        var e = new GoodType { NameEn = req.NameEn, NameAr = req.NameAr, CanBreak = req.CanBreak, CanBurn = req.CanBurn, IsActive = req.IsActive };
         db.GoodTypes.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<GoodTypeDto?> UpdateGoodTypeAsync(int id, UpsertGoodTypeRequest req)
     {
         var e = await db.GoodTypes.FindAsync(id); if (e is null) return null;
-        e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.RatePerKg = req.RatePerKg; e.RatePerM3 = req.RatePerM3; e.IsActive = req.IsActive;
-        await db.SaveChangesAsync(); return e.ToDto();
-    }
-
-    public async Task<List<GoodDto>> ListGoodsAsync() => (await db.Goods.ToListAsync()).Select(x => x.ToDto()).ToList();
-    public async Task<GoodDto?> GetGoodAsync(int id) => (await db.Goods.FindAsync(id))?.ToDto();
-    public async Task<GoodDto> CreateGoodAsync(UpsertGoodRequest req)
-    {
-        var e = new Good { GoodTypeId = req.GoodTypeId, NameEn = req.NameEn, NameAr = req.NameAr, CanBurn = req.CanBurn, CanBreak = req.CanBreak, Unit = req.Unit, RatePerKgOverride = req.RatePerKgOverride, RatePerM3Override = req.RatePerM3Override, IsActive = req.IsActive };
-        db.Goods.Add(e); await db.SaveChangesAsync(); return e.ToDto();
-    }
-    public async Task<GoodDto?> UpdateGoodAsync(int id, UpsertGoodRequest req)
-    {
-        var e = await db.Goods.FindAsync(id); if (e is null) return null;
-        e.GoodTypeId = req.GoodTypeId; e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.CanBurn = req.CanBurn; e.CanBreak = req.CanBreak; e.Unit = req.Unit; e.RatePerKgOverride = req.RatePerKgOverride; e.RatePerM3Override = req.RatePerM3Override; e.IsActive = req.IsActive;
+        e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.CanBreak = req.CanBreak; e.CanBurn = req.CanBurn; e.IsActive = req.IsActive;
         await db.SaveChangesAsync(); return e.ToDto();
     }
 
@@ -116,25 +121,95 @@ public class MasterDataBusiness(AppDbContext db) : IMasterDataBusiness
     public async Task<PricingConfigDto?> GetPricingConfigAsync(int id) => (await db.PricingConfigs.FindAsync(id))?.ToDto();
     public async Task<PricingConfigDto> CreatePricingConfigAsync(UpsertPricingConfigRequest req)
     {
-        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerM3 = req.DefaultRatePerM3, Status = req.Status };
+        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, MinimumCharge = req.MinimumCharge, Status = req.Status };
         db.PricingConfigs.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> UpdatePricingConfigAsync(int id, UpsertPricingConfigRequest req)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerM3 = req.DefaultRatePerM3; e.Status = req.Status;
+        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.MinimumCharge = req.MinimumCharge; e.Status = req.Status;
         await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> ActivatePricingConfigAsync(int id)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        foreach (var p in db.PricingConfigs.Where(x => x.Status == PricingConfigStatus.Active)) p.Status = PricingConfigStatus.Retired;
-        e.Status = PricingConfigStatus.Active; await db.SaveChangesAsync(); return e.ToDto();
+        var oldStatus = e.Status.ToString();
+        var retiredIds = new List<int>();
+        foreach (var p in db.PricingConfigs.Where(x => x.Status == PricingConfigStatus.Active)) { p.Status = PricingConfigStatus.Retired; retiredIds.Add(p.Id); }
+        e.Status = PricingConfigStatus.Active; await db.SaveChangesAsync();
+        await audit.LogAsync("PricingConfig", e.Id, "Activate", oldStatus, $"Active; retired ids=[{string.Join(',', retiredIds)}]");
+        return e.ToDto();
     }
     public async Task<PricingConfigDto?> RetirePricingConfigAsync(int id)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        e.Status = PricingConfigStatus.Retired; await db.SaveChangesAsync(); return e.ToDto();
+        var oldStatus = e.Status.ToString();
+        e.Status = PricingConfigStatus.Retired; await db.SaveChangesAsync();
+        await audit.LogAsync("PricingConfig", e.Id, "Retire", oldStatus, "Retired");
+        return e.ToDto();
+    }
+}
+
+public interface IUserBusiness
+{
+    Task<List<AdminUserDto>> ListAsync();
+    Task<AdminUserDto?> GetAsync(int id);
+    Task<(AdminUserDto? dto, object? err)> CreateAsync(CreateUserRequest req);
+    Task<(AdminUserDto? dto, object? err)> UpdateAsync(int id, UpdateUserRequest req, int callerUserId);
+}
+
+public class UserBusiness(AppDbContext db, IAuditService audit) : IUserBusiness
+{
+    public async Task<List<AdminUserDto>> ListAsync() =>
+        (await db.AdminUsers.OrderBy(x => x.Email).ToListAsync()).Select(x => x.ToDto()).ToList();
+
+    public async Task<AdminUserDto?> GetAsync(int id) =>
+        (await db.AdminUsers.FindAsync(id))?.ToDto();
+
+    public async Task<(AdminUserDto? dto, object? err)> CreateAsync(CreateUserRequest req)
+    {
+        if (await db.AdminUsers.AnyAsync(x => x.Email == req.Email))
+            return (null, new { code = "DUPLICATE_EMAIL", message = "A user with this email already exists." });
+
+        var user = new AdminUser
+        {
+            Email = req.Email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+            Role = req.Role,
+            IsActive = req.IsActive,
+        };
+        db.AdminUsers.Add(user);
+        await db.SaveChangesAsync();
+        await audit.LogAsync("AdminUser", user.Id, "Create", null, $"email={user.Email} role={user.Role} active={user.IsActive}");
+        return (user.ToDto(), null);
+    }
+
+    public async Task<(AdminUserDto? dto, object? err)> UpdateAsync(int id, UpdateUserRequest req, int callerUserId)
+    {
+        var user = await db.AdminUsers.FindAsync(id);
+        if (user is null) return (null, null);
+
+        if (id == callerUserId && user.Role != req.Role)
+            return (null, new { code = "SELF_ROLE_CHANGE", message = "You cannot change your own role." });
+
+        if (user.Email != req.Email && await db.AdminUsers.AnyAsync(x => x.Email == req.Email && x.Id != id))
+            return (null, new { code = "DUPLICATE_EMAIL", message = "A user with this email already exists." });
+
+        if (user.IsActive && !req.IsActive && user.Role == UserRole.Admin)
+        {
+            var activeAdminCount = await db.AdminUsers.CountAsync(x => x.Role == UserRole.Admin && x.IsActive && x.Id != id);
+            if (activeAdminCount == 0)
+                return (null, new { code = "LAST_ADMIN", message = "Cannot deactivate the last active admin." });
+        }
+
+        var oldSnapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";
+        user.Email = req.Email;
+        user.Role = req.Role;
+        user.IsActive = req.IsActive;
+        await db.SaveChangesAsync();
+        var newSnapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";
+        await audit.LogAsync("AdminUser", user.Id, "Update", oldSnapshot, newSnapshot, callerUserId);
+        return (user.ToDto(), null);
     }
 }
 
@@ -142,8 +217,8 @@ public interface ICustomerBusiness
 {
     Task<List<CustomerDto>> ListAsync(string? q);
     Task<CustomerDto?> GetAsync(int id);
-    Task<CustomerDto> CreateAsync(CreateCustomerRequest req);
-    Task<CustomerDto?> UpdateAsync(int id, UpdateCustomerRequest req);
+    Task<(CustomerDto? dto, string? error)> CreateAsync(CreateCustomerRequest req);
+    Task<(CustomerDto? dto, string? error, bool notFound)> UpdateAsync(int id, UpdateCustomerRequest req);
     Task<WhatsAppConsentDto?> PatchConsentAsync(int id, WhatsAppConsentDto consent);
 }
 
@@ -158,24 +233,33 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
 
     public async Task<CustomerDto?> GetAsync(int id) => (await db.Customers.Include(x => x.WhatsAppConsent).FirstOrDefaultAsync(x => x.Id == id))?.ToDto();
 
-    public async Task<CustomerDto> CreateAsync(CreateCustomerRequest req)
+    public async Task<(CustomerDto? dto, string? error)> CreateAsync(CreateCustomerRequest req)
     {
-        var entity = new Customer { Name = req.Name, PrimaryPhone = req.PrimaryPhone, Email = req.Email, IsActive = req.IsActive };
+        var phone = req.PrimaryPhone?.Trim() ?? string.Empty;
+        if (await db.Customers.AnyAsync(c => c.PrimaryPhone == phone))
+            return (null, "A customer with this phone number already exists.");
+
+        var entity = new Customer { Name = req.Name, PrimaryPhone = phone, Email = req.Email, CompanyName = req.CompanyName, TaxId = req.TaxId, BillingAddress = req.BillingAddress, IsActive = req.IsActive };
         db.Customers.Add(entity);
         await db.SaveChangesAsync();
         db.WhatsAppConsents.Add(new WhatsAppConsent { CustomerId = entity.Id, OptInStatusUpdates = true, OptInDeparturePhotos = true, OptInArrivalPhotos = true });
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.WhatsAppConsent).LoadAsync();
-        return entity.ToDto();
+        return (entity.ToDto(), null);
     }
 
-    public async Task<CustomerDto?> UpdateAsync(int id, UpdateCustomerRequest req)
+    public async Task<(CustomerDto? dto, string? error, bool notFound)> UpdateAsync(int id, UpdateCustomerRequest req)
     {
         var e = await db.Customers.Include(x => x.WhatsAppConsent).FirstOrDefaultAsync(x => x.Id == id);
-        if (e is null) return null;
-        e.Name = req.Name; e.PrimaryPhone = req.PrimaryPhone; e.Email = req.Email; e.IsActive = req.IsActive;
+        if (e is null) return (null, null, true);
+
+        var phone = req.PrimaryPhone?.Trim() ?? string.Empty;
+        if (await db.Customers.AnyAsync(c => c.PrimaryPhone == phone && c.Id != id))
+            return (null, "A customer with this phone number already exists.", false);
+
+        e.Name = req.Name; e.PrimaryPhone = phone; e.Email = req.Email; e.CompanyName = req.CompanyName; e.TaxId = req.TaxId; e.BillingAddress = req.BillingAddress; e.IsActive = req.IsActive;
         await db.SaveChangesAsync();
-        return e.ToDto();
+        return (e.ToDto(), null, false);
     }
 
     public async Task<WhatsAppConsentDto?> PatchConsentAsync(int id, WhatsAppConsentDto consent)

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ShippingPlatform.Api.Business;
 using ShippingPlatform.Api.Dtos;
@@ -6,6 +7,7 @@ namespace ShippingPlatform.Api.Controllers;
 
 [ApiController]
 [Route("api/pricing-configs")]
+[Authorize(Roles = "Admin,Manager,Accountant")]
 public class PricingConfigController(IMasterDataBusiness business) : ControllerBase
 {
     [HttpGet] public async Task<ActionResult<IEnumerable<PricingConfigDto>>> List() => Ok(await business.ListPricingConfigsAsync());

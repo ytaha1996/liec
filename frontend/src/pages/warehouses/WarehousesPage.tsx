@@ -19,9 +19,11 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const WarehousesPage: React.FC = () => {
   const qc = useQueryClient();
+  const role = useUserRole();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -68,7 +70,7 @@ const WarehousesPage: React.FC = () => {
     { id: 'city', label: 'City', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
     { id: 'country', label: 'Country', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
     { id: 'maxWeightKg', label: 'Max Weight (kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
-    { id: 'maxVolumeM3', label: 'Max Volume (m³)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
+    { id: 'maxCbm', label: 'Max CBM', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
     {
       id: 'isActive',
       label: 'Active',
@@ -92,7 +94,7 @@ const WarehousesPage: React.FC = () => {
           icon: <Icon icon="mdi:pencil" />,
           label: 'Edit',
           onClick: (id: string) => openEdit(id),
-          hidden: (_row: Record<string, any>) => false,
+          hidden: () => !canWriteMasterData(role),
         },
       ],
     } as EnhancedTableActionHeader,
@@ -137,15 +139,17 @@ const WarehousesPage: React.FC = () => {
       title: 'Max Weight (kg)',
       required: true,
       disabled: false,
-      value: formValues.maxWeightKg ?? '',
+      value: formValues.maxWeightKg ?? 0,
+      min: 0,
     } as IDynamicNumberField,
-    maxVolumeM3: {
+    maxCbm: {
       type: DynamicField.NUMBER,
-      name: 'maxVolumeM3',
-      title: 'Max Volume (m³)',
+      name: 'maxCbm',
+      title: 'Max CBM',
       required: true,
       disabled: false,
-      value: formValues.maxVolumeM3 ?? '',
+      value: formValues.maxCbm ?? 0,
+      min: 0,
     } as IDynamicNumberField,
     isActive: {
       type: DynamicField.CHECKBOX,
@@ -179,12 +183,10 @@ const WarehousesPage: React.FC = () => {
       <PageTitleWrapper>
         <MainPageTitle
           title="Warehouses"
-          action={{ title: 'Create Warehouse', onClick: openCreate }}
+          action={canWriteMasterData(role) ? { title: 'Create Warehouse', onClick: openCreate } : undefined}
         />
       </PageTitleWrapper>
-      <MainPageSection title="Warehouses">
         <EnhancedTable header={header} data={tableData} title="Warehouses" />
-      </MainPageSection>
       <GenericDialog
         open={open}
         onClose={() => setOpen(false)}

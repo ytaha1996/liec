@@ -1,0 +1,758 @@
+# LIEC Shipping Platform — Reference
+
+This is the deeper engineering reference for the platform. Read [`CLAUDE.md`](CLAUDE.md) first for the agent-oriented primer; read [`plan.mdf`](plan.mdf) for the original product spec. This document is the source of truth for what the system actually does today, how the layers fit together, and where the known gaps are.
+
+---
+
+## 1. Overview
+
+**Purpose.** Internal operations system that tracks customer goods from drop-off in the origin country to handout at the destination. Customers themselves never use the app — only company employees do. Goods travel between four warehouses (Beirut/BEI, Gabon/GAB, China/CHN, Dubai/DXB) inside shared shipment "containers" (one shipment carries packages from many customers).
+
+**What the platform replaces.** Manual Excel sheets, hand-filled commercial invoices (`925_FINAL_INVOICE___PL_GAB.xlsx` was the canonical template), ad-hoc WhatsApp blasts, paper photo logs.
+
+**Tech stack.**
+
+| Layer | Stack |
+|---|---|
+| Backend | .NET 8, EF Core 8 (Pomelo MySQL), FluentValidation, ClosedXML, BCrypt.Net-Next, SkiaSharp, Twilio 7.x |
+| Frontend | React 18, Vite 5, TypeScript 5, MUI 6, React Query 5, Redux Toolkit 2, Axios, React Router 6, react-toastify, dayjs |
+| Storage | MySQL (with in-memory EF fallback for dev), Azure Blob Storage (containers `media` + `exports`) |
+| Tests | Playwright e2e (frontend only) |
+
+**Repository layout.**
+
+```
+liec/
+├── backend/ShippingPlatform.Api/
+│   ├── Controllers/                  # 15 controllers (Auth, Currencies, Customer, Dev, Exports, GoodType, Lookups, Packages, PricingConfig, Shipments, Stats, Supplier, SupplyOrder, Warehouse, WhatsApp)
+│   ├── Business/                     # AuthBusiness, MasterDataBusiness, CustomerBusiness, ShipmentBusiness, PackageBusiness, SupplyOrderBusiness, WhatsAppBusiness, ExportBusiness, UserBusiness, CurrencyBusiness
+│   ├── Services/                     # core services (token, blob, refcode, pricing, capacity, photocompliance, watermark, twilio, audit, transitionrules)
+│   │   ├── Currency/                 # FxRateService, ShipmentSnapshotService (namespace: Services.FxRates)
+│   │   └── Exports/                  # InvoiceTemplateConstants, InvoiceSequenceService, CommercialDocumentBuilder
+│   ├── Models/Entities/              # 21 entity classes (one per file)
+│   ├── Models/Enums.cs               # 12 enums in one file
+│   ├── Data/AppDbContext.cs          # DbSets + OnModelCreating (indexes, precision, cascades)
+│   ├── Dtos/ApiDtos.cs               # all DTOs + DtoMap extension methods
+│   ├── Validators/RequestValidators.cs
+│   └── Migrations/                   # 13 migrations (chronological, see §2)
+├── frontend/
+│   ├── src/
+│   │   ├── api/                      # client.ts + lookup hooks (lookups.ts, currencies.ts)
+│   │   ├── pages/                    # one folder per domain
+│   │   ├── components/               # reusable (~45 components)
+│   │   ├── helpers/rbac.ts           # MODULE_ACCESS + canX helpers
+│   │   ├── redux/                    # user + confirmation slices
+│   │   ├── theme/                    # brand teal #00A6A6, navy #243043
+│   │   ├── application.ts            # nav module definitions
+│   │   └── Protected.tsx             # router + auth gate
+│   └── e2e/                          # 11 Playwright specs incl. zz-manager-full-flow.spec.ts
+├── plan.mdf                          # original product proposal
+├── CLAUDE.md                         # agent primer
+└── PLATFORM.mdf                      # ← this document
+```
+
+**Roles (4-tier RBAC).**
+
+| Role | Reach |
+|---|---|
+| Admin | Everything: users, currencies (write), pricing-config lifecycle, dev-reset, all transitions and exports |
+| Manager | Shipments + packages + master data + transitions + exports + WhatsApp + customer messaging. Cannot manage users or write currencies. |
+| Accountant | Read-only for shipments/packages, can override pricing, can run exports + WhatsApp |
+| Field | Warehouse floor: package transitions limited to `receive`, `pack`, `ready-to-ship` (per `FIELD_PKG_TRANSITIONS`). Can upload photos. |
+
+---
+
+## 2. Domain Model
+
+### 2.1 Entity catalog
+
+21 entities. One file per entity in `backend/ShippingPlatform.Api/Models/Entities/`.
+
+| Entity | Key fields | Notable | FK behavior |
+|---|---|---|---|
+| `AdminUser` | Email, PasswordHash (BCrypt), IsActive, **Role**, LastLoginAt | Unique index on `Email`. `Role` added in `AddUserRole` migration. | — |
+| `Customer` | Name, PrimaryPhone, Email?, CompanyName?, TaxId?, BillingAddress?, IsActive | 1:1 `WhatsAppConsent` (cascade delete). Indexes on Email + PrimaryPhone. | — |
+| `WhatsAppConsent` | CustomerId (PK + FK), OptInStatusUpdates, OptInDeparturePhotos, OptInArrivalPhotos, OptedOutAt? | Auto-created with customer on seed. | Cascade from Customer |
+| `Warehouse` | Code (unique, ≤3), Name, City, Country, MaxWeightKg(10,3), MaxCbm(10,3), IsActive | 4 seeded: BEI, GAB, CHN, DXB | — |
+| `GoodType` | NameEn, NameAr, CanBreak, CanBurn, IsActive | Bilingual labels (Arabic field unused on FE — see §9.19) | — |
+| `PricingConfig` | Name, Currency(≤3), EffectiveFrom, EffectiveTo?, DefaultRatePerKg(12,4), DefaultRatePerCbm(12,4), MinimumCharge(12,4), Status | Status = Draft → Scheduled → Active → Retired | — |
+| `Shipment` | RefCode (unique), TiiuCode(≤11), OriginWarehouseId, DestinationWarehouseId, Status, MaxWeightKg(10,3), MaxCbm(10,3), TotalWeightKg(10,3), TotalCbm(10,3), PlannedDepartureDate, PlannedArrivalDate, ActualDepartureAt?, ActualArrivalAt?, External\* tracking, **InvoiceNumber?, InvoiceYear?**, CreatedAt | New invoice fields pinned on first commercial-documents export. Status, PlannedDepartureDate indexed. | OriginWarehouse/DestinationWarehouse: **Restrict** |
+| `ShipmentSequence` | OriginWarehouseCode, Year, LastNumber | RefCode format `{Code}-{YY}{NN}`. Unique index `(OriginWarehouseCode, Year)`. Optimistic concurrency (see §9.6). | — |
+| `Package` | ShipmentId, CustomerId, ProvisionMethod, Status, WeightKg(10,3), Cbm(10,3), Currency(≤3), AppliedRatePerKg(12,4), AppliedRatePerCbm(12,4), ChargeAmount(18,2), HasDeparturePhotos, HasArrivalPhotos, HasPricingOverride, SupplyOrderId?, Note(≤1000), CreatedAt | `Currency` is currently semantically dead (see §9.8). Status, SupplyOrderId, ShipmentId, CustomerId indexed. | Customer/Shipment: **Restrict** |
+| `PackageItem` | PackageId, GoodTypeId, Quantity (default 1), **Unit (default Box)**, **UnitPrice?(18,2)**, Note(≤500) | `Unit` and `UnitPrice` added 2026-05-01. `UnitPrice` always USD (see §9.8). | Cascade from Package |
+| `PackagePricingOverride` | PackageId, OverrideType, OriginalValue(18,2), NewValue(18,2), Reason(≤500), AdminUserId, CreatedAt | Three override types (RatePerKg/RatePerCbm/TotalCharge). Indexed on PackageId. | Cascade from Package |
+| `Supplier` | Name(≤200), Email?(≤200), IsActive | For procurement | — |
+| `SupplyOrder` | CustomerId, SupplierId, PackageId?, Name(≤200), PurchasePrice(18,2), Details?(≤2000), Status, CancelReason?(≤500) | Unique index on PackageId. Lifecycle: Draft→Approved→Ordered→DeliveredToWarehouse→PackedIntoPackage→Closed. | Customer/Supplier: **Restrict** |
+| `Media` | PackageId, Stage, BlobKey(≤500), PublicUrl(≤500), Notes?(≤1000), CapturedAt?, UploadedAt, RecordedByAdminUserId, OperatorName?(≤200) | Stages: Receiving/Departure/Arrival/Other. Watermarked on upload. `RecordedByAdminUserId` field exists but never populated (§9.14). | Cascade from Package |
+| `WhatsAppCampaign` | Type, ShipmentId, TriggeredByAdminUserId, RecipientCount, Completed, CreatedAt | Three campaign types (StatusUpdate/Departure/Arrival photos) | — |
+| `WhatsAppDeliveryLog` | CampaignId, CustomerId, Phone(≤30), Result, FailureReason?(≤500), SentAt? | Result = Pending/Sent/Failed/SkippedNoOptIn. Pending rows don't flip async (§9.15). | Cascade from Campaign |
+| `AuditLog` | EntityType, EntityId, Action, OldValue(≤2000), NewValue(≤2000), AdminUserId?, CreatedAt | Indexed on (EntityType, EntityId), AdminUserId, CreatedAt. **Sparsely populated** (§9.13). | — |
+| **`Currency`** | Code (unique, ≤3), Name(≤60), Symbol?(≤8), IsBase, AnchorCurrencyCode?(≤3), Rate?(18,8), IsActive, UpdatedAt | New 2026-05-01. Anchored chain (see §3.4). | — |
+| **`ShipmentRateSnapshot`** | ShipmentId, Event (Departed/Arrived/Manual), CurrencyCode(≤3), RateToBase(18,8), CapturedAt | New 2026-05-01. Composite unique `(ShipmentId, Event, CurrencyCode)`. | Cascade from Shipment |
+| **`InvoiceSequence`** | Year (unique), LastNumber | New 2026-05-01. Year-scoped invoice counter. Optimistic concurrency (§9.6). | — |
+
+### 2.2 Enum catalog
+
+12 enums in [`Models/Enums.cs`](backend/ShippingPlatform.Api/Models/Enums.cs).
+
+| Enum | Values | Notes |
+|---|---|---|
+| `PricingConfigStatus` | Draft, Scheduled, Active, Retired | Implicit numeric |
+| `ShipmentStatus` | Draft, Scheduled, ReadyToDepart, Departed, Arrived, Closed, Cancelled | Implicit numeric — **status comparisons rely on this order** |
+| `PricingOverrideType` | RatePerKg, RatePerCbm, TotalCharge | |
+| `PackageStatus` | Draft, Received, Packed, ReadyToShip, Shipped, ArrivedAtDestination, ReadyForHandout, HandedOut, Cancelled | Implicit numeric — order-dependent |
+| `SupplyOrderStatus` | Draft, Approved, Ordered, DeliveredToWarehouse, PackedIntoPackage, Closed, Cancelled | |
+| `ProvisionMethod` | CustomerProvided, ProcuredForCustomer | |
+| `MediaStage` | Receiving, Departure, Arrival, Other | |
+| `CampaignType` | StatusUpdate, DeparturePhotos, ArrivalPhotos | |
+| `DeliveryResult` | Pending, Sent, Failed, SkippedNoOptIn | |
+| `UserRole` | Admin, Manager, Accountant, Field | |
+| **`Unit`** | Box=1, Piece=2, Crt=3, Bag=4, Pallet=5 | **Explicit numeric — append-only contract** (never reorder) |
+| **`ShipmentSnapshotEvent`** | Departed, Arrived, Manual | New. `Manual` is overloaded — also used for synthetic live-fallback rates (§9.9) |
+
+### 2.3 Decimal precision matrix
+
+Configured in [`AppDbContext.OnModelCreating`](backend/ShippingPlatform.Api/Data/AppDbContext.cs).
+
+| Domain | Precision | Fields |
+|---|---|---|
+| Weight (kg) / Volume (CBM) | (10, 3) | `Package.WeightKg`/`Cbm`, `Shipment.MaxWeightKg`/`MaxCbm`/`TotalWeightKg`/`TotalCbm`, `Warehouse.MaxWeightKg`/`MaxCbm` |
+| Pricing rates | (12, 4) | `Package.AppliedRatePerKg`/`AppliedRatePerCbm`, `PricingConfig.DefaultRatePerKg`/`DefaultRatePerCbm`/`MinimumCharge` |
+| Money amounts | (18, 2) | `Package.ChargeAmount`, `PackageItem.UnitPrice`, `PackagePricingOverride.OriginalValue`/`NewValue`, `SupplyOrder.PurchasePrice` |
+| FX rates | (18, 8) | `Currency.Rate`, `ShipmentRateSnapshot.RateToBase` |
+
+### 2.4 Cascade behavior
+
+Configured explicitly in `OnModelCreating`.
+
+| FK | Behavior | Why |
+|---|---|---|
+| Shipment → OriginWarehouse / DestinationWarehouse | Restrict | Prevent accidental warehouse delete from blowing away history |
+| Package → Customer / Shipment | Restrict | Keep package history if customer/shipment deactivates |
+| SupplyOrder → Customer / Supplier | Restrict | Same reasoning |
+| PackageItem → Package | Cascade | Items are owned by their package |
+| Media → Package | Cascade | Photos die with their package |
+| PackagePricingOverride → Package | Cascade | Audit trail tied to package |
+| WhatsAppDeliveryLog → Campaign | Cascade | Logs are owned by their campaign |
+| WhatsAppConsent → Customer | Cascade | 1:1 owned record |
+| ShipmentRateSnapshot → Shipment | Cascade | Snapshots are tied to their shipment |
+
+### 2.5 Migrations chronology
+
+| # | Timestamp | Name | Purpose |
+|---|---|---|---|
+| 1 | 20260227084834 | Initial | Core schema |
+| 2 | 20260227122334 | UpdateTiiuMaxLength | TIIU code length fix |
+| 3 | 20260406092445 | GapFixesPhaseDE | Earlier FK / schema refinements |
+| 4 | 20260418142022 | AddUserRole | `AdminUser.Role` enum (4-tier RBAC) |
+| 5 | 20260501064302 | AddUnitAndUnitPriceToPackageItem | `Unit` (NOT NULL default 1), `UnitPrice` (nullable, 18,2) |
+| 6 | 20260501064702 | AddInvoiceSequence | Year-scoped counter for commercial invoices |
+| 7 | 20260501064712 | AddInvoiceNumberToShipment | `Shipment.InvoiceNumber?` + `InvoiceYear?` |
+| 8 | 20260501065146 | FixDecimalPrecision | Replace EF default `decimal(65,30)` with intentional precision |
+| 9 | 20260501065243 | BoundStringColumns | Replace `longtext` with bounded `varchar(N)` |
+| 10 | 20260501065311 | AddPerformanceIndexes | Status/Email/PlannedDepartureDate/etc. |
+| 11 | 20260501065339 | RestrictParentDeletes | Cascade → Restrict on parent FKs |
+| 12 | 20260501071818 | AddCurrencies | `Currencies` table + USD/EUR/XAF seed |
+| 13 | 20260501071854 | AddShipmentRateSnapshots | `ShipmentRateSnapshots` table + composite unique index |
+
+All applied automatically at startup via `db.Database.Migrate()` in `Program.cs`.
+
+---
+
+## 3. Business Processes
+
+### 3.1 End-to-end happy path
+
+The full lifecycle from drop-off to closed shipment.
+
+1. **Customer arrival.** A customer brings goods to the origin warehouse. Operator either:
+   - Creates a **Package** directly (`ProvisionMethod = CustomerProvided`) attached to a Draft Shipment for that route, or
+   - Creates a **SupplyOrder** for procurement (Customer + Supplier), which gets a linked Package (`ProvisionMethod = ProcuredForCustomer`). The inline-supply-order path on `POST /api/shipments/{id}/packages` creates both in one shot.
+2. **Receive.** Package goes Draft → Received. For procured packages, this happens automatically when the SupplyOrder transitions to `DeliveredToWarehouse` (a side-effect inside `SupplyOrderBusiness`).
+3. **Pack.** Operator records weight, CBM, and at least one item (with Unit + optional UnitPrice in USD). `PricingService.RecalculateAsync` computes `ChargeAmount = max(WeightKg × RatePerKg, Cbm × RatePerCbm)` from the active `PricingConfig`, applies the `MinimumCharge` floor, and stores `AppliedRatePerKg`/`Cbm`/`Currency` on the package. `CapacityService.RecalculateAsync` rolls up `Shipment.TotalWeightKg`/`TotalCbm`.
+4. **Ready to ship.** Package → ReadyToShip. **Requires shipment status ≥ Scheduled** (otherwise 409). Items can no longer be edited (`PACKAGE_LOCKED`).
+5. **Schedule shipment.** Shipment Draft → Scheduled. Requires TIIU code matching `^[A-Z]{3,4}\d{4,7}$` (e.g., `MSKU1234567`).
+6. **Ready to depart.** Shipment Scheduled → ReadyToDepart. Requires at least one ReadyToShip package. **Side-effect:** any unloaded packages (Draft/Received/Packed) are auto-reassigned to another Draft shipment on the same route — a new Draft shipment is created if none exists. Capacity is recalculated for both shipments.
+7. **Depart.** Shipment ReadyToDepart → Departed. **Photo gate:** every package must have at least one Departure-stage media. If any are missing, returns 409 + `GateFailure { code: "PHOTO_GATE_FAILED", missing: [...] }`. **Side-effect:** `ShipmentSnapshotService.CaptureAsync(Departed)` records the rate-to-base of every active currency (best-effort — failure logs but doesn't roll back).
+8. **Ship packages.** For each package: ReadyToShip → Shipped. Requires shipment Departed. Per-package departure-photo gate also enforced. Pricing is now frozen.
+9. **Arrive shipment.** Shipment Departed → Arrived. Records `ActualArrivalAt`. Captures the Arrived FX snapshot.
+10. **Per-package arrival.** Each package: Shipped → ArrivedAtDestination → ReadyForHandout. Both require shipment status ≥ Arrived.
+11. **Handout.** Package ReadyForHandout → HandedOut. **Photo gate:** Arrival-stage media required.
+12. **Close shipment.** Shipment Arrived → Closed. Gate: every package must be HandedOut or Cancelled, and every non-cancelled package must have Arrival photos.
+
+The full Playwright test [`zz-manager-full-flow.spec.ts`](frontend/e2e/zz-manager-full-flow.spec.ts) walks all 12 phases in ~90 seconds against a fresh dataset (uses `POST /api/dev/reset-data` to wipe + reseed first).
+
+### 3.2 Pricing logic
+
+[`PricingService.RecalculateAsync`](backend/ShippingPlatform.Api/Services/Services.cs):
+
+```
+active = PricingConfigs
+    .Where(Status == Active && EffectiveFrom <= now && (EffectiveTo == null || EffectiveTo >= now))
+    .FirstOrDefault()
+    ?? PricingConfigs.FirstOrDefault(Status == Active)
+    ?? new PricingConfig { DefaultRatePerKg = 1, DefaultRatePerCbm = 1, Currency = "EUR" }
+
+rateKg  = active.DefaultRatePerKg
+rateCbm = active.DefaultRatePerCbm
+
+package.AppliedRatePerKg  = rateKg
+package.AppliedRatePerCbm = rateCbm
+package.Currency          = active.Currency
+calculated = max(WeightKg * rateKg, Cbm * rateCbm)
+package.ChargeAmount = active.MinimumCharge > 0
+    ? max(calculated, active.MinimumCharge)
+    : calculated
+```
+
+**Frozen** when `Package.Status >= Shipped` OR `HasPricingOverride == true` (early-returns).
+
+**Overrides** ([`PackagePricingOverride`](backend/ShippingPlatform.Api/Models/Entities/PackagePricingOverride.cs)) come in three types: `RatePerKg`, `RatePerCbm`, `TotalCharge`. Each captures `OriginalValue`, `NewValue`, `Reason`, `AdminUserId`. Applying an override flips `Package.HasPricingOverride = true` and locks future recalcs.
+
+### 3.3 Photo compliance
+
+[`PhotoComplianceService`](backend/ShippingPlatform.Api/Services/Services.cs) enforces three gates.
+
+| Gate | Triggered by | Required |
+|---|---|---|
+| `MissingForShipmentDepartureAsync` | Shipment Depart | Every non-cancelled package has ≥1 Media with `Stage == Departure` |
+| `MissingForShipmentCloseAsync` | Shipment Close | Every non-cancelled package is HandedOut/Cancelled AND has ≥1 Arrival media |
+| `MissingForPackageHandoutAsync` | Package Handout | The package has ≥1 Arrival media |
+
+Pre-flight check; on failure, the controller returns HTTP 409 with `GateFailure { code: "PHOTO_GATE_FAILED", message, missing: [{packageId, customerName, stage}] }` so the FE can render a list of which packages still need photos.
+
+### 3.4 Currency / FX system
+
+The full design lives in [`Services/Currency/FxRateService.cs`](backend/ShippingPlatform.Api/Services/Currency/FxRateService.cs) and [`ShipmentSnapshotService.cs`](backend/ShippingPlatform.Api/Services/Currency/ShipmentSnapshotService.cs). Namespace is `Services.FxRates` (folder is `Services/Currency` for naming-collision reasons with the `Currency` entity).
+
+**Anchored chain.** Each non-base currency stores a `Rate` and an `AnchorCurrencyCode`. Default seed:
+
+```
+USD: IsBase=true, Symbol="$"
+EUR: AnchorCurrencyCode=USD, Rate=1.075   (1 EUR = 1.075 USD)
+XAF: AnchorCurrencyCode=EUR, Rate=0.001524 (1 XAF ≈ 0.001524 EUR ≈ 0.001639 USD)
+```
+
+`FxRateService.GetRateToBaseAsync(code)` walks the chain to derive the rate-to-base, with a per-request cache (Dictionary) and cycle detection.
+
+**Snapshot lifecycle.**
+
+| Event | Trigger | Effect |
+|---|---|---|
+| `Departed` | `ShipmentBusiness.DepartAsync` succeeds | One row per active currency, `RateToBase` from the live chain at that moment |
+| `Arrived` | `SetStatusAsync(id, Arrived)` succeeds | Same, scoped to Arrived event |
+| `Manual` | `PUT /api/shipments/{id}/fx-snapshots/{currencyCode}` (Manager+) or inline body of `commercial-documents` POST | Per-currency override, takes precedence over Departed |
+
+Both auto-captures are best-effort (`TryCaptureFxAsync`): failures log but don't roll back the lifecycle transition.
+
+**Resolution priority** (used by invoice rendering):
+
+```
+ResolveForInvoiceAsync(shipmentId, currencyCode):
+    1. Manual snapshot → return it
+    2. Departed snapshot → return it
+    3. Live rate (synthetic, not persisted) → return as ShipmentRateSnapshot{Event=Manual}
+    4. exception → return null (caller falls back to 1.0 / does without)
+```
+
+**`PackageItem.UnitPrice` is always denominated in the base currency (USD)** regardless of `Package.Currency`. The Items table renders `$ X.XX` and the invoice's "Total ($)" column treats `UnitPrice` as USD directly.
+
+### 3.5 Commercial Invoice + Packing List export
+
+Endpoint `POST /api/exports/shipments/{id}/commercial-documents`. Builder lives at [`Services/Exports/CommercialDocumentBuilder.cs`](backend/ShippingPlatform.Api/Services/Exports/CommercialDocumentBuilder.cs). Output is a two-sheet `.xlsx` uploaded to the `exports` blob container; response is `{ publicUrl }`.
+
+**Sheet names** preserve leading/trailing spaces from the legacy template:
+- ` {refCode} Invoice {destCountryCode} ` (Commercial Invoice)
+- ` {refCode} PL {destCountryCode}` (Packing List)
+
+**Invoice sheet — column widths and content** match `925_FINAL_INVOICE___PL_GAB.xlsx` byte-for-byte:
+
+| Col | Width | Content |
+|---|---|---|
+| A | 54.54 | Description (uppercased GoodType.NameEn) |
+| B | 8.82 | Qty |
+| C | 12.73 | Unit (Excel code: BOX/PC/CRT/BAG/PALLET) |
+| D | 11.36 | Unit Price ($) |
+| E | 8.91 | Total ($) — formula `=B{r}*D{r}` |
+| F | 10.82 | "C" label — formula `=E{r}*$F$8` |
+| G | 17.18 | POSITION TARRIFAIRE (left blank for ops) |
+| H | 11.82 | Local-currency total — formula `=F{r}*G{r}*{CountryPerEur}` |
+
+**Header rows** include `Taux {CountryPerEur}` in F7 and the F8DisplayRate in F8. Both come from the FX snapshot. **Note on F8**: the legacy `925_FINAL_INVOICE___PL_GAB.xlsx` template had `1.3496503` hardcoded in cell F8. The new builder writes the EUR-per-base rate sourced from the Departed snapshot (or live fallback) and attaches a cell comment explaining the source so operators referencing the legacy file can see why the value differs.
+
+**Footer** computes `TOTAL ($) = SUM(...)`, `FRIEGHT ($)` (misspelling preserved on purpose — it's in the source template), `TOTAL CFR {city} ($) = TOTAL + FRIEGHT`, and `TOTAL CFR {city} EQUIVALENT (EURO) = total / EurPerBase`.
+
+**Multi-customer shipments** insert a "Customer" column at A; everything else shifts right by one. Single-customer shipments match the legacy single-customer layout exactly.
+
+**Invoice numbering.** On first export, `Shipment.InvoiceNumber` is null → `InvoiceSequenceService.NextAsync(year)` increments the year-scoped counter and pins both `InvoiceNumber` and `InvoiceYear` on the shipment. Subsequent regenerations reuse the same number (a fresh blob is uploaded each time).
+
+**Inline override.** The POST body optionally carries `{ rateOverrides: { EUR: 1.10, XAF: 0.0014 } }`. Each entry is upserted as a `Manual` snapshot before the workbook is built.
+
+### 3.6 WhatsApp campaigns
+
+Three campaign types ([`CampaignType`](backend/ShippingPlatform.Api/Models/Enums.cs)): `StatusUpdate`, `DeparturePhotos`, `ArrivalPhotos`.
+
+- Bulk endpoints on `ShipmentsController`: `POST /shipments/{id}/whatsapp/{type}/bulk` blasts every customer in the shipment (one message per customer; consent gates checked).
+- Individual endpoints on `CustomersController`: `POST /customers/{id}/whatsapp/{type}?shipmentId=...` for a single recipient.
+
+`WhatsAppConsent` flags drive opt-in: `OptInStatusUpdates`, `OptInDeparturePhotos`, `OptInArrivalPhotos`. Consent declined → log row with `Result = SkippedNoOptIn`. Phone validation (`^\+\d{8,15}$`) at the sender; invalid phones log `Failed`.
+
+Sender is selected via DI based on config:
+
+```
+if (Twilio:AccountSid is set) → TwilioWhatsAppSender
+else                          → StubWhatsAppSender (no-op)
+```
+
+Twilio path: chunks media (max 10 per message, remainder in follow-up messages), 200 ms throttle between bulk sends, captures the Twilio SID into the delivery log.
+
+### 3.7 External integrations
+
+| Integration | Used for | Failure mode |
+|---|---|---|
+| Azure Blob Storage | Media (photos, watermarked via SkiaSharp) + Exports (Excel/CSV/VCF) | If `AzureBlob:ConnectionString` empty → upload returns placeholder URL with warning. SkiaSharp watermark is best-effort (catches all). |
+| Twilio | WhatsApp messaging | If `Twilio:AccountSid` empty → DI registers `StubWhatsAppSender`. Real failures log to `WhatsAppDeliveryLog`. |
+| Maersk Line API | Shipment tracking sync | `ShipmentTrackingLookupService` HTTP client. On any error returns "Unknown" placeholder (fail-open). |
+
+---
+
+## 4. API Surface
+
+Auth model: every controller is gated by `MapControllers().RequireAuthorization()` ([`Program.cs:93`](backend/ShippingPlatform.Api/Program.cs#L93)) except endpoints with explicit `[AllowAnonymous]`. Method-level `[Authorize(Roles="...")]` further restricts mutating endpoints. JWT (HS256, 8h, claims: nameidentifier/email/role) is sent in `Authorization: Bearer ...`.
+
+### 4.1 Endpoint catalog
+
+**`AuthController`** (`/api/auth`) — rate-limited 10/min on `login`.
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| POST | `/login` | Anonymous | Returns `{ token, email, role }` |
+
+**`UsersController`** (`/api/users`)
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| GET | `/users` | Admin, Manager | List users |
+| GET | `/users/{id}` | Admin, Manager | Single user |
+| POST | `/users` | Admin | Create user |
+| PUT | `/users/{id}` | Admin | Update user (role, isActive) |
+
+**`CustomerController`** (`/api/customers`)
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| GET | `/customers` | Admin, Manager, Accountant | Optional `?q=` search; **no pagination** (§9.25) |
+| GET | `/customers/{id}` | Admin, Manager, Accountant | Single |
+| POST | `/customers` | Admin, Manager | Create |
+| PUT | `/customers/{id}` | Admin, Manager | Update |
+| GET | `/customers/{id}/packages` | Authenticated | Customer history |
+| PATCH | `/customers/{id}/whatsapp-consent` | Admin, Manager | Toggle opt-in flags |
+| POST | `/customers/{customerId}/whatsapp/status?shipmentId=` | Admin, Manager | Single-customer status WhatsApp |
+| POST | `/customers/{customerId}/whatsapp/photos/departure?shipmentId=` | Admin, Manager | Single-customer departure photos |
+| POST | `/customers/{customerId}/whatsapp/photos/arrival?shipmentId=` | Admin, Manager | Single-customer arrival photos |
+
+**`WarehouseController`** (`/api/warehouses`) — GET, GET/{id} authenticated; POST/PUT Admin/Manager.
+
+**`GoodTypeController`** (`/api/good-types`) — same pattern.
+
+**`SupplierController`** (`/api/suppliers`) — same pattern.
+
+**`PricingConfigController`** (`/api/pricing-configs`)
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| GET / GET{id} | | Authenticated | Read |
+| POST / PUT | | Admin, Manager | Create/update |
+| POST | `/{id}/activate` | Admin, Manager | Sets this config Active, retires all others |
+| POST | `/{id}/retire` | Admin, Manager | Retire |
+
+**`ShipmentsController`** (`/api/shipments`)
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| GET | `/shipments` | Authenticated | Paginated list with `?status=`, `?q=`, `?dateFrom=`, `?dateTo=`, `?page=`, `?pageSize=` |
+| GET | `/shipments/{id}` | Authenticated | Single |
+| POST | `/shipments` | Admin, Manager | Create |
+| PATCH | `/shipments/{id}` | Admin, Manager | Update planned dates / TIIU |
+| POST | `/{id}/schedule` | Admin, Manager | Draft → Scheduled (TIIU required) |
+| POST | `/{id}/ready-to-depart` | Admin, Manager | Scheduled → ReadyToDepart |
+| POST | `/{id}/depart` *(or `/ship`)* | Admin, Manager | ReadyToDepart → Departed (gate + FX snapshot) |
+| POST | `/{id}/arrive` | Admin, Manager | Departed → Arrived (FX snapshot) |
+| POST | `/{id}/close` *(or `/complete`)* | Admin, Manager | Arrived → Closed (gate) |
+| POST | `/{id}/cancel` | Admin, Manager | Cancel from Draft/Scheduled |
+| POST | `/{id}/tracking/sync` | Admin, Manager | Maersk sync |
+| GET | `/{id}/audit-log` | Authenticated *(see §9.5)* | History |
+| GET | `/{id}/media` | Authenticated | Media attached to packages |
+| GET | `/{id}/ready-to-depart/preview` | Authenticated | Shows which packages depart vs reassign |
+| POST | `/{shipmentId}/packages/bulk-transition` | Admin, Manager | Validate-then-execute bulk transition |
+| GET | `/{id}/fx-snapshots` | Authenticated | All snapshots for this shipment |
+| PUT | `/{id}/fx-snapshots/{currencyCode}` | Admin, Manager | Upsert Manual override |
+| DELETE | `/{id}/fx-snapshots/{currencyCode}` | Admin, Manager | Remove Manual override |
+
+**`PackagesController`** (`/api/packages`, `/api/shipments/{shipmentId}/packages`)
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| POST | `/api/shipments/{shipmentId}/packages` | Admin, Manager | Create in shipment (supports inline supply order) |
+| POST | `/api/packages/auto-assign` | Admin, Manager | Find/create Draft shipment for route, attach |
+| GET | `/api/packages` | Authenticated | List (paginated) |
+| GET | `/api/packages/{id}` | Authenticated | Detail (with items + media) |
+| PATCH | `/api/packages/{id}` | Admin, Manager, Field | Update weight/cbm/note |
+| POST | `/api/packages/{id}/receive` *(and pack/ready-to-ship/cancel)* | Admin, Manager, Field | Field-permitted transitions |
+| POST | `/api/packages/{id}/ship` *(and arrive-destination/ready-for-handout/handout)* | Admin, Manager | Manager-only transitions; ship + handout enforce photo gates |
+| POST | `/api/packages/{id}/items` | Admin, Manager, Field | Add item (Unit + UnitPrice) |
+| PUT | `/api/packages/{id}/items/{itemId}` | Admin, Manager, Field | Update item |
+| DELETE | `/api/packages/{id}/items/{itemId}` | Admin, Manager, Field | Remove item |
+| POST | `/api/packages/{id}/media` (multipart) | Admin, Manager, Field | Upload photo (auto-watermarked) |
+| GET | `/api/packages/{id}/media` | Authenticated | List media |
+| DELETE | `/api/packages/{id}/media/{mediaId}` | Admin, Manager | Remove media |
+| POST | `/api/packages/{id}/pricing-override` | Admin, Manager, Accountant | Apply override |
+| GET | `/api/packages/{id}/pricing-overrides` | Authenticated | History |
+
+**`SupplyOrderController`** (`/api/supply-orders`) — controller-level Admin/Manager/Accountant; CRUD + lifecycle transitions (`approve`, `order`, `deliver-to-warehouse`, `pack-into-package`, `close`, `cancel`).
+
+**`ExportsController`** (`/api/exports`) — Admin/Manager/Accountant.
+
+| Verb | Path | Purpose |
+|---|---|---|
+| POST | `/group-helper` | VCF/CSV of opted-in customers |
+| POST | `/shipments/{shipmentId}/bol-report` | Bill of Lading Excel |
+| POST | `/shipments/{shipmentId}/customer-invoices-excel` | Per-customer invoice sheet |
+| POST | `/shipments/{shipmentId}/commercial-documents` | Commercial Invoice + Packing List two-sheet workbook (accepts optional `{ rateOverrides }` body) |
+
+**`WhatsAppController`** — campaigns + delivery logs (`GET /whatsapp/campaigns`, `GET /whatsapp/campaigns/{id}`).
+
+**`StatsController`** (`/api/stats`) — dashboard counters.
+
+**`LookupsController`** (`/api/lookups`) — `units`, `currencies` lookup endpoints returning `[{ value, code, labelEn, labelAr }]`.
+
+**`CurrenciesController`** (`/api/currencies`)
+
+| Verb | Path | Roles | Purpose |
+|---|---|---|---|
+| GET | `/currencies` | Authenticated | List |
+| GET | `/currencies/{code}` | Authenticated | Single |
+| POST | `/currencies` | Admin | Create |
+| PUT | `/currencies/{code}` | Admin | Update (rate, isActive, etc.) |
+| DELETE | `/currencies/{code}` | Admin | Delete (refuses if base or referenced as anchor) |
+
+**`DevController`** (`/api/dev`) — `[Authorize(Roles="Admin")]` + `IWebHostEnvironment.IsDevelopment()` guard.
+
+| Verb | Path | Purpose |
+|---|---|---|
+| POST | `/dev/reset-data` | Wipe transactional tables, reseed customers + currencies. 404 if not Development. |
+
+### 4.2 Authentication
+
+`POST /api/auth/login` body `{ email, password }` → `{ token, email, role }`. Token is HS256 with 8-hour expiry, signed by `Auth:Secret` (see §9.1 for the fallback security risk). Claims: `nameidentifier` (user id), `emailaddress`, `role`. No refresh token, no lockout, no password reset — see §9.4.
+
+### 4.3 DTOs
+
+All in [`Dtos/ApiDtos.cs`](backend/ShippingPlatform.Api/Dtos/ApiDtos.cs). New (May 2026): `LookupItemDto`, `CurrencyDto`, `UpsertCurrencyRequest`, `ShipmentRateSnapshotDto`, `UpsertManualRateRequest`, `CommercialDocumentsRequest`. `PackageItemDto` extended with `Unit`/`UnitPrice`. `DtoMap` extension methods (`ToDto`) handle every entity-to-DTO conversion.
+
+---
+
+## 5. Frontend Architecture
+
+### 5.1 Routing + RBAC mapping
+
+[`Protected.tsx`](frontend/src/Protected.tsx) wraps everything in an auth gate (redirects to `/login` if `!isAuthenticated`). Routes are conditionally registered by [`MODULE_ACCESS`](frontend/src/helpers/rbac.ts) — a Field user attempting `/admin/users` directly gets a 404.
+
+[`application.ts`](frontend/src/application.ts) maps modules into four navigation app shells: Operations, Master Data, Communications, Admin. The current sidebar is derived from the modules visible to the user.
+
+| Module | Roles (FE `MODULE_ACCESS`) | Backend gate | Matches? |
+|---|---|---|---|
+| dashboard | All | All | ✅ |
+| shipments / packages | All | All for reads; Admin/Manager for mutations | ✅ |
+| customers / pricing | Admin, Manager, Accountant | Admin/Manager for writes | ✅ |
+| warehouses / goodTypes | All | Admin/Manager for writes | ✅ |
+| suppliers / supplyOrders | Admin, Manager, Accountant | Admin/Manager for writes | ✅ |
+| **currencies** | Admin, Manager, Accountant | **Admin** for writes | ⚠️ FE allows Manager/Accountant to *see* the page; backend rejects writes. Page uses `canManageUsers` to gate write UI as a workaround (§9.21). |
+| messaging / groupHelper | Admin, Manager, Accountant | Admin/Manager/Accountant | ✅ |
+| users | Admin, Manager | Admin (reads), Admin (writes) | ⚠️ Manager can list users; backend rejects mutation attempts. |
+
+### 5.2 Pages catalog
+
+| Route | File | What it does | Primary mutation | Module |
+|---|---|---|---|---|
+| `/ops/dashboard` | `pages/dashboard/DashboardPage.tsx` | Stats counters + missing-photo alerts | none | dashboard |
+| `/ops/shipments` | `pages/shipments/ShipmentsPage.tsx` | Filterable shipment list + create | POST `/shipments` | shipments |
+| `/ops/shipments/:id` | `pages/shipments/ShipmentDetailPage.tsx` | Detail, capacity, transitions, packages, tracking, WhatsApp campaigns, **FX Snapshots**, exports | many | shipments |
+| `/ops/packages` | `pages/packages/PackagesPage.tsx` | List + auto-assign | POST `/packages/auto-assign` | packages |
+| `/ops/packages/:id` | `pages/packages/PackageDetailPage.tsx` | Items (Unit + UnitPrice), photos, transitions, pricing overrides | many | packages |
+| `/master/customers` | `CustomersPage.tsx` + `CustomerDetailPage.tsx` | CRUD + WhatsApp consent | POST/PUT | customers |
+| `/master/warehouses` | `WarehousesPage.tsx` | CRUD | POST/PUT | warehouses |
+| `/master/good-types` | `GoodTypesPage.tsx` | CRUD (bilingual labels) | POST/PUT | goodTypes |
+| `/master/pricing-configs` | `PricingConfigsPage.tsx` | CRUD + Activate/Retire | POST/PUT + lifecycle | pricing |
+| `/master/suppliers` | `SuppliersPage.tsx` | CRUD | POST/PUT | suppliers |
+| `/master/supply-orders` | `SupplyOrdersPage.tsx` | CRUD + lifecycle | POST/PUT + transitions | supplyOrders |
+| **`/master/currencies`** | `CurrenciesPage.tsx` | CRUD; IsBase toggle hides Anchor/Rate | POST/PUT/DELETE | currencies |
+| `/comms/messaging-logs` | `MessagingLogsPage.tsx` | Campaigns + delivery logs | none | messaging |
+| `/comms/group-helper-export` | `GroupHelperExportPage.tsx` | CSV/VCF export | POST | groupHelper |
+| `/admin/users` | `UsersPage.tsx` | CRUD users (Admin) | POST/PUT | users |
+
+Inline shipment-detail subsection: **`FxSnapshotsSection`** ([`pages/shipments/components/FxSnapshotsSection.tsx`](frontend/src/pages/shipments/components/FxSnapshotsSection.tsx)) — table of snapshots, "Override Rate" button (Manager+), Edit/Delete on Manual rows.
+
+### 5.3 Reusable components
+
+| Component | Path | Role |
+|---|---|---|
+| `EnhancedTable` | `components/enhanced-table/` | Sortable/filterable/paginated table; column types TEXT, NUMBER, DATE, COLORED_CHIP, Clickable, Action |
+| `DynamicFormWidget` | `components/dynamic-widget/` | Renders form from field config. Field types: TEXT, NUMBER (now supports `step`), SELECT, DATE, CHECKBOX, TEXTAREA, PHONE, EMAIL, FILE, IMAGE. `onFieldChange` callback enables conditional visibility (used in `CurrenciesPage` to hide Anchor/Rate when IsBase). |
+| `InformationWidget` | `components/information-widget/` | Read-only field grid |
+| `GenericDialog` | `components/GenericDialog/` | MUI Dialog wrapper |
+| `MainPageSection` / `DetailPageLayout` / `PageActionsSection` | `components/layout-components/` | Page chrome |
+| `PhotoGallery` / `MediaStageCards` / `MediaViewerModal` | `components/media/` | Photo display + lightbox |
+| `PricingOverrideHistory` | `components/pricing/` | Override audit trail table |
+| `WhatsAppCampaignCards` | `pages/shipments/components/` | Campaign launcher per type |
+
+### 5.4 API client
+
+[`api/client.ts`](frontend/src/api/client.ts) wraps Axios. Helpers: `getJson`, `postJson`, `putJson`, `patchJson`, `uploadMultipart`, `parseApiError`. Request interceptor injects `Authorization: Bearer ${token}` from localStorage; response interceptor logs out on 401.
+
+Lookup hooks: `useUnitsLookup` (in [`api/lookups.ts`](frontend/src/api/lookups.ts)), `useCurrenciesLookup` and `useCurrenciesQuery` (in [`api/currencies.ts`](frontend/src/api/currencies.ts)). Both lookups use `staleTime: Infinity`. The non-lookup `useCurrenciesQuery` does not — see §9.22.
+
+### 5.5 Display conventions
+
+- **Weight** displayed in **tons** (kg/1000, 3 decimals). Inputs are still kg.
+- **Volume** labeled **CBM** (never m³ in tables; m³ shows up only in some long-form invoice text).
+- **Field ordering**: CBM before Weight everywhere — tables, detail pages, Excel exports.
+- **Currency display**: `PackageItem.UnitPrice` always renders `$ X.XX` (USD assumed). The package-level `Currency` field is shown as raw text in the InformationWidget but is otherwise inert (§9.8). `formatCurrencyNumber` is hardcoded to USD locale (§9.20).
+- **Status chips** colored from `constants/statusColors.ts`; labels from `constants/statusLabels.ts`.
+
+---
+
+## 6. State Machines
+
+State validation is split between [`Services/TransitionRules.cs`](backend/ShippingPlatform.Api/Services/TransitionRules.cs) (the allowed-transition matrix) and [`Business/OperationsBusiness.cs`](backend/ShippingPlatform.Api/Business/OperationsBusiness.cs) (the business gates).
+
+### 6.1 Shipment
+
+```
+Draft → Scheduled → ReadyToDepart → Departed → Arrived → Closed
+   └──→ Cancelled (from Draft or Scheduled only)
+```
+
+Gate-by-transition:
+
+| Transition | Pre-conditions |
+|---|---|
+| Draft → Scheduled | TIIU code present and matches regex `^[A-Z]{3,4}\d{4,7}$` |
+| Scheduled → ReadyToDepart | At least one package with `Status >= ReadyToShip`; **side-effect:** unloaded packages auto-reassigned |
+| ReadyToDepart → Departed | Photo gate: every package has Departure media; **side-effect:** FX snapshot + `ActualDepartureAt` |
+| Departed → Arrived | None at the rule level; **side-effect:** FX snapshot + `ActualArrivalAt` |
+| Arrived → Closed | Photo gate: every package HandedOut/Cancelled and has Arrival media |
+| Draft/Scheduled → Cancelled | **side-effect:** all non-shipped packages cascade to Cancelled |
+
+### 6.2 Package
+
+```
+Draft → Received → Packed → ReadyToShip → Shipped → ArrivedAtDestination → ReadyForHandout → HandedOut
+  └─────────────────────→ Cancelled (from Draft/Received/Packed/ReadyToShip)
+```
+
+| Transition | Pre-conditions |
+|---|---|
+| Draft → Received | None (or auto-fired by SO `DeliveredToWarehouse`) |
+| Received → Packed | `WeightKg > 0`, `Cbm > 0`, ≥1 PackageItem; `PricingService.RecalculateAsync` runs; `CapacityService.RecalculateAsync` runs |
+| Packed → ReadyToShip | Shipment status ≥ Scheduled. Items become locked (`PACKAGE_LOCKED` on edit). |
+| ReadyToShip → Shipped | Shipment status ≥ Departed; `checkDepartureGate=true` (per-package) |
+| Shipped → ArrivedAtDestination | Shipment status ≥ Arrived |
+| ArrivedAtDestination → ReadyForHandout | None |
+| ReadyForHandout → HandedOut | `checkArrivalGate=true` |
+| Cancel | **side-effect:** unlinks supply order, recalculates capacity |
+
+### 6.3 SupplyOrder
+
+```
+Draft → Approved → Ordered → DeliveredToWarehouse → PackedIntoPackage → Closed
+  └─→ Cancelled (any state, requires reason)
+```
+
+| Transition | Side-effects |
+|---|---|
+| Ordered → DeliveredToWarehouse | Linked package auto-promoted Draft → Received |
+| → PackedIntoPackage | Requires `PackageId != null` |
+| → Cancelled | Unlinks `PackageId`; package's `SupplyOrderId` cleared |
+
+### 6.4 Gate enforcement summary
+
+| Endpoint | Gate ran |
+|---|---|
+| `POST /shipments/{id}/depart` | `MissingForShipmentDepartureAsync` |
+| `POST /shipments/{id}/close` | `MissingForShipmentCloseAsync` |
+| `POST /packages/{id}/ship` | per-package departure check (`checkDepartureGate=true`) |
+| `POST /packages/{id}/handout` | `MissingForPackageHandoutAsync` |
+
+All return HTTP 409 with `{ code: "PHOTO_GATE_FAILED", message, missing: [...] }` on failure.
+
+---
+
+## 7. Configuration & Deployment
+
+### 7.1 Config keys
+
+Read in [`Program.cs`](backend/ShippingPlatform.Api/Program.cs) and `appsettings.json`.
+
+| Key | Default | Risk |
+|---|---|---|
+| `ConnectionStrings:MySql` | (in-memory `shipping` DB) | Embedded in committed config in many setups (§9.3) |
+| `Auth:Secret` | `"dev-secret-super-long"` | **Critical fallback** — see §9.1 |
+| `AllowedOrigins` | `["http://localhost:5173"]` | CORS-only |
+| `Twilio:AccountSid` / `AuthToken` / `WhatsAppFrom` | empty | Empty → DI swaps to `StubWhatsAppSender` ✅ |
+| `AzureBlob:ConnectionString` | (often embedded) | §9.3 |
+| `AzureBlob:MediaContainer` / `ExportsContainer` | `"media"` / `"exports"` | |
+| `AzureBlob:PublicBaseUrl` | empty | **Dead config** — declared but never read (§9.29) |
+| `SeedAdmin:Email` / `Password` | env `ADMIN_EMAIL`/`PASSWORD` or `admin@local`/`Admin123!` | Predictable default password (§9.2) |
+| `CapacityThresholdPct` | 80 | UI warning threshold only |
+| `InvoiceTemplate:DefaultFreight` | 2550 | Single tunable value (rate fields removed, now sourced from snapshots) |
+
+### 7.2 Startup behavior
+
+```
+1. db.Database.Migrate()
+2. Seed admin (always — checks email exists first)
+3. Seed warehouses (4 default if Warehouses empty)
+4. Seed good types (12 default)
+5. Seed pricing config (1 default if empty: "Standard Rate 2025", EUR)
+6. SeedHelper.SeedCustomers(db) — 20 default customers + WhatsApp consents
+7. SeedHelper.SeedCurrencies(db) — USD/EUR/XAF
+```
+
+Any of the seed steps no-ops if its target table already has rows.
+
+### 7.3 Dev reset
+
+`POST /api/dev/reset-data` (Admin + `IsDevelopment()` guard, 404 otherwise) — wipes Shipments, Packages, PackageItems, Media, Suppliers, SupplyOrders, Campaigns, DeliveryLogs, AuditLogs, ShipmentSequences, Customers, WhatsAppConsents, plus their snapshots. Then re-runs `SeedCustomers` and `SeedCurrencies`. Preserves AdminUsers, Warehouses, GoodTypes, PricingConfigs, Currencies (because the seed re-runs but only inserts when empty).
+
+---
+
+## 8. Test Strategy
+
+| Spec | Coverage |
+|---|---|
+| `auth.spec.ts` | Login/logout, error toasts, anon redirect |
+| `dashboard.spec.ts` | Counters render, navigation buttons |
+| `navigation.spec.ts` | Sidebar + command palette |
+| `master-data.spec.ts` | Warehouses + good types CRUD |
+| `customers.spec.ts` | CRUD + WhatsApp consent |
+| `packages.spec.ts` | Items, photos, transitions |
+| `shipments.spec.ts` | Filtering, create, transitions, TIIU edit |
+| `pricing.spec.ts` | Configs CRUD, activate/retire, override |
+| `supply-orders.spec.ts` | CRUD + lifecycle, cancel reason |
+| `users.spec.ts` | CRUD, role checks, last-admin guard, Manager-cannot-create-users, Field-cannot-see-Customers |
+| **`zz-manager-full-flow.spec.ts`** | Complete Manager-driven flow: reset → 5 customers → supplier → shipment → 4 direct + 1 indirect package → all transitions → photo uploads → close shipment |
+
+**No backend test project exists.** No tests cover the new Currencies CRUD, FX Snapshots section, Unit/UnitPrice fields, or the Commercial Invoice + Packing List export — see §9.26.
+
+Running: `cd frontend && npx playwright test`. The full suite runs in ~3–5 minutes against a live backend on `http://localhost:51295` (IIS Express) and Vite on `http://localhost:5173`.
+
+---
+
+## 9. Gaps & Risks
+
+Comprehensive inventory from a multi-angle audit. Each item: title, location, severity, recommended fix.
+
+### 9.1–9.5 Critical (security)
+
+**9.1 JWT secret fallback.** [`Program.cs`](backend/ShippingPlatform.Api/Program.cs) defaults `Auth:Secret` to `"dev-secret-super-long"` if config is unset. Production deploy without the env var = trivially forgeable tokens. **Fix:** throw on startup unless `Environment.IsDevelopment()`.
+
+**9.2 Predictable default admin password.** Same file seeds the bootstrap admin with `Admin123!` if `SeedAdmin:Password` is unset. **Fix:** require an env var; refuse to start otherwise.
+
+**9.3 Secrets embedded in `appsettings.json`.** MySQL connection string and Azure Blob connection string can leak via committed config. **Fix:** move to env vars, Azure Key Vault, or managed identity.
+
+**9.4 No password reset / lockout / MFA.** `AdminUser` has only `PasswordHash`. No reset token, no email flow, no failed-attempt lockout (just a 10/min rate-limit on the login endpoint). **Fix:** add `/auth/forgot-password` + email link, add `FailedLoginCount` + `LockedUntil` to the entity.
+
+**9.5 Audit-log GET endpoint role-gating unclear.** `GET /api/shipments/{id}/audit-log` ([`ShipmentsController.cs:84-85`](backend/ShippingPlatform.Api/Controllers/ShipmentsController.cs#L84-L85)) inherits the global `RequireAuthorization` but has no per-method `[Authorize(Roles=...)]`. Confirm intent — Field shouldn't necessarily see audit; tighten to `[Authorize(Roles="Admin,Manager")]`.
+
+### 9.6–9.18 High (data integrity / business logic)
+
+**9.6 RefCodeService + InvoiceSequenceService race conditions.** Both do `read → increment → SaveChangesAsync` without a lock. Two concurrent calls can both read N and both save N+1. The unique index on `(OriginWarehouseCode, Year)` / `Year` will throw on the second commit, but the caller sees an exception rather than a clean retry. **Fix:** wrap in a `SERIALIZABLE` transaction or use `SELECT ... FOR UPDATE` with Pomelo's raw-SQL escape hatch.
+
+**9.7 `PricingConfig.Currency` and `Package.Currency` are not foreign-keyed to `Currencies.Code`.** A config can reference `"EUR"` even after the EUR currency is deleted. **Fix:** add an FK or a CHECK at write time.
+
+**9.8 `Package.Currency` is semantically dead.** `PricingService` sets it from the active pricing config (defaulting to `"EUR"`), the `InformationWidget` displays it, but `PackageItem.UnitPrice` is now always USD by contract. The currency string on the package no longer reflects the unit-price units. **Fix:** rename to `Package.PricingCurrency` (still meaningful for the freight charge) and explain in tooltips, or hide in the UI.
+
+**9.9 `ShipmentSnapshotService.ResolveForInvoiceAsync` returns synthetic snapshots tagged `Event=Manual`.** The live-fallback path constructs a `ShipmentRateSnapshot { Event = Manual }` that's not persisted. Caller can't tell user-entered overrides apart from live-computed fallbacks. **Fix:** add a `Live` enum value, or return a discriminated `(snapshot, source)` record, or change return type to a dedicated `ResolvedRate`.
+
+**9.10 Frontend role allowlist not enforced server-side for package transitions.** `FIELD_PKG_TRANSITIONS = {receive, pack, ready-to-ship}` is a FE-only constraint. Backend `[Authorize(Roles="Admin,Manager,Field")]` is blanket. A Field user could `POST /api/packages/{id}/ship` directly and the gate would only stop them via the photo-gate or status-precondition. **Fix:** per-action role table on the backend (e.g., `Ship` requires `Admin,Manager`).
+
+**9.11 `PackageItem.UnitPrice` arbitrary default of 10.** `AddItemAsync` substitutes `10m` when null. Pretty arbitrary — no audit trail saying "10 was the default", no tooltip in the UI explaining it. **Fix:** make it required at the DTO level, OR default to 0, OR allow null all the way (most semantically honest, and the invoice builder already handles null).
+
+**9.12 F8 cell semantic shift undocumented.** Legacy `925_FINAL_INVOICE___PL_GAB.xlsx` had `1.3496503` hardcoded in F8. New code passes `EurPerBase` (≈ 1.075) into the same cell. Anyone with the legacy `.xlsx` open as a reference will see different math. **Fix:** add a tooltip / cell comment in the workbook explaining the source, document in the export README.
+
+**9.13 `AuditLog` coverage incomplete.** Currently only Shipment and Package status transitions are logged. Currency CRUD, FX overrides, pricing-config activate/retire, user role changes, media uploads, and login attempts (success/fail/IP) are unlogged. **Fix:** add `audit.LogAsync(...)` at each mutation point. Compliance gap if the platform ever needs to be audited externally.
+
+**9.14 `Media.RecordedByAdminUserId` never populated.** Field exists; every upload path leaves it `default(int) = 0`. **Fix:** populate from `User.GetUserId()` in the upload handler. Also no FK to `AdminUser` — add one.
+
+**9.15 `WhatsAppDeliveryLog.Result = Pending` rows never flip async.** The synchronous bulk-send loop sets Sent/Failed inline. If the loop is interrupted (process kill, exception mid-loop), Pending rows stay Pending forever. **Fix:** background reconciliation job, or mark stale Pendings as Failed on next campaign launch.
+
+**9.16 `CapacityService.RecalculateAsync` runs after every package change.** N+1 risk on bulk transitions: `BulkTransitionAsync` recomputes capacity per package. **Fix:** batch the recalc once at the end of the bulk operation.
+
+**9.17 `Shipment.MaxWeightKg` / `MaxCbm` not validated against `Warehouse.MaxWeightKg` / `MaxCbm`.** A shipment can be sized larger than its origin warehouse's capacity. The capacity bars are advisory only (UI warnings, no hard reject). **Fix:** validate on shipment create and update, return 400 if `Shipment.Max* > origin Warehouse.Max*`.
+
+**9.18 Mutable `List<>` exposed on entity DTOs.** `Package.Items`, `Package.Media`, `Package.PricingOverrides` are mutable. Callers that hold a reference can mutate them and break invariants. **Fix:** project to immutable DTOs, or change entity properties to `IReadOnlyList<>`.
+
+### 9.19–9.29 Medium (UX / consistency / observability)
+
+**9.19 `labelAr` returned by lookups but never used.** `useUnitsLookup` and `useCurrenciesLookup` both surface `labelAr`; no FE component renders it. **Fix:** implement an i18n framework (e.g., `react-i18next`) or drop the field from the API contract.
+
+**9.20 `formatCurrencyNumber` hardcoded to USD.** [`helpers/formatting-utils.ts`](frontend/src/helpers/formatting-utils.ts) calls `Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })` regardless of the input currency. **Fix:** accept an optional `currency` param (defaulting to USD) so the multi-currency data can be formatted correctly.
+
+**9.21 `CurrenciesPage` uses `canManageUsers` for write-gating.** Semantic mismatch — currencies aren't user management. **Fix:** add `canManageCurrencies` helper to [`helpers/rbac.ts`](frontend/src/helpers/rbac.ts) (Admin only) aligned with the backend's `[Authorize(Roles="Admin")]`.
+
+**9.22 `useCurrenciesQuery` missing `staleTime: Infinity`.** Used by the CRUD page (which can mutate, so it does need re-fetch). But every focus event triggers a re-query. **Fix:** keep the default for the CRUD page itself but make sure other consumers prefer `useCurrenciesLookup`. Acceptable as-is.
+
+**9.23 `parseApiError` not used in `ItemDialog`.** Generic `'Add item failed'` toast instead of `parseApiError(e).message`. Other pages use the latter. **Fix:** standardize.
+
+**9.24 No error boundaries on the frontend.** An unhandled error in any page crashes the whole app. **Fix:** add a top-level `<ErrorBoundary>` in `App.tsx` that renders a graceful fallback.
+
+**9.25 Pagination missing on Customers / Suppliers / SupplyOrders / Warehouses / Users / GoodTypes.** Only Shipments + Packages paginate. Will hurt at scale. **Fix:** add `?page=` + `?pageSize=` query params, mirror the Shipments pattern.
+
+**9.26 No tests for new features.** Currencies CRUD, FX Snapshots section, Unit/UnitPrice on items, Commercial Invoice + Packing List export. **Fix:** add Playwright specs.
+
+**9.27 Validators missing for `UpdateShipmentRequest`, `ShipmentTrackingSyncRequest`, `SupplyOrderTransitionRequest`.** These pass through controllers without FluentValidation. Validation logic lives in the business layer instead. **Fix:** add FluentValidation classes to keep the validation pattern uniform.
+
+**9.28 Empty states inconsistent across list pages.** Some show "No X found", some show empty rows. **Fix:** standardize via a shared empty-state component.
+
+**9.29 `AzureBlob:PublicBaseUrl` declared but never read.** Dead config. **Fix:** either implement custom-domain URL rewriting or drop the key.
+
+### 9.30–9.36 Low (tech debt)
+
+**9.30 `ShipmentSnapshotEvent.Manual` overloaded.** See §9.9 — also worth a comment in the enum file.
+
+**9.31 ClosedXML 0.103 → 0.104 NuGet warning.** `.csproj` pins `>= 0.103.0`; only 0.104 resolves. **Fix:** bump constraint.
+
+**9.32 No retry on Azure Blob upload.** Transient network failures bubble up. **Fix:** add Polly + exponential backoff.
+
+**9.33 `RefCodeService` uses `year % 100`.** Clear but `year.ToString("yy")` reads better.
+
+**9.34 No CSRF protection.** Acceptable for Bearer-token auth (cookies aren't used) but worth documenting so external auditors don't flag it as a finding.
+
+**9.35 Mobile responsiveness untested.** No formal breakpoint plan, no mobile-targeted Playwright spec.
+
+**9.36 Accessibility sparse.** Labels, keyboard nav, color contrast not audited. WCAG conformance unknown.
+
+---
+
+## Appendix — File-path quick reference
+
+| What | Where |
+|---|---|
+| Entity classes | `backend/ShippingPlatform.Api/Models/Entities/*.cs` |
+| Enums | `backend/ShippingPlatform.Api/Models/Enums.cs` |
+| DbContext + indexes/cascades | `backend/ShippingPlatform.Api/Data/AppDbContext.cs` |
+| DTOs + DtoMap | `backend/ShippingPlatform.Api/Dtos/ApiDtos.cs` |
+| Validators | `backend/ShippingPlatform.Api/Validators/RequestValidators.cs` |
+| Core services | `backend/ShippingPlatform.Api/Services/Services.cs` (token, blob, refcode, pricing, capacity, photocompliance, watermark, twilio, audit, transitionrules) |
+| FX services | `backend/ShippingPlatform.Api/Services/Currency/*.cs` (namespace `Services.FxRates`) |
+| Export builders | `backend/ShippingPlatform.Api/Services/Exports/*.cs` |
+| Seed | `backend/ShippingPlatform.Api/Services/SeedHelper.cs` |
+| Business layer | `backend/ShippingPlatform.Api/Business/*.cs` |
+| Controllers | `backend/ShippingPlatform.Api/Controllers/*.cs` |
+| FE entry | `frontend/src/main.tsx`, `App.tsx`, `Portal.tsx`, `Protected.tsx` |
+| FE RBAC | `frontend/src/helpers/rbac.ts` |
+| FE pages | `frontend/src/pages/*` |
+| FE shared components | `frontend/src/components/*` |
+| FE API client | `frontend/src/api/*.ts` |
+| E2E tests | `frontend/e2e/*.spec.ts` |

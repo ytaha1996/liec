@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Alert, Box, CircularProgress } from '@mui/material';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -13,6 +13,8 @@ import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
+import { PRICING_CONFIG_STATUS_LABELS } from '../../constants/statusLabels';
+import { PRICING_CONFIG_STATUS_CHIPS } from '../../constants/statusColors';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
 
@@ -59,13 +61,21 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     disabled: false,
     value: initial?.defaultRatePerKg ?? '',
   },
-  defaultRatePerM3: {
+  defaultRatePerCbm: {
     type: DynamicField.NUMBER,
-    name: 'defaultRatePerM3',
-    title: 'Default Rate Per M3',
+    name: 'defaultRatePerCbm',
+    title: 'Default Rate Per CBM',
     required: true,
     disabled: false,
-    value: initial?.defaultRatePerM3 ?? '',
+    value: initial?.defaultRatePerCbm ?? '',
+  },
+  minimumCharge: {
+    type: DynamicField.NUMBER,
+    name: 'minimumCharge',
+    title: 'Minimum Charge (0 = none)',
+    required: false,
+    disabled: false,
+    value: initial?.minimumCharge ?? 0,
   },
 });
 
@@ -74,7 +84,7 @@ const PricingConfigsPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
-  const { data = [] } = useQuery<any[]>({
+  const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
@@ -88,7 +98,7 @@ const PricingConfigsPage = () => {
       setDialogOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
   });
 
   const activate = useMutation({
@@ -97,7 +107,7 @@ const PricingConfigsPage = () => {
       toast.success('Config activated');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Activate failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Activate failed'),
   });
 
   const retire = useMutation({
@@ -106,7 +116,7 @@ const PricingConfigsPage = () => {
       toast.success('Config retired');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Retire failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Retire failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
@@ -125,13 +135,8 @@ const PricingConfigsPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Active: { color: '#fff', backgroundColor: '#2e7d32' },
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-        Retired: { color: '#fff', backgroundColor: '#616161' },
-      },
-      chipLabels: {},
+      chipColors: PRICING_CONFIG_STATUS_CHIPS,
+      chipLabels: PRICING_CONFIG_STATUS_LABELS,
     },
     {
       id: 'actions',
@@ -173,6 +178,9 @@ const PricingConfigsPage = () => {
       return false;
     }
   };
+
+  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load pricing configs.</Alert></Box>;
 
   return (
     <Box>

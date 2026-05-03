@@ -3,59 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Box, Button, Stack } from '@mui/material';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../api/client';
+import { ITableFilterType, TableFilterTypes } from '../../components/enhanced-table/index-filter';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
   EnhancedTableColumnType,
 } from '../../components/enhanced-table';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
-import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
+import { buildCustomerFields } from './customerFields';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const ENDPOINT = '/api/customers';
-
-const buildFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
-  name: {
-    type: DynamicField.TEXT,
-    name: 'name',
-    title: 'Name',
-    required: true,
-    disabled: false,
-    value: initial?.name ?? '',
-  },
-  primaryPhone: {
-    type: DynamicField.PHONENUMBER,
-    name: 'primaryPhone',
-    title: 'Primary Phone',
-    required: true,
-    disabled: false,
-    value: initial?.primaryPhone ?? '',
-  },
-  email: {
-    type: DynamicField.EMAIL,
-    name: 'email',
-    title: 'Email',
-    required: false,
-    disabled: false,
-    value: initial?.email ?? '',
-  } as any,
-  isActive: {
-    type: DynamicField.CHECKBOX,
-    name: 'isActive',
-    title: 'Is Active',
-    required: false,
-    disabled: false,
-    value: initial?.isActive ?? true,
-  },
-});
 
 const CustomersPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
@@ -73,7 +41,7 @@ const CustomersPage = () => {
       setDialogOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
   });
 
   const exportMut = useMutation({
@@ -83,7 +51,16 @@ const CustomersPage = () => {
       window.open(r.publicUrl, '_blank');
       toast.success('Export generated');
     },
-    onError: () => toast.error('Export failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Export failed'),
+  });
+
+  const exportExcelMut = useMutation({
+    mutationFn: () => postJson<{ publicUrl: string }>('/api/exports/customers-excel'),
+    onSuccess: (r: any) => {
+      window.open(r.publicUrl, '_blank');
+      toast.success('Excel ready');
+    },
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Excel export failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
@@ -125,12 +102,12 @@ const CustomersPage = () => {
               setDialogOpen(true);
             }
           },
-          hidden: () => false,
+          hidden: () => !canWriteMasterData(role),
         },
         {
           icon: <OpenInNewIcon fontSize="small" />,
           label: 'Open Detail',
-          onClick: (id: string) => navigate(`/customers/${id}`),
+          onClick: (id: string) => navigate(`/master/customers/${id}`),
           hidden: () => false,
         },
       ],
@@ -150,23 +127,39 @@ const CustomersPage = () => {
     <Box>
       <MainPageTitle
         title="Customers"
-        action={{
+        action={canWriteMasterData(role) ? {
           title: 'Create Customer',
           onClick: () => {
             setEditing(null);
             setDialogOpen(true);
           },
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <EnhancedTable title="Customers" header={tableHeaders} data={tableData} defaultOrder="name" />
+        <EnhancedTable
+          title="Customers"
+          header={tableHeaders}
+          data={tableData}
+          defaultOrder="name"
+          filters={[
+            {
+              name: 'isActive',
+              title: 'Status',
+              type: TableFilterTypes.SELECT,
+              options: { true: 'Active', false: 'Inactive' },
+            } as ITableFilterType,
+          ]}
+        />
 
         <Box sx={{ mt: 3 }}>
           <Alert severity="warning" sx={{ mb: 2 }}>
             WhatsApp groups reveal phone numbers to all members. Use export features responsibly.
           </Alert>
           <Stack direction="row" gap={2}>
+            <Button variant="contained" onClick={() => exportExcelMut.mutate()} disabled={exportExcelMut.isPending}>
+              Export Excel
+            </Button>
             <Button variant="outlined" onClick={() => exportMut.mutate('csv')} disabled={exportMut.isPending}>
               Export CSV
             </Button>
@@ -188,7 +181,7 @@ const CustomersPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined)}
+          fields={buildCustomerFields(editing ?? undefined)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>

@@ -10,6 +10,7 @@ import Container from '@mui/material/Container';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
+import Chip from '@mui/material/Chip';
 import MenuItem from '@mui/material/MenuItem';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -18,8 +19,10 @@ import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import SearchIcon from '@mui/icons-material/Search';
 import { useNavigate } from 'react-router-dom';
 import AppLauncher from 'src/components/app-launcher/AppLauncher';
+import CommandPalette from 'src/components/CommandPalette';
 import { applications } from 'src/application';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { LogoutUser } from 'src/redux/user/userReducer';
@@ -41,7 +44,19 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
   const [newPassword, setNewPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [snackbar, setSnackbar] = React.useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [cmdOpen, setCmdOpen] = React.useState(false);
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setCmdOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.user);
 
@@ -199,7 +214,15 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
             ))}
           </Box>
 
-          <Box sx={{ flexGrow: 0 }}>
+          <Box sx={{ flexGrow: 0, display: 'flex', alignItems: 'center' }}>
+            <Tooltip title="Search (Ctrl+K)">
+              <IconButton onClick={() => setCmdOpen(true)} sx={{ color: 'white', mr: 1 }}>
+                <SearchIcon />
+              </IconButton>
+            </Tooltip>
+            {currentUser?.role && (
+              <Chip label={currentUser.role} size="small" sx={{ mr: 1, color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} variant="outlined" />
+            )}
             <Tooltip title={currentUser ? `${currentUser.user.username}` : 'User'}>
               <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
                 <Avatar
@@ -245,6 +268,8 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
           </Box>
         </Toolbar>
       </Container>
+
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
 
       {/* Update Password Dialog */}
       <Dialog open={openPasswordDialog} onClose={handleClosePasswordDialog} maxWidth="sm" fullWidth>
