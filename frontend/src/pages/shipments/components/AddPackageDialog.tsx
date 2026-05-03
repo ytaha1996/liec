@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Divider, IconButton, Stack, Typography } from '@mui/material';
+import { Box, Button, Divider, IconButton, Stack, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { toast } from 'react-toastify';
 import { getJson, postJson, parseApiError } from '../../../api/client';
@@ -26,10 +26,16 @@ interface InlineItem {
   note: string;
 }
 
+const emptyItem = (): InlineItem => ({ goodTypeId: '', quantity: '1', unit: 'Box', unitPrice: '', note: '' });
+
 const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) => {
   const qc = useQueryClient();
-  const [newPkgItems, setNewPkgItems] = useState<InlineItem[]>([]);
+  const [newPkgItems, setNewPkgItems] = useState<InlineItem[]>([emptyItem(), emptyItem(), emptyItem()]);
   const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
+
+  useEffect(() => {
+    if (open) setNewPkgItems([emptyItem(), emptyItem(), emptyItem()]);
+  }, [open]);
 
   const unitsQuery = useUnitsLookup();
   const unitItems: Record<string, string> = (unitsQuery.data ?? []).reduce(
@@ -67,7 +73,7 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
 
   const handleClose = () => {
     onClose();
-    setNewPkgItems([]);
+    setNewPkgItems([emptyItem(), emptyItem(), emptyItem()]);
     setProvisionMethod('CustomerProvided');
   };
 
@@ -131,31 +137,48 @@ const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) 
       >
         <Divider />
         <Typography variant="subtitle1">Items (optional)</Typography>
-        {newPkgItems.map((item, idx) => (
-          <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-            <GenericSelectInput name={`item-good-type-${idx}`} title="Good Type" value={item.goodTypeId} items={goodTypesItems} onChange={(v: any) => {
-              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], goodTypeId: v }; setNewPkgItems(updated);
-            }} type="" error="" disabled={false} />
-            <GenericNumberInput name={`item-qty-${idx}`} title="Qty" value={item.quantity} min={1} onChange={(v: any) => {
-              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], quantity: v }; setNewPkgItems(updated);
-            }} error="" disabled={false} />
-            <GenericSelectInput name={`item-unit-${idx}`} title="Unit" value={item.unit} items={unitItems} onChange={(v: any) => {
-              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unit: v ?? 'Box' }; setNewPkgItems(updated);
-            }} type="" error="" disabled={false} />
-            <GenericNumberInput name={`item-unit-price-${idx}`} title="Unit Price ($)" value={item.unitPrice} min={0} step={0.01} onChange={(v: any) => {
-              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unitPrice: v }; setNewPkgItems(updated);
-            }} error="" disabled={false} />
-            <GenericInput name={`item-note-${idx}`} title="Note" value={item.note} onChange={(v: any) => {
-              const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], note: v }; setNewPkgItems(updated);
-            }} type="text" error="" disabled={false} />
-            <IconButton size="small" onClick={() => setNewPkgItems(items => items.filter((_, i) => i !== idx))}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
+        <Box sx={{ minWidth: 720 }}>
+          {newPkgItems.map((item, idx) => (
+            <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <Box sx={{ flex: 2 }}>
+                <GenericSelectInput name={`item-good-type-${idx}`} title="Good Type" value={item.goodTypeId} items={goodTypesItems} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], goodTypeId: v }; setNewPkgItems(updated);
+                }} type="" error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <GenericNumberInput name={`item-qty-${idx}`} title="Qty" value={item.quantity} min={1} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], quantity: v }; setNewPkgItems(updated);
+                }} error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <GenericSelectInput name={`item-unit-${idx}`} title="Unit" value={item.unit} items={unitItems} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unit: v ?? 'Box' }; setNewPkgItems(updated);
+                }} type="" error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <GenericNumberInput name={`item-unit-price-${idx}`} title="Unit Price ($)" value={item.unitPrice} min={0} step={0.01} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unitPrice: v }; setNewPkgItems(updated);
+                }} error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 2 }}>
+                <GenericInput name={`item-note-${idx}`} title="Note" value={item.note} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], note: v }; setNewPkgItems(updated);
+                }} type="text" error="" disabled={false} />
+              </Box>
+              <IconButton size="small" disabled={newPkgItems.length <= 1} onClick={() => setNewPkgItems(items => items.filter((_, i) => i !== idx))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ))}
+          <Stack direction="row" gap={1} sx={{ mt: 1 }}>
+            <Button size="small" variant="outlined" onClick={() => setNewPkgItems(items => [...items, emptyItem()])}>
+              + Add Item
+            </Button>
+            <Button size="small" variant="outlined" onClick={() => setNewPkgItems(items => [...items, emptyItem(), emptyItem(), emptyItem(), emptyItem(), emptyItem()])}>
+              + Add 5 Rows
+            </Button>
           </Stack>
-        ))}
-        <Button size="small" variant="outlined" sx={{ mt: 1 }} onClick={() => setNewPkgItems(items => [...items, { goodTypeId: '', quantity: '1', unit: 'Box', unitPrice: '', note: '' }])}>
-          + Add Item
-        </Button>
+        </Box>
       </DynamicFormWidget>
     </GenericDialog>
   );

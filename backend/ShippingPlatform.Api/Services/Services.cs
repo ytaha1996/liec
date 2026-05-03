@@ -142,17 +142,21 @@ public class ImageWatermarkService : IImageWatermarkService
             using var bitmap = SkiaSharp.SKBitmap.Decode(ms);
             if (bitmap is null) { ms.Position = 0; return ms; }
             using var canvas = new SkiaSharp.SKCanvas(bitmap);
+            var fontSize = Math.Min(Math.Min(bitmap.Width, bitmap.Height) * 0.06f, 96f);
             using var paint = new SkiaSharp.SKPaint
             {
-                Color = SkiaSharp.SKColors.White.WithAlpha(210),
-                TextSize = Math.Max(bitmap.Height * 0.04f, 18),
+                Color = SkiaSharp.SKColors.White.WithAlpha(220),
+                TextSize = Math.Max(fontSize, 24f),
                 IsAntialias = true,
                 Typeface = SkiaSharp.SKTypeface.Default,
             };
             using var shadow = paint.Clone();
-            shadow.Color = SkiaSharp.SKColors.Black.WithAlpha(180);
-            canvas.DrawText(text, 12, paint.TextSize + 8, shadow);
-            canvas.DrawText(text, 10, paint.TextSize + 6, paint);
+            shadow.Color = SkiaSharp.SKColors.Black.WithAlpha(200);
+            var textWidth = paint.MeasureText(text);
+            var x = (bitmap.Width - textWidth) / 2f;
+            var y = (bitmap.Height + paint.TextSize) / 2f;
+            canvas.DrawText(text, x + 2, y + 2, shadow);
+            canvas.DrawText(text, x, y, paint);
             var encoded = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 90);
             var result = new MemoryStream();
             encoded.AsStream().CopyTo(result);

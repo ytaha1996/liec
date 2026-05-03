@@ -43,6 +43,7 @@ const GenericNumberInput: React.FC<IGenericInputProps> = ({ title, value, disabl
             inputProps={{ min, max, step }}
             className={cx(classes.input, !!error ? classes.errorInput : undefined)}
             onChange={(e) => onChange(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onBlur={() => onBlur(name)} />
     </GenericInputWrapper>
 }

@@ -227,7 +227,14 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
       );
       await onSubmit(preparedValues);
     } else {
-      toast.error('Incomplete Form!');
+      const firstError = Object.entries(newErrors).find(([, msg]) => !isEmpty(msg));
+      if (firstError) {
+        const [fieldName, msg] = firstError;
+        const f = Object.values(fields).find((x) => x.name === fieldName);
+        toast.error(f ? `${f.title}: ${msg}` : msg);
+      } else {
+        toast.error('Please fix the errors below.');
+      }
     }
     setSubmitting(false);
   };

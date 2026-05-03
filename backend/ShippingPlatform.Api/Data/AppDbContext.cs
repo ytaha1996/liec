@@ -76,7 +76,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // ── Performance indexes (Task 6.3) ──
         modelBuilder.Entity<AdminUser>().HasIndex(x => x.Email).IsUnique();
         modelBuilder.Entity<Customer>().HasIndex(x => x.Email);
-        modelBuilder.Entity<Customer>().HasIndex(x => x.PrimaryPhone);
+        modelBuilder.Entity<Customer>().HasIndex(x => x.PrimaryPhone).IsUnique();
         modelBuilder.Entity<Package>().HasIndex(x => x.Status);
         modelBuilder.Entity<Package>().HasIndex(x => x.SupplyOrderId);
         modelBuilder.Entity<Shipment>().HasIndex(x => x.Status);

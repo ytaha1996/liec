@@ -189,9 +189,21 @@ const EnhancedTable: React.FC<EnhancedTableProps> = ({ header, data, defaultOrde
     } else {
       setFilteredData(data);
     }
-
-    setPage(0);
   }, [data, searchKey, filterValues, rowsPerPage]);
+
+  // Reset to page 0 when the user changes search/filter/page-size — but NOT
+  // when `data` simply refetches (e.g., after a row mutation). For data
+  // changes we only clamp the current page if it has fallen past the last
+  // valid page.
+  useEffect(() => {
+    setPage(0);
+  }, [searchKey, filterValues, rowsPerPage]);
+
+  useEffect(() => {
+    const count = Object.keys(filteredData || {}).length;
+    const lastPage = Math.max(0, Math.ceil(count / rowsPerPage) - 1);
+    setPage((p) => Math.min(p, lastPage));
+  }, [filteredData, rowsPerPage]);
 
 
   const visibleRows = React.useMemo(

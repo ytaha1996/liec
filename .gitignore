@@ -37,6 +37,9 @@ TestResults/
 *.userosscache
 *.sln.docstates
 
+# Backend secrets
+backend/ShippingPlatform.Api/appsettings.json
+
 # EF / tooling
 *.db
 *.db-journal

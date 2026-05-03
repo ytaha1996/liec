@@ -45,6 +45,8 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (input.OriginWarehouseId == input.DestinationWarehouseId) return (null, "Origin and destination warehouse must be different.");
         var origin = await db.Warehouses.FirstOrDefaultAsync(x => x.Id == input.OriginWarehouseId);
         if (origin is null) return (null, "Origin warehouse not found.");
+        if (input.PlannedArrivalDate.Date < input.PlannedDepartureDate.Date)
+            return (null, "Planned arrival must be on or after planned departure.");
         // Capacity caps must not exceed the origin warehouse's caps. 0 = unbounded shipment, skips check.
         if (origin.MaxWeightKg > 0 && input.MaxWeightKg > 0 && input.MaxWeightKg > origin.MaxWeightKg)
             return (null, $"Shipment MaxWeightKg ({input.MaxWeightKg}) exceeds origin warehouse capacity ({origin.MaxWeightKg}).");
@@ -74,7 +76,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         var s = await db.Shipments.FindAsync(id);
         if (s is null) return (null, null);
         if (s.Status >= ShipmentStatus.Departed)
-            return (null, new { code = "SHIPMENT_LOCKED", message = "Shipment can only be edited while Draft or Scheduled." });
+            return (null, new { code = "SHIPMENT_LOCKED", message = "Shipment can only be edited before it has departed." });
 
         if (req.TiiuCode is not null)
         {
@@ -630,7 +632,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (req.File is null || req.File.Length == 0) return new { code = "VALIDATION_ERROR", message = "File required." };
 
         await using var rawStream = req.File.OpenReadStream();
-        var processedStream = watermark.Apply(rawStream, p.Customer.Name, req.File.ContentType);
+        var processedStream = watermark.Apply(rawStream, $"{p.Customer.Name} (#{p.CustomerId})", req.File.ContentType);
         var ext = Path.GetExtension(req.File.FileName);
         var forced = $"media/packages/{id}/{req.Stage.ToString().ToLowerInvariant()}/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}{ext}";
         var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, processedStream, req.File.ContentType, forced);

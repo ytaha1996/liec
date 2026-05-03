@@ -217,8 +217,8 @@ public interface ICustomerBusiness
 {
     Task<List<CustomerDto>> ListAsync(string? q);
     Task<CustomerDto?> GetAsync(int id);
-    Task<CustomerDto> CreateAsync(CreateCustomerRequest req);
-    Task<CustomerDto?> UpdateAsync(int id, UpdateCustomerRequest req);
+    Task<(CustomerDto? dto, string? error)> CreateAsync(CreateCustomerRequest req);
+    Task<(CustomerDto? dto, string? error, bool notFound)> UpdateAsync(int id, UpdateCustomerRequest req);
     Task<WhatsAppConsentDto?> PatchConsentAsync(int id, WhatsAppConsentDto consent);
 }
 
@@ -233,24 +233,33 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
 
     public async Task<CustomerDto?> GetAsync(int id) => (await db.Customers.Include(x => x.WhatsAppConsent).FirstOrDefaultAsync(x => x.Id == id))?.ToDto();
 
-    public async Task<CustomerDto> CreateAsync(CreateCustomerRequest req)
+    public async Task<(CustomerDto? dto, string? error)> CreateAsync(CreateCustomerRequest req)
     {
-        var entity = new Customer { Name = req.Name, PrimaryPhone = req.PrimaryPhone, Email = req.Email, CompanyName = req.CompanyName, TaxId = req.TaxId, BillingAddress = req.BillingAddress, IsActive = req.IsActive };
+        var phone = req.PrimaryPhone?.Trim() ?? string.Empty;
+        if (await db.Customers.AnyAsync(c => c.PrimaryPhone == phone))
+            return (null, "A customer with this phone number already exists.");
+
+        var entity = new Customer { Name = req.Name, PrimaryPhone = phone, Email = req.Email, CompanyName = req.CompanyName, TaxId = req.TaxId, BillingAddress = req.BillingAddress, IsActive = req.IsActive };
         db.Customers.Add(entity);
         await db.SaveChangesAsync();
         db.WhatsAppConsents.Add(new WhatsAppConsent { CustomerId = entity.Id, OptInStatusUpdates = true, OptInDeparturePhotos = true, OptInArrivalPhotos = true });
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.WhatsAppConsent).LoadAsync();
-        return entity.ToDto();
+        return (entity.ToDto(), null);
     }
 
-    public async Task<CustomerDto?> UpdateAsync(int id, UpdateCustomerRequest req)
+    public async Task<(CustomerDto? dto, string? error, bool notFound)> UpdateAsync(int id, UpdateCustomerRequest req)
     {
         var e = await db.Customers.Include(x => x.WhatsAppConsent).FirstOrDefaultAsync(x => x.Id == id);
-        if (e is null) return null;
-        e.Name = req.Name; e.PrimaryPhone = req.PrimaryPhone; e.Email = req.Email; e.CompanyName = req.CompanyName; e.TaxId = req.TaxId; e.BillingAddress = req.BillingAddress; e.IsActive = req.IsActive;
+        if (e is null) return (null, null, true);
+
+        var phone = req.PrimaryPhone?.Trim() ?? string.Empty;
+        if (await db.Customers.AnyAsync(c => c.PrimaryPhone == phone && c.Id != id))
+            return (null, "A customer with this phone number already exists.", false);
+
+        e.Name = req.Name; e.PrimaryPhone = phone; e.Email = req.Email; e.CompanyName = req.CompanyName; e.TaxId = req.TaxId; e.BillingAddress = req.BillingAddress; e.IsActive = req.IsActive;
         await db.SaveChangesAsync();
-        return e.ToDto();
+        return (e.ToDto(), null, false);
     }
 
     public async Task<WhatsAppConsentDto?> PatchConsentAsync(int id, WhatsAppConsentDto consent)

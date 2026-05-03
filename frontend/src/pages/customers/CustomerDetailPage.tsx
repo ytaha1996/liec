@@ -11,9 +11,11 @@ import {
   Stack,
 } from '@mui/material';
 import { toast } from 'react-toastify';
-import { api, getJson, postJson, parseApiError } from '../../api/client';
+import { api, getJson, postJson, putJson, parseApiError } from '../../api/client';
 import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
+import GenericDialog from '../../components/GenericDialog/GenericDialog';
+import { buildCustomerFields } from './customerFields';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
@@ -22,6 +24,7 @@ import EmptyState from '../../components/EmptyState';
 import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 interface Props {
   id: string;
@@ -67,12 +70,34 @@ const buildConsentFields = (initial?: Record<string, any>): Record<string, Dynam
 const CustomerDetailPage = ({ id }: Props) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = useUserRole();
   const [shipmentId, setShipmentId] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/customers', id],
     queryFn: () => getJson<any>(`/api/customers/${id}`),
   });
+
+  const updateCustomer = useMutation({
+    mutationFn: (payload: Record<string, any>) => putJson(`/api/customers/${id}`, payload),
+    onSuccess: () => {
+      toast.success('Customer updated');
+      qc.invalidateQueries({ queryKey: ['/api/customers', id] });
+      qc.invalidateQueries({ queryKey: ['/api/customers'] });
+      setEditOpen(false);
+    },
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Update failed'),
+  });
+
+  const handleEditSubmit = async (values: Record<string, any>): Promise<boolean> => {
+    try {
+      await updateCustomer.mutateAsync(values);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const patchConsent = useMutation({
     mutationFn: (payload: Record<string, any>) =>
@@ -196,7 +221,12 @@ const CustomerDetailPage = ({ id }: Props) => {
       </PageTitleWrapper>
 
       <Box sx={{ px: 3, pb: 3 }}>
-        <InformationWidget title="Info" fields={CUSTOMER_INFO_FIELDS} data={data} />
+        <InformationWidget
+          title="Info"
+          fields={CUSTOMER_INFO_FIELDS}
+          data={data}
+          actions={canWriteMasterData(role) ? [{ key: 'edit', title: 'Edit Info', onClick: () => setEditOpen(true) }] : []}
+        />
 
         <MainPageSection title="WhatsApp Consent Flags">
           <Stack direction="row" gap={1} flexWrap="wrap">
@@ -273,6 +303,15 @@ const CustomerDetailPage = ({ id }: Props) => {
           )}
         </MainPageSection>
       </Box>
+
+      <GenericDialog open={editOpen} title="Edit Customer" onClose={() => setEditOpen(false)}>
+        <DynamicFormWidget
+          title=""
+          drawerMode
+          fields={buildCustomerFields(data)}
+          onSubmit={handleEditSubmit}
+        />
+      </GenericDialog>
     </Box>
   );
 };

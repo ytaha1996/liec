@@ -11,7 +11,7 @@ import {
   EnhancedTableColumnType,
 } from '../../components/enhanced-table';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
-import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget';
+import { buildCustomerFields } from './customerFields';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -19,65 +19,6 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 
 const ENDPOINT = '/api/customers';
-
-const buildFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
-  name: {
-    type: DynamicField.TEXT,
-    name: 'name',
-    title: 'Name',
-    required: true,
-    disabled: false,
-    value: initial?.name ?? '',
-  },
-  primaryPhone: {
-    type: DynamicField.PHONENUMBER,
-    name: 'primaryPhone',
-    title: 'Primary Phone',
-    required: true,
-    disabled: false,
-    value: initial?.primaryPhone ?? '',
-  },
-  email: {
-    type: DynamicField.EMAIL,
-    name: 'email',
-    title: 'Email',
-    required: false,
-    disabled: false,
-    value: initial?.email ?? '',
-  } as any,
-  companyName: {
-    type: DynamicField.TEXT,
-    name: 'companyName',
-    title: 'Company Name',
-    required: false,
-    disabled: false,
-    value: initial?.companyName ?? '',
-  },
-  taxId: {
-    type: DynamicField.TEXT,
-    name: 'taxId',
-    title: 'Tax ID',
-    required: false,
-    disabled: false,
-    value: initial?.taxId ?? '',
-  },
-  billingAddress: {
-    type: DynamicField.TEXT,
-    name: 'billingAddress',
-    title: 'Billing Address',
-    required: false,
-    disabled: false,
-    value: initial?.billingAddress ?? '',
-  },
-  isActive: {
-    type: DynamicField.CHECKBOX,
-    name: 'isActive',
-    title: 'Is Active',
-    required: false,
-    disabled: false,
-    value: initial?.isActive ?? true,
-  },
-});
 
 const CustomersPage = () => {
   const navigate = useNavigate();
@@ -240,7 +181,7 @@ const CustomersPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined)}
+          fields={buildCustomerFields(editing ?? undefined)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>
