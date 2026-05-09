@@ -19,6 +19,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { useDebouncedValue } from '../../helpers/useDebouncedValue';
 
 const ENDPOINT = '/api/supply-orders';
 
@@ -100,10 +101,11 @@ const SupplyOrdersPage = () => {
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const { data = [] } = useQuery<any[]>({
-    queryKey: [ENDPOINT, search],
-    queryFn: () => getJson<any[]>(search ? `${ENDPOINT}?q=${encodeURIComponent(search)}` : ENDPOINT),
+    queryKey: [ENDPOINT, debouncedSearch],
+    queryFn: () => getJson<any[]>(debouncedSearch ? `${ENDPOINT}?q=${encodeURIComponent(debouncedSearch)}` : ENDPOINT),
   });
 
   const { data: customers = [] } = useQuery<any[]>({

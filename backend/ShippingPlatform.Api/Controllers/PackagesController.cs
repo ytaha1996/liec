@@ -34,7 +34,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpGet("api/packages/{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } p ? Ok(p) : NotFound();
 
-    [Authorize(Roles = "Admin,Manager,Field")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPatch("api/packages/{id:int}")]
     public async Task<IActionResult> Update(int id, UpdatePackageRequest req)
     {
@@ -43,16 +43,16 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
-    [Authorize(Roles = "Admin,Manager,Field")] [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
-    [Authorize(Roles = "Admin,Manager,Field")] [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
-    [Authorize(Roles = "Admin,Manager,Field")] [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => Change(id, PackageStatus.ReadyToShip);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/receive")] public Task<IActionResult> Receive(int id) => Change(id, PackageStatus.Received);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/pack")] public Task<IActionResult> Pack(int id) => Change(id, PackageStatus.Packed);
+    [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/ready-to-ship")] public Task<IActionResult> Ready(int id) => Change(id, PackageStatus.ReadyToShip);
     [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/cancel")] public Task<IActionResult> Cancel(int id) => Change(id, PackageStatus.Cancelled);
     [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/ship")] public Task<IActionResult> Ship(int id) => Change(id, PackageStatus.Shipped, checkDepartureGate: true);
     [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/arrive-destination")] public Task<IActionResult> ArriveDestination(int id) => Change(id, PackageStatus.ArrivedAtDestination);
     [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/ready-for-handout")] public Task<IActionResult> ReadyForHandout(int id) => Change(id, PackageStatus.ReadyForHandout);
     [Authorize(Roles = "Admin,Manager")] [HttpPost("api/packages/{id:int}/handout")] public Task<IActionResult> Handout(int id) => Change(id, PackageStatus.HandedOut, checkArrivalGate: true);
 
-    [Authorize(Roles = "Admin,Manager,Field")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("api/packages/{id:int}/items")]
     public async Task<IActionResult> AddItem(int id, UpsertPackageItemRequest item)
     {
@@ -61,7 +61,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
-    [Authorize(Roles = "Admin,Manager,Field")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("api/packages/{id:int}/items/bulk")]
     public async Task<IActionResult> AddItemsBulk(int id, [FromBody] BulkUpsertPackageItemsRequest req)
     {
@@ -70,7 +70,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(new { added = dtos!.Count, items = dtos }) : Conflict(err);
     }
 
-    [Authorize(Roles = "Admin,Manager,Field")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPut("api/packages/{id:int}/items/{itemId:int}")]
     public async Task<IActionResult> UpdateItem(int id, int itemId, UpsertPackageItemRequest input)
     {
@@ -79,7 +79,7 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return err is null ? Ok(dto) : Conflict(err);
     }
 
-    [Authorize(Roles = "Admin,Manager,Field")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpDelete("api/packages/{id:int}/items/{itemId:int}")]
     public async Task<IActionResult> DeleteItem(int id, int itemId)
     {

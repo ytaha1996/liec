@@ -21,6 +21,7 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 import { SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
 import { SHIPMENT_STATUS_LABELS } from '../../constants/statusLabels';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { useDebouncedValue } from '../../helpers/useDebouncedValue';
 
 const ENDPOINT = '/api/shipments';
 
@@ -100,10 +101,11 @@ const ShipmentsPage = () => {
   const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
-    queryKey: [ENDPOINT, search],
-    queryFn: () => getJson<any[]>(search ? `${ENDPOINT}?q=${encodeURIComponent(search)}` : ENDPOINT),
+    queryKey: [ENDPOINT, debouncedSearch],
+    queryFn: () => getJson<any[]>(debouncedSearch ? `${ENDPOINT}?q=${encodeURIComponent(debouncedSearch)}` : ENDPOINT),
   });
 
   const { data: warehouses = [] } = useQuery<any[]>({

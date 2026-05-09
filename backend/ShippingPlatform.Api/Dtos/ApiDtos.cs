@@ -4,7 +4,8 @@ namespace ShippingPlatform.Api.Dtos;
 
 public record AdminUserDto(int Id, string Email, string Role, bool IsActive, DateTime? LastLoginAt);
 public record CreateUserRequest(string Email, string Password, UserRole Role, bool IsActive = true);
-public record UpdateUserRequest(string Email, UserRole Role, bool IsActive);
+public record UpdateUserRequest(string Email, UserRole Role, bool IsActive, string? Password = null);
+public record ChangePasswordRequest(string OldPassword, string NewPassword);
 
 public record CustomerDto(int Id, string Name, string PrimaryPhone, string? Email, string? CompanyName, string? TaxId, string? BillingAddress, bool IsActive, WhatsAppConsentDto? WhatsAppConsent);
 public record CreateCustomerRequest(string Name, string PrimaryPhone, string? Email, string? CompanyName = null, string? TaxId = null, string? BillingAddress = null, bool IsActive = true);

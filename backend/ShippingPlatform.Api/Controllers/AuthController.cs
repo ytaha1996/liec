@@ -33,6 +33,18 @@ public class AuthController(IAuthBusiness auth, IAuditService audit) : Controlle
                 return Unauthorized();
         }
     }
+
+    [Authorize]
+    [HttpPut("change-password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest req)
+    {
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Unauthorized();
+        var (ok, error) = await auth.ChangePasswordAsync(userId, req);
+        if (!ok) return BadRequest(new { code = "PASSWORD_CHANGE_FAILED", message = error });
+        await audit.LogAsync("AdminUser", userId, "PasswordChange", null, "self-service", userId);
+        return NoContent();
+    }
 }
 
 [ApiController]
@@ -64,5 +76,15 @@ public class UsersController(IUserBusiness business) : ControllerBase
         var (dto, err) = await business.UpdateAsync(id, req, CallerId);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var (ok, err, notFound) = await business.DeleteAsync(id, CallerId);
+        if (notFound) return NotFound();
+        if (!ok) return Conflict(err);
+        return NoContent();
     }
 }

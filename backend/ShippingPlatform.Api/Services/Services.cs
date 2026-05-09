@@ -52,7 +52,16 @@ public class BlobStorageService(IConfiguration cfg, ILogger<BlobStorageService> 
         await c.CreateIfNotExistsAsync(cancellationToken: ct);
         await c.SetAccessPolicyAsync(Azure.Storage.Blobs.Models.PublicAccessType.Blob, cancellationToken: ct);
         var blob = c.GetBlobClient(blobKey);
-        await blob.UploadAsync(stream, new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType }, cancellationToken: ct);
+        // Force browser download for export-type files (CSV/VCF/XLSX) by setting
+        // Content-Disposition: attachment. Without this, browsers render CSV/VCF
+        // inline as text. Media (images) keep the default inline disposition.
+        var isExport = container == (cfg["AzureBlob:ExportsContainer"] ?? "exports");
+        var headers = new Azure.Storage.Blobs.Models.BlobHttpHeaders
+        {
+            ContentType = contentType,
+            ContentDisposition = isExport ? $"attachment; filename=\"{fileName}\"" : null,
+        };
+        await blob.UploadAsync(stream, headers, cancellationToken: ct);
         return (blobKey, blob.Uri.ToString());
     }
 

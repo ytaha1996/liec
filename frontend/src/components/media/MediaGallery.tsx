@@ -9,11 +9,19 @@ import {
   IconButton,
   Typography,
 } from '@mui/material';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-toastify';
 import CloseIcon from '@mui/icons-material/Close';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import DownloadIcon from '@mui/icons-material/Download';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { formatDateTime } from '../../helpers/formatting-utils';
 import { MEDIA_STAGE_CHIPS } from '../../constants/statusColors';
+import { api, parseApiError } from '../../api/client';
+import { useAppDispatch } from '../../redux/hooks';
+import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
+import { useUserRole, canUploadPhotos } from '../../helpers/rbac';
 
 interface MediaItem {
   id: number;
@@ -31,12 +39,38 @@ interface LightboxState {
 
 interface MediaGalleryProps {
   media: MediaItem[];
+  packageId?: number;
 }
 
 const stageChip = (stage: string) => MEDIA_STAGE_CHIPS[stage] ?? MEDIA_STAGE_CHIPS['Other'];
 
-const MediaGallery = ({ media }: MediaGalleryProps) => {
+const MediaGallery = ({ media, packageId }: MediaGalleryProps) => {
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
+  const qc = useQueryClient();
+  const dispatch = useAppDispatch();
+  const role = useUserRole();
+  const canManage = canUploadPhotos(role) && !!packageId;
+
+  const deleteMedia = useMutation({
+    mutationFn: (mediaId: number) =>
+      api.delete(`/api/packages/${packageId}/media/${mediaId}`).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Photo deleted');
+      qc.invalidateQueries({ queryKey: ['/api/packages', packageId, 'media'] });
+      qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
+      setLightbox(null);
+    },
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Delete failed'),
+  });
+
+  const handleDelete = (item: MediaItem) => {
+    dispatch(OpenConfirmation({
+      open: true,
+      title: 'Delete Photo',
+      message: `Delete this ${item.stage} photo?`,
+      onSubmit: () => deleteMedia.mutate(item.id),
+    }));
+  };
 
   const byStage = media.reduce((acc, item) => {
     if (!acc[item.stage]) acc[item.stage] = [];
@@ -182,6 +216,34 @@ const MediaGallery = ({ media }: MediaGalleryProps) => {
               <Typography variant="caption" sx={{ opacity: 0.5, display: 'block', mt: 0.5 }}>
                 {lightbox!.index + 1} / {lightbox!.stageItems.length}
               </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 1 }}>
+                {/* Native <a download> beats window.open(): Azure serves
+                    Content-Disposition: inline by default, so window.open
+                    just renders the image inline in a new tab. The download
+                    attribute forces the browser to save instead. */}
+                <IconButton
+                  component="a"
+                  href={currentItem.publicUrl}
+                  download
+                  target="_blank"
+                  rel="noopener"
+                  size="small"
+                  sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
+                  title="Download"
+                >
+                  <DownloadIcon fontSize="small" />
+                </IconButton>
+                {canManage && (
+                  <IconButton
+                    size="small"
+                    sx={{ color: 'error.main', bgcolor: 'rgba(255,255,255,0.1)' }}
+                    onClick={() => handleDelete(currentItem)}
+                    title="Delete"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Box>
             </Box>
           )}
         </Box>

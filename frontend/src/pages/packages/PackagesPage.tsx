@@ -22,6 +22,7 @@ import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import EditIcon from '@mui/icons-material/Edit';
 import EditPackageDialog from './components/EditPackageDialog';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { useDebouncedValue } from '../../helpers/useDebouncedValue';
 
 const ENDPOINT = '/api/packages';
 
@@ -83,11 +84,12 @@ const PackagesPage = () => {
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
-    queryKey: [ENDPOINT, search],
-    queryFn: () => getJson<any[]>(search ? `${ENDPOINT}?q=${encodeURIComponent(search)}` : ENDPOINT),
+    queryKey: [ENDPOINT, debouncedSearch],
+    queryFn: () => getJson<any[]>(debouncedSearch ? `${ENDPOINT}?q=${encodeURIComponent(debouncedSearch)}` : ENDPOINT),
   });
 
   const { data: customers = [] } = useQuery<any[]>({

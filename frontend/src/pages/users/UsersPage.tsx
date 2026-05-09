@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { Box } from '@mui/material';
 import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { Icon } from '@iconify/react';
-import { getJson, postJson, putJson, parseApiError } from '../../api/client';
+import { api, getJson, postJson, putJson, parseApiError } from '../../api/client';
+import { useAppDispatch } from '../../redux/hooks';
+import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhancedTableColumnType,
@@ -40,6 +41,7 @@ const UsersPage: React.FC = () => {
   usePageTitle('Users');
   const qc = useQueryClient();
   const role = useUserRole();
+  const dispatch = useAppDispatch();
   const isAdmin = canManageUsers(role);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -51,14 +53,35 @@ const UsersPage: React.FC = () => {
   });
 
   const save = useMutation({
-    mutationFn: (payload: any) =>
-      editing?.id ? putJson(`/api/users/${editing.id}`, { email: payload.email, role: payload.role, isActive: payload.isActive }) : postJson('/api/users', payload),
+    mutationFn: (payload: any) => {
+      if (editing?.id) {
+        const body: Record<string, any> = {
+          email: payload.email,
+          role: payload.role,
+          isActive: payload.isActive,
+        };
+        // Send password only if the admin actually typed one — empty string
+        // means "leave unchanged" on the backend.
+        if (payload.password) body.password = payload.password;
+        return putJson(`/api/users/${editing.id}`, body);
+      }
+      return postJson('/api/users', payload);
+    },
     onSuccess: () => {
       toast.success('User saved!');
       setOpen(false);
       qc.invalidateQueries({ queryKey: ['/api/users'] });
     },
     onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/users/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('User deleted');
+      qc.invalidateQueries({ queryKey: ['/api/users'] });
+    },
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Delete failed'),
   });
 
   const openCreate = () => {
@@ -118,6 +141,21 @@ const UsersPage: React.FC = () => {
           onClick: (id: string) => openEdit(id),
           hidden: () => false,
         },
+        {
+          icon: <Icon icon="mdi:delete" />,
+          label: 'Delete',
+          onClick: (id: string) => {
+            const row = (data ?? []).find((u: any) => String(u.id) === id);
+            if (!row) return;
+            dispatch(OpenConfirmation({
+              open: true,
+              title: 'Delete User',
+              message: `Permanently delete user "${row.email}"? This cannot be undone.`,
+              onSubmit: () => remove.mutate(Number(id)),
+            }));
+          },
+          hidden: () => false,
+        },
       ],
     } as EnhancedTableActionHeader] : []),
   ];
@@ -131,16 +169,15 @@ const UsersPage: React.FC = () => {
       disabled: false,
       value: formValues.email || '',
     } as IDynamicTextField,
-    ...(!editing ? {
-      password: {
-        type: DynamicField.TEXT,
-        name: 'password',
-        title: 'Password (min 8 chars)',
-        required: true,
-        disabled: false,
-        value: '',
-      } as IDynamicTextField,
-    } : {}),
+    password: {
+      type: DynamicField.TEXT,
+      name: 'password',
+      title: editing ? 'New Password (leave blank to keep current)' : 'Password (min 8 chars)',
+      required: !editing,
+      disabled: false,
+      value: '',
+      minChars: 8,
+    } as IDynamicTextField,
     role: {
       type: DynamicField.SELECT,
       name: 'role',

@@ -11,6 +11,7 @@ public enum LoginOutcome { Success, BadCredentials, Locked }
 public interface IAuthBusiness
 {
     Task<(LoginOutcome outcome, LoginResponse? response, DateTime? lockedUntil)> LoginAsync(LoginRequest request);
+    Task<(bool ok, string? error)> ChangePasswordAsync(int userId, ChangePasswordRequest req);
 }
 
 public class AuthBusiness(AppDbContext db, ITokenService tokens, IConfiguration cfg) : IAuthBusiness
@@ -45,6 +46,19 @@ public class AuthBusiness(AppDbContext db, ITokenService tokens, IConfiguration 
         user.LockedUntil = null;
         await db.SaveChangesAsync();
         return (LoginOutcome.Success, new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString()), null);
+    }
+
+    public async Task<(bool ok, string? error)> ChangePasswordAsync(int userId, ChangePasswordRequest req)
+    {
+        if (string.IsNullOrEmpty(req.NewPassword) || req.NewPassword.Length < 8)
+            return (false, "New password must be at least 8 characters.");
+        var user = await db.AdminUsers.FindAsync(userId);
+        if (user is null) return (false, "User not found.");
+        if (!BCrypt.Net.BCrypt.Verify(req.OldPassword, user.PasswordHash))
+            return (false, "Current password is incorrect.");
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        await db.SaveChangesAsync();
+        return (true, null);
     }
 }
 
@@ -156,6 +170,7 @@ public interface IUserBusiness
     Task<AdminUserDto?> GetAsync(int id);
     Task<(AdminUserDto? dto, object? err)> CreateAsync(CreateUserRequest req);
     Task<(AdminUserDto? dto, object? err)> UpdateAsync(int id, UpdateUserRequest req, int callerUserId);
+    Task<(bool ok, object? err, bool notFound)> DeleteAsync(int id, int callerUserId);
 }
 
 public class UserBusiness(AppDbContext db, IAuditService audit) : IUserBusiness
@@ -206,10 +221,35 @@ public class UserBusiness(AppDbContext db, IAuditService audit) : IUserBusiness
         user.Email = req.Email;
         user.Role = req.Role;
         user.IsActive = req.IsActive;
+        if (!string.IsNullOrEmpty(req.Password))
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password);
         await db.SaveChangesAsync();
         var newSnapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";
-        await audit.LogAsync("AdminUser", user.Id, "Update", oldSnapshot, newSnapshot, callerUserId);
+        var passwordChanged = !string.IsNullOrEmpty(req.Password);
+        await audit.LogAsync("AdminUser", user.Id, "Update",
+            oldSnapshot,
+            passwordChanged ? $"{newSnapshot} (password reset)" : newSnapshot,
+            callerUserId);
         return (user.ToDto(), null);
+    }
+
+    public async Task<(bool ok, object? err, bool notFound)> DeleteAsync(int id, int callerUserId)
+    {
+        var user = await db.AdminUsers.FindAsync(id);
+        if (user is null) return (false, null, true);
+        if (id == callerUserId)
+            return (false, new { code = "SELF_DELETE", message = "You cannot delete your own account." }, false);
+        if (user.Role == UserRole.Admin && user.IsActive)
+        {
+            var activeAdminCount = await db.AdminUsers.CountAsync(x => x.Role == UserRole.Admin && x.IsActive && x.Id != id);
+            if (activeAdminCount == 0)
+                return (false, new { code = "LAST_ADMIN", message = "Cannot delete the last active admin." }, false);
+        }
+        var snapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";
+        db.AdminUsers.Remove(user);
+        await db.SaveChangesAsync();
+        await audit.LogAsync("AdminUser", id, "Delete", snapshot, null, callerUserId);
+        return (true, null, false);
     }
 }
 

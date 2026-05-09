@@ -40,7 +40,7 @@ import EditShipmentDrawer from './components/EditShipmentDrawer';
 import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
 import WhatsAppCampaignCards from './components/WhatsAppCampaignCards';
 import FxSnapshotsSection from './components/FxSnapshotsSection';
-import { useUserRole, canManageShipments, canSendWhatsApp, canExport } from '../../helpers/rbac';
+import { useUserRole, canManageShipments, canSendWhatsApp, canExport, canBulkTransitionPackages, canViewActivityLog } from '../../helpers/rbac';
 import { formatAuditEntry } from '../../helpers/audit-utils';
 import { usePageTitle } from '../../helpers/usePageTitle';
 
@@ -328,7 +328,9 @@ const ShipmentDetailPage = ({ id }: Props) => {
     'ready-for-handout': (s) => s.has('ArrivedAtDestination'),
   };
 
-  const packageActions = allBulkActions.filter(a => ACTION_VISIBILITY[a.key]?.(presentStatuses));
+  const packageActions = canBulkTransitionPackages(role)
+    ? allBulkActions.filter(a => ACTION_VISIBILITY[a.key]?.(presentStatuses))
+    : [];
 
   if (isLoading) {
     return <Loader />;
@@ -429,7 +431,8 @@ const ShipmentDetailPage = ({ id }: Props) => {
               <TableHead>
                 <TableRow>
                   <TableCell>Package</TableCell>
-                  <TableCell>Stage</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Missing photo</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -440,6 +443,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
                         #{m.packageId}
                       </MuiLink>
                     </TableCell>
+                    <TableCell>{m.customerName ?? '—'}</TableCell>
                     <TableCell>{m.stage}</TableCell>
                   </TableRow>
                 ))}
@@ -495,7 +499,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
           </MainPageSection>
         )}
 
-        {(auditQuery.data ?? []).length > 0 && (
+        {canViewActivityLog(role) && (auditQuery.data ?? []).length > 0 && (
           <MainPageSection title="Activity Log">
             <Table size="small">
               <TableHead>

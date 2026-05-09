@@ -24,7 +24,7 @@ api.interceptors.response.use(
 export type GateError = {
   code: 'PHOTO_GATE_FAILED';
   message: string;
-  missing: Array<{ packageId: number; stage: string }>;
+  missing: Array<{ packageId: number; customerName?: string; stage: string }>;
 };
 
 export const parseApiError = (e: any) => e?.response?.data ?? { message: e?.message ?? 'Unknown error' };

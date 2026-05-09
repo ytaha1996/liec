@@ -38,7 +38,7 @@ import ItemDialog from './components/ItemDialog';
 import BulkAddItemsDialog from './components/BulkAddItemsDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
-import { useUserRole, canTransitionPackage, canEditPackageItems, canUploadPhotos, canOverridePricing } from '../../helpers/rbac';
+import { useUserRole, canTransitionPackage, canEditPackageItems, canEditPackageWeight, canUploadPhotos, canOverridePricing, canViewActivityLog } from '../../helpers/rbac';
 import { formatAuditEntry } from '../../helpers/audit-utils';
 import { usePageTitle } from '../../helpers/usePageTitle';
 import { UNIT_LABEL_EN } from '../../api/lookups';
@@ -359,8 +359,8 @@ const PackageDetailPage = ({ id }: Props) => {
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Overview" />
             <Tab label="Items & Pricing" />
-            <Tab label="Photos" />
-            <Tab label="Activity" />
+            {canUploadPhotos(role) && <Tab label="Photos" />}
+            {canViewActivityLog(role) && <Tab label="Activity" />}
           </Tabs>
         </Box>
 
@@ -394,7 +394,7 @@ const PackageDetailPage = ({ id }: Props) => {
               fields={pricingFields}
               data={pkgDisplay}
             >
-              {canEditPackageItems(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
+              {canEditPackageWeight(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
                 <Box sx={{ mt: 1 }}>
                   <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => setEditPkgOpen(true)}>
                     Edit Weight / CBM / Note
@@ -412,7 +412,7 @@ const PackageDetailPage = ({ id }: Props) => {
           </MainPageSection>
         )}
 
-        {tab === 3 && (
+        {tab === 3 && canViewActivityLog(role) && (
           <MainPageSection title="Activity Log">
             {(auditQuery.data ?? []).length > 0 ? (
               <Table size="small">

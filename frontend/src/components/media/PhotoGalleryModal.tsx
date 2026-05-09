@@ -16,6 +16,7 @@ import UploadIcon from '@mui/icons-material/Upload';
 import { getJson } from '../../api/client';
 import MediaGallery from './MediaGallery';
 import { useMultiFileUpload } from './useMultiFileUpload';
+import { useUserRole, canUploadPhotos } from '../../helpers/rbac';
 
 interface PhotoGalleryModalProps {
   open: boolean;
@@ -30,6 +31,8 @@ const PhotoGalleryModal = ({ open, onClose, packageId, title }: PhotoGalleryModa
   const [uploadStage, setUploadStage] = useState<string>('Receiving');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { uploadMultiple, progress, isUploading } = useMultiFileUpload(packageId);
+  const role = useUserRole();
+  const canUpload = canUploadPhotos(role);
 
   const { data: media = [] } = useQuery<any[]>({
     queryKey: ['/api/packages', packageId, 'media'],
@@ -50,39 +53,41 @@ const PhotoGalleryModal = ({ open, onClose, packageId, title }: PhotoGalleryModa
         <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent>
-        <Stack direction="row" gap={2} alignItems="center" sx={{ mb: 2 }}>
-          <Select
-            size="small"
-            value={uploadStage}
-            onChange={(e) => setUploadStage(e.target.value)}
-            disabled={isUploading}
-            sx={{ minWidth: 140 }}
-          >
-            {STAGES.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-          </Select>
-          <Button
-            variant="contained"
-            startIcon={<UploadIcon />}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-          >
-            Upload Photos
-          </Button>
-          <input
-            ref={fileInputRef}
-            hidden
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={onFilesPicked}
-          />
-          {progress && (
-            <Typography variant="body2" color="text.secondary">
-              Uploading {progress.done}/{progress.total}...
-            </Typography>
-          )}
-        </Stack>
-        <MediaGallery media={media} />
+        {canUpload && (
+          <Stack direction="row" gap={2} alignItems="center" sx={{ mb: 2 }}>
+            <Select
+              size="small"
+              value={uploadStage}
+              onChange={(e) => setUploadStage(e.target.value)}
+              disabled={isUploading}
+              sx={{ minWidth: 140 }}
+            >
+              {STAGES.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+            </Select>
+            <Button
+              variant="contained"
+              startIcon={<UploadIcon />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              Upload Photos
+            </Button>
+            <input
+              ref={fileInputRef}
+              hidden
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={onFilesPicked}
+            />
+            {progress && (
+              <Typography variant="body2" color="text.secondary">
+                Uploading {progress.done}/{progress.total}...
+              </Typography>
+            )}
+          </Stack>
+        )}
+        <MediaGallery media={media} packageId={packageId} />
       </DialogContent>
     </Dialog>
   );

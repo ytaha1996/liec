@@ -33,21 +33,27 @@ export const canManageUsers = (role: UserRole): boolean =>
   role === 'Admin';
 
 export const canManageCurrencies = (role: UserRole): boolean =>
-  role === 'Admin';
+  role === 'Admin' || role === 'Manager';
 
-export const FIELD_PKG_TRANSITIONS = new Set(['receive', 'pack', 'ready-to-ship']);
-
-export const canTransitionPackage = (role: UserRole, action: string): boolean => {
-  if (role === 'Admin' || role === 'Manager') return true;
-  if (role === 'Field') return FIELD_PKG_TRANSITIONS.has(action);
-  return false;
-};
+// Field can ONLY upload photos. Everything else (transitions, item edits,
+// weight/CBM edits, bulk actions) is Admin/Manager only.
+export const canTransitionPackage = (role: UserRole, _action: string): boolean =>
+  role === 'Admin' || role === 'Manager';
 
 export const canEditPackageItems = (role: UserRole): boolean =>
-  role === 'Admin' || role === 'Manager' || role === 'Field';
+  role === 'Admin' || role === 'Manager';
+
+export const canEditPackageWeight = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager';
+
+export const canBulkTransitionPackages = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager';
 
 export const canUploadPhotos = (role: UserRole): boolean =>
   role === 'Admin' || role === 'Manager' || role === 'Field';
+
+export const canViewActivityLog = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager';
 
 export const canOverridePricing = (role: UserRole): boolean =>
   role === 'Admin' || role === 'Manager' || role === 'Accountant';

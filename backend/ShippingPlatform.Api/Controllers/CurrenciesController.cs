@@ -15,7 +15,7 @@ public class CurrenciesController(ICurrencyBusiness business) : ControllerBase
     public async Task<ActionResult<CurrencyDto>> Get(string code) =>
         (await business.GetAsync(code.ToUpperInvariant())) is { } dto ? Ok(dto) : NotFound();
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost]
     public async Task<IActionResult> Create(UpsertCurrencyRequest req)
     {
@@ -24,7 +24,7 @@ public class CurrenciesController(ICurrencyBusiness business) : ControllerBase
         return Created($"/api/currencies/{dto!.Code}", dto);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPut("{code}")]
     public async Task<IActionResult> Update(string code, UpsertCurrencyRequest req)
     {
@@ -33,7 +33,7 @@ public class CurrenciesController(ICurrencyBusiness business) : ControllerBase
         return dto is null ? NotFound() : Ok(dto);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpDelete("{code}")]
     public async Task<IActionResult> Delete(string code)
     {
