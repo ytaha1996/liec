@@ -17,10 +17,12 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/customers';
 
 const CustomersPage = () => {
+  usePageTitle('Customers');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const role = useUserRole();
@@ -157,7 +159,7 @@ const CustomersPage = () => {
             WhatsApp groups reveal phone numbers to all members. Use export features responsibly.
           </Alert>
           <Stack direction="row" gap={2}>
-            <Button variant="contained" onClick={() => exportExcelMut.mutate()} disabled={exportExcelMut.isPending}>
+            <Button variant="outlined" onClick={() => exportExcelMut.mutate()} disabled={exportExcelMut.isPending}>
               Export Excel
             </Button>
             <Button variant="outlined" onClick={() => exportMut.mutate('csv')} disabled={exportMut.isPending}>

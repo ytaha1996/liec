@@ -215,9 +215,26 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (s is null) return (null, null, null);
         if (!transitions.CanMove(s.Status, ShipmentStatus.Departed)) return (null, null, new { code = "INVALID_STATUS_TRANSITION", message = $"Cannot move from {s.Status} to Departed." });
         var oldStatus = s.Status;
-        s.Status = ShipmentStatus.Departed; s.ActualDepartureAt = DateTime.UtcNow;
+        s.Status = ShipmentStatus.Departed;
+        s.ActualDepartureAt = DateTime.UtcNow;
+
+        // Cascade: every non-cancelled package on the shipment is now Shipped.
+        // The shipment-level photo gate already verified, so we bypass the per-package
+        // transition rules (which would forbid Received → Shipped) — the parent event
+        // is the source of truth at this point.
+        var pkgs = await db.Packages
+            .Where(p => p.ShipmentId == id && p.Status != PackageStatus.Cancelled)
+            .ToListAsync();
+        var pkgUpdates = pkgs
+            .Where(p => p.Status != PackageStatus.Shipped)
+            .Select(p => (id: p.Id, oldStatus: p.Status))
+            .ToList();
+        foreach (var p in pkgs) p.Status = PackageStatus.Shipped;
+
         await db.SaveChangesAsync();
         await audit.LogAsync("Shipment", id, $"Status → {ShipmentStatus.Departed}", oldStatus.ToString(), ShipmentStatus.Departed.ToString());
+        foreach (var u in pkgUpdates)
+            await audit.LogAsync("Package", u.id, $"Status → {PackageStatus.Shipped}", u.oldStatus.ToString(), PackageStatus.Shipped.ToString());
         await TryCaptureFxAsync(id, ShipmentSnapshotEvent.Departed);
         return (s.ToDto(), null, null);
     }
@@ -326,10 +343,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 {
                     var currentWeight = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.WeightKg);
                     var currentCbm = shipment.Packages.Where(x => x.Status != PackageStatus.Cancelled).Sum(x => x.Cbm);
-                    if (shipment.MaxWeightKg > 0 && currentWeight + package.WeightKg > shipment.MaxWeightKg)
-                        return (null, new { code = "CAPACITY_EXCEEDED", message = "Package weight exceeds shipment capacity." });
-                    if (shipment.MaxCbm > 0 && currentCbm + package.Cbm > shipment.MaxCbm)
-                        return (null, new { code = "CAPACITY_EXCEEDED", message = "Package CBM exceeds shipment capacity." });
+                    //if (shipment.MaxWeightKg > 0 && currentWeight + package.WeightKg > shipment.MaxWeightKg)
+                    //    return (null, new { code = "CAPACITY_EXCEEDED", message = "Package weight exceeds shipment capacity." });
+                    //if (shipment.MaxCbm > 0 && currentCbm + package.Cbm > shipment.MaxCbm)
+                    //    return (null, new { code = "CAPACITY_EXCEEDED", message = "Package CBM exceeds shipment capacity." });
                 }
             }
 
@@ -339,7 +356,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             if (input.Items is { Count: > 0 })
             {
                 foreach (var item in input.Items)
-                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
+                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, Unit = item.Unit, UnitPrice = item.UnitPrice, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
                 await db.SaveChangesAsync();
             }
 
@@ -499,6 +516,12 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 return (null, new { code = "VALIDATION_ERROR", message = "Package must have at least one item before packing." }, null);
         }
 
+        if (status == PackageStatus.ReadyToShip && !p.Media.Any(m => m.Stage == MediaStage.Receiving))
+            return (null, null, new GateFailure(
+                "PHOTO_GATE_FAILED",
+                "Package cannot be marked Ready to Ship without a receiving photo.",
+                [new MissingGateItem(p.Id, p.Customer.Name, MediaStage.Receiving)]));
+
         var oldStatus = p.Status;
         p.Status = status;
         if (status == PackageStatus.Packed) await pricing.RecalculateAsync(p);
@@ -531,16 +554,8 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
 
         if (weightChanged)
         {
-            var shipment = await db.Shipments.Include(s => s.Packages).FirstOrDefaultAsync(s => s.Id == p.ShipmentId);
-            if (shipment is not null)
-            {
-                var otherWeight = shipment.Packages.Where(x => x.Id != p.Id && x.Status != PackageStatus.Cancelled).Sum(x => x.WeightKg);
-                var otherCbm = shipment.Packages.Where(x => x.Id != p.Id && x.Status != PackageStatus.Cancelled).Sum(x => x.Cbm);
-                if (shipment.MaxWeightKg > 0 && otherWeight + p.WeightKg > shipment.MaxWeightKg)
-                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Update exceeds container weight capacity." });
-                if (shipment.MaxCbm > 0 && otherCbm + p.Cbm > shipment.MaxCbm)
-                    return (null, new { code = "CAPACITY_EXCEEDED", message = "Update exceeds container CBM capacity." });
-            }
+            // Capacity over-fill is allowed on package updates (operator may need to adjust weights
+            // mid-pack). The shipment-page UI surfaces the over-cap state as a red progress bar.
             await pricing.RecalculateAsync(p);
             await db.SaveChangesAsync();
             await capacity.RecalculateAsync(p.ShipmentId);

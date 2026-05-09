@@ -33,13 +33,14 @@ import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 import Loader from '../../components/Loader';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
-import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS } from '../../constants/statusLabels';
+import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS, SHIPMENT_STATUS_LABELS } from '../../constants/statusLabels';
 import ItemDialog from './components/ItemDialog';
 import BulkAddItemsDialog from './components/BulkAddItemsDialog';
 import PricingOverrideDialog from './components/PricingOverrideDialog';
 import EditPackageDialog from './components/EditPackageDialog';
 import { useUserRole, canTransitionPackage, canEditPackageItems, canUploadPhotos, canOverridePricing } from '../../helpers/rbac';
 import { formatAuditEntry } from '../../helpers/audit-utils';
+import { usePageTitle } from '../../helpers/usePageTitle';
 import { UNIT_LABEL_EN } from '../../api/lookups';
 
 interface Props {
@@ -82,6 +83,7 @@ const PKG_INFO_FIELDS: IInformationWidgetField[] = [
 
 
 const PackageDetailPage = ({ id }: Props) => {
+  usePageTitle(`Package #${id}`);
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const qc = useQueryClient();
@@ -258,6 +260,7 @@ const PackageDetailPage = ({ id }: Props) => {
     ...shipmentQuery.data,
     originWarehouse: warehousesMap[shipmentQuery.data.originWarehouseId] ?? `#${shipmentQuery.data.originWarehouseId}`,
     destinationWarehouse: warehousesMap[shipmentQuery.data.destinationWarehouseId] ?? `#${shipmentQuery.data.destinationWarehouseId}`,
+    status: SHIPMENT_STATUS_LABELS[shipmentQuery.data.status] ?? shipmentQuery.data.status,
   } : {};
 
   const shipmentInfoFields: IInformationWidgetField[] = [

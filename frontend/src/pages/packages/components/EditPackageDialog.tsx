@@ -25,6 +25,7 @@ const EditPackageDialog = ({ open, onClose, packageId, packageData }: EditPackag
     onSuccess: () => {
       toast.success('Package updated');
       qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
+      qc.invalidateQueries({ queryKey: ['/api/packages'] });
       onClose();
     },
     onError: (e: any) => {

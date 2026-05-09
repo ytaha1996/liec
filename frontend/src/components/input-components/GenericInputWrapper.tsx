@@ -2,6 +2,7 @@ import { InputLabel } from "@mui/material";
 import React from "react";
 import { PropsWithChildren } from "react";
 import { tss } from "tss-react";
+import { BRAND_NAVY } from "../../constants/statusColors";
 
 export interface IGenericInputWrapper {
     title: string;
@@ -22,7 +23,7 @@ const useStyles = tss.create({
     label: {
         display: "block",
         fontSize: "14px",
-        color: "#223354"
+        color: BRAND_NAVY,
     },
     errorInput: {
         border: "1px solid red"

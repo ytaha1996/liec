@@ -11,8 +11,10 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const MessagingLogsPage = () => {
+  usePageTitle('Messaging Logs');
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
 
   const { data: campaigns = [] } = useQuery<any[]>({

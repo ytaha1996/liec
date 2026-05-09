@@ -3,8 +3,10 @@ import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { toast } from 'react-toastify';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import { postJson, parseApiError } from '../../api/client';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const GroupHelperExportPage = () => {
+  usePageTitle('Group Helper Export');
   const exportMut = useMutation({
     mutationFn: (format: 'csv' | 'vcf') =>
       postJson<{ publicUrl: string }>('/api/exports/group-helper', { format }),

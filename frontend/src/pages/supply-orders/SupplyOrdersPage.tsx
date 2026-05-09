@@ -18,6 +18,7 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 import EditIcon from '@mui/icons-material/Edit';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/supply-orders';
 
@@ -90,6 +91,7 @@ const buildFields = (
 });
 
 const SupplyOrdersPage = () => {
+  usePageTitle('Supply Orders');
   const qc = useQueryClient();
   const role = useUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);

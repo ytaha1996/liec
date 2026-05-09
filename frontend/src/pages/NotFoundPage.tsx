@@ -1,7 +1,9 @@
 import { Box, Button, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { usePageTitle } from '../helpers/usePageTitle';
 
 const NotFoundPage = () => {
+  usePageTitle('Not Found');
   const navigate = useNavigate();
   return (
     <Box sx={{ p: 6, textAlign: 'center' }}>

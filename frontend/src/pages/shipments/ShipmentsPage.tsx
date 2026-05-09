@@ -2,7 +2,8 @@ import { useState } from 'react';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, CircularProgress, TextField, Typography } from '@mui/material';
+import { Alert, Box, TextField } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
 import { getJson, postJson, parseApiError } from '../../api/client';
@@ -19,6 +20,7 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import { SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
 import { SHIPMENT_STATUS_LABELS } from '../../constants/statusLabels';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/shipments';
 
@@ -92,6 +94,7 @@ const buildFields = (warehousesItems: Record<string, string>): Record<string, Dy
 });
 
 const ShipmentsPage = () => {
+  usePageTitle('Shipments');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const role = useUserRole();
@@ -205,7 +208,7 @@ const ShipmentsPage = () => {
     }
   };
 
-  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isLoading) return <EnhancedTableSkeleton />;
   if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load shipments.</Alert></Box>;
 
   return (

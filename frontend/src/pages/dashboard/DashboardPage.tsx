@@ -8,6 +8,7 @@ import PageTitleWrapper from '../../components/PageTitleWrapper';
 import { BRAND_TEAL, BRAND_NAVY, BRAND_PURPLE, SHIPMENT_STATUS_CHIPS, PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { SHIPMENT_STATUS_LABELS, PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import Loader from '../../components/Loader';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 interface StatCardProps {
   title: string;
@@ -19,14 +20,14 @@ interface StatCardProps {
 const StatCard: React.FC<StatCardProps> = ({ title, value, color = BRAND_TEAL, subtitle }) => (
   <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
     <CardContent sx={{ p: 3 }}>
-      <Typography variant="subtitle2" sx={{ color: '#6E759F', fontWeight: 500, mb: 0.5 }}>
+      <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}>
         {title}
       </Typography>
       <Typography variant="h3" sx={{ fontWeight: 700, color }}>
         {value}
       </Typography>
       {subtitle && (
-        <Typography variant="caption" sx={{ color: '#999' }}>{subtitle}</Typography>
+        <Typography variant="caption" sx={{ color: 'text.disabled' }}>{subtitle}</Typography>
       )}
     </CardContent>
   </Card>
@@ -42,7 +43,7 @@ interface StatusBreakdownProps {
 const StatusBreakdown: React.FC<StatusBreakdownProps> = ({ title, data, chips, labels }) => (
   <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
     <CardContent sx={{ p: 3 }}>
-      <Typography variant="subtitle2" sx={{ color: '#6E759F', fontWeight: 500, mb: 1.5 }}>
+      <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 1.5 }}>
         {title}
       </Typography>
       <Stack direction="row" gap={1} flexWrap="wrap">
@@ -64,6 +65,7 @@ const StatusBreakdown: React.FC<StatusBreakdownProps> = ({ title, data, chips, l
 );
 
 const DashboardPage: React.FC = () => {
+  usePageTitle('Dashboard');
   const navigate = useNavigate();
   const { data: stats, isLoading } = useQuery<any>({
     queryKey: ['/api/stats/overview'],

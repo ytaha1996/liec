@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, CircularProgress } from '@mui/material';
+import { Alert, Box } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { toast } from 'react-toastify';
 import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -17,6 +18,7 @@ import { PRICING_CONFIG_STATUS_LABELS } from '../../constants/statusLabels';
 import { PRICING_CONFIG_STATUS_CHIPS } from '../../constants/statusColors';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/pricing-configs';
 
@@ -80,6 +82,7 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
 });
 
 const PricingConfigsPage = () => {
+  usePageTitle('Pricing Configs');
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
@@ -179,7 +182,7 @@ const PricingConfigsPage = () => {
     }
   };
 
-  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isLoading) return <EnhancedTableSkeleton />;
   if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load pricing configs.</Alert></Box>;
 
   return (

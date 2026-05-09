@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { Box, CircularProgress } from '@mui/material';
+import { Box } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { Icon } from '@iconify/react';
 import { api, getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -27,8 +28,10 @@ import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import { useAppDispatch } from '../../redux/hooks';
 import { useUserRole, canManageCurrencies } from '../../helpers/rbac';
 import type { Currency } from '../../api/currencies';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const CurrenciesPage: React.FC = () => {
+  usePageTitle('Currencies');
   const qc = useQueryClient();
   const dispatch = useAppDispatch();
   const role = useUserRole();
@@ -252,7 +255,7 @@ const CurrenciesPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+    return <EnhancedTableSkeleton />;
   }
 
   return (

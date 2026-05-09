@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { Box, CircularProgress } from '@mui/material';
+import { Box } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { Icon } from '@iconify/react';
 import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -19,6 +20,7 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 import PageTitleWrapper from '../../components/PageTitleWrapper';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import { useUserRole, canManageUsers } from '../../helpers/rbac';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ROLE_ITEMS: Record<string, string> = {
   Admin: 'Admin',
@@ -35,6 +37,7 @@ const ROLE_CHIPS: Record<string, { color: string; backgroundColor: string }> = {
 };
 
 const UsersPage: React.FC = () => {
+  usePageTitle('Users');
   const qc = useQueryClient();
   const role = useUserRole();
   const isAdmin = canManageUsers(role);
@@ -167,11 +170,7 @@ const UsersPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <EnhancedTableSkeleton />;
   }
 
   return (

@@ -214,7 +214,12 @@ public class PhotoComplianceService(AppDbContext db) : IPhotoComplianceService
     private async Task<List<MissingGateItem>> MissingByStage(int shipmentId, MediaStage stage, Func<Package, bool> finalized)
     {
         var ps = await db.Packages.Include(x => x.Customer).Include(x => x.Media).Where(x => x.ShipmentId == shipmentId).ToListAsync();
-        return ps.Where(x => !x.Media.Any(m => m.Stage == stage) || (stage == MediaStage.Arrival && !finalized(x)))
+        // Cancelled/Draft packages never need photos for any gate. Cancelled is final and
+        // doesn't depart/arrive; Draft packages should already have been reassigned by
+        // ReadyToDepart and shouldn't block.
+        return ps
+            .Where(p => p.Status != PackageStatus.Cancelled && p.Status != PackageStatus.Draft)
+            .Where(x => !x.Media.Any(m => m.Stage == stage) || (stage == MediaStage.Arrival && !finalized(x)))
             .Select(x => new MissingGateItem(x.Id, x.Customer.Name, stage)).ToList();
     }
 }

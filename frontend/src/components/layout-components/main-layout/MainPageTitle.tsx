@@ -65,7 +65,7 @@ const MainPageTitle: React.FC<IMainPageTitleProps> = ({ title, subtitle, action,
             {chips}
           </Stack>
           {subtitle && (
-            <Typography variant="subtitle1" sx={{ color: '#6E759F' }}>
+            <Typography variant="subtitle1" sx={{ color: 'text.secondary' }}>
               {subtitle}
             </Typography>
           )}

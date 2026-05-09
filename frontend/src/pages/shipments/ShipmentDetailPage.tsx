@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
+import EditIcon from '@mui/icons-material/Edit';
 import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { GateError, getJson, postJson, parseApiError } from '../../api/client';
@@ -34,12 +35,14 @@ import Loader from '../../components/Loader';
 import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
 import { SHIPMENT_STATUS_LABELS, PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import AddPackageDialog from './components/AddPackageDialog';
+import EditPackageDialog from '../packages/components/EditPackageDialog';
 import EditShipmentDrawer from './components/EditShipmentDrawer';
 import ReadyToDepartPreviewDialog from './components/ReadyToDepartPreviewDialog';
 import WhatsAppCampaignCards from './components/WhatsAppCampaignCards';
 import FxSnapshotsSection from './components/FxSnapshotsSection';
 import { useUserRole, canManageShipments, canSendWhatsApp, canExport } from '../../helpers/rbac';
 import { formatAuditEntry } from '../../helpers/audit-utils';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 interface Props {
   id: string;
@@ -86,12 +89,15 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const [addPkgOpen, setAddPkgOpen] = useState(false);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   const [photosPkgId, setPhotosPkgId] = useState<number | null>(null);
+  const [editingPkgId, setEditingPkgId] = useState<string | null>(null);
   const [rtdPreview, setRtdPreview] = useState<any>(null);
 
   const { data, isLoading, isError } = useQuery<any>({
     queryKey: ['/api/shipments', id],
     queryFn: () => getJson<any>(`/api/shipments/${id}`),
   });
+
+  usePageTitle(data ? `Shipment ${data.refCode}` : `Shipment #${id}`);
 
   const auditQuery = useQuery<any[]>({
     queryKey: ['/api/shipments', id, 'audit-log'],
@@ -145,7 +151,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
       type: EnhancedTableColumnType.Clickable,
       numeric: false,
       disablePadding: false,
-      onClick: (_tableId: string, row: Record<string, any>) => navigate(`/ops/packages/${row.id}`),
+      onClick: (_tableId: string, row: Record<string, any>) => window.open(`/ops/packages/${row.id}`, '_blank', 'noopener,noreferrer'),
     },
     { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false },
     { id: 'weightKg', label: 'Weight (Kg)', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false },
@@ -184,12 +190,22 @@ const ShipmentDetailPage = ({ id }: Props) => {
       type: EnhancedTableColumnType.Action,
       numeric: false,
       disablePadding: false,
-      actions: [{
-        icon: <PhotoLibraryIcon fontSize="small" />,
-        label: 'View Photos',
-        onClick: (rowId: string) => setPhotosPkgId(Number(rowId)),
-        hidden: () => false,
-      }],
+      actions: [
+        {
+          icon: <PhotoLibraryIcon fontSize="small" />,
+          label: 'View Photos',
+          onClick: (rowId: string) => setPhotosPkgId(Number(rowId)),
+          hidden: () => false,
+        },
+        {
+          icon: <EditIcon fontSize="small" />,
+          label: 'Edit',
+          onClick: (rowId: string) => setEditingPkgId(rowId),
+          hidden: (row: Record<string, any>) =>
+            !canManageShipments(role) ||
+            ['Shipped', 'ArrivedAtDestination', 'ReadyForHandout', 'HandedOut', 'Cancelled'].includes(row.status),
+        },
+      ],
     },
   ];
 
@@ -551,6 +567,19 @@ const ShipmentDetailPage = ({ id }: Props) => {
         shipmentId={id}
         shipmentData={{ tiiuCode: data.tiiuCode, plannedDepartureDate: data.plannedDepartureDate, plannedArrivalDate: data.plannedArrivalDate, maxWeightKg: data.maxWeightKg, maxCbm: data.maxCbm }}
       />
+
+      {editingPkgId && packageTableData[editingPkgId] && (
+        <EditPackageDialog
+          open
+          onClose={() => setEditingPkgId(null)}
+          packageId={editingPkgId}
+          packageData={{
+            weightKg: packageTableData[editingPkgId].weightKg ?? null,
+            cbm: packageTableData[editingPkgId].cbm ?? null,
+            note: packageTableData[editingPkgId].note ?? null,
+          }}
+        />
+      )}
 
       {photosPkgId !== null && (
         <PhotoGalleryModal open onClose={() => setPhotosPkgId(null)} packageId={photosPkgId} />

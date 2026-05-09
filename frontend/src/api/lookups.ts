@@ -13,6 +13,7 @@ export const UNIT_LABEL_EN: Record<string, string> = {
   Crt: 'Carton',
   Bag: 'Bag',
   Pallet: 'Pallet',
+  Gallon: 'Gallon',
 };
 
 export const useUnitsLookup = () =>

@@ -1,13 +1,11 @@
 import { ChangeEvent, DragEvent, useCallback, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Card, CardContent, Chip, LinearProgress, Stack, Typography } from '@mui/material';
 import UploadIcon from '@mui/icons-material/Upload';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { toast } from 'react-toastify';
-import { uploadMultipart } from '../../api/client';
 import { MEDIA_STAGE_CHIPS } from '../../constants/statusColors';
 import MediaViewerModal from './MediaViewerModal';
+import { useMultiFileUpload } from './useMultiFileUpload';
 
 interface MediaItem {
   id: number;
@@ -26,49 +24,22 @@ interface MediaStageCardsProps {
 const STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
 
 const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
-  const qc = useQueryClient();
   const [viewerStage, setViewerStage] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, { done: number; total: number }>>({});
+  const [activeStage, setActiveStage] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const uploadSingleFile = useCallback(
-    (stage: string, file: File) => {
-      const fd = new FormData();
-      fd.append('stage', stage);
-      fd.append('file', file);
-      return uploadMultipart(`/api/packages/${packageId}/media`, fd);
-    },
-    [packageId],
-  );
+  const { uploadMultiple, progress } = useMultiFileUpload(packageId);
 
   const uploadMultipleFiles = useCallback(
     async (stage: string, files: File[]) => {
-      if (files.length === 0) return;
-      setUploadProgress((prev) => ({ ...prev, [stage]: { done: 0, total: files.length } }));
-      let failed = 0;
-      for (let i = 0; i < files.length; i++) {
-        try {
-          await uploadSingleFile(stage, files[i]);
-        } catch {
-          failed++;
-        }
-        setUploadProgress((prev) => ({ ...prev, [stage]: { done: i + 1, total: files.length } }));
-      }
-      setUploadProgress((prev) => {
-        const next = { ...prev };
-        delete next[stage];
-        return next;
-      });
-      qc.invalidateQueries({ queryKey: ['/api/packages', packageId, 'media'] });
-      qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
-      if (failed === 0) {
-        toast.success(`${files.length} photo${files.length !== 1 ? 's' : ''} uploaded`);
-      } else {
-        toast.warning(`${files.length - failed}/${files.length} photos uploaded, ${failed} failed`);
+      setActiveStage(stage);
+      try {
+        await uploadMultiple(stage, files);
+      } finally {
+        setActiveStage(null);
       }
     },
-    [uploadSingleFile, packageId, qc],
+    [uploadMultiple],
   );
 
   const handleDrop = useCallback(
@@ -113,7 +84,7 @@ const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
         {STAGES.map((stage) => {
           const sc = MEDIA_STAGE_CHIPS[stage] ?? MEDIA_STAGE_CHIPS['Other'];
           const count = countByStage[stage];
-          const progress = uploadProgress[stage];
+          const stageProgress = activeStage === stage ? progress : null;
           const isDragOver = dragOverStage === stage;
           return (
             <Card key={stage} variant="outlined" sx={{ borderLeft: `4px solid ${sc.backgroundColor}` }}>
@@ -159,12 +130,12 @@ const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
                   />
                 </Box>
 
-                {progress && (
+                {stageProgress && (
                   <Box sx={{ mb: 1 }}>
                     <Typography variant="caption" color="text.secondary">
-                      Uploading {progress.done}/{progress.total}...
+                      Uploading {stageProgress.done}/{stageProgress.total}...
                     </Typography>
-                    <LinearProgress variant="determinate" value={(progress.done / progress.total) * 100} sx={{ mt: 0.5 }} />
+                    <LinearProgress variant="determinate" value={(stageProgress.done / stageProgress.total) * 100} sx={{ mt: 0.5 }} />
                   </Box>
                 )}
 

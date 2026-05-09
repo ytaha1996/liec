@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, CircularProgress, TextField, Typography } from '@mui/material';
+import { Alert, Box, TextField, Typography } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { useUserRole, canManageShipments } from '../../helpers/rbac';
 import { toast } from 'react-toastify';
 import { getJson, postJson } from '../../api/client';
@@ -18,6 +19,9 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import { PKG_STATUS_CHIPS, BOOL_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
+import EditIcon from '@mui/icons-material/Edit';
+import EditPackageDialog from './components/EditPackageDialog';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/packages';
 
@@ -72,12 +76,14 @@ const buildAutoAssignFields = (
 });
 
 const PackagesPage = () => {
+  usePageTitle('Packages');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const role = useUserRole();
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
   const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT, search],
@@ -212,6 +218,24 @@ const PackagesPage = () => {
       chipColors: BOOL_CHIPS,
       chipLabels: { true: 'Yes', false: 'No' },
     },
+    {
+      id: 'actions',
+      label: 'Actions',
+      type: EnhancedTableColumnType.Action,
+      numeric: false,
+      disablePadding: false,
+      actions: [
+        {
+          icon: <EditIcon fontSize="small" />,
+          label: 'Edit',
+          onClick: (id: string) => setEditingId(id),
+          // Backend locks updates once status >= Shipped; cancelled has no use case for edit.
+          hidden: (row: Record<string, any>) =>
+            !canManageShipments(role) ||
+            ['Shipped', 'ArrivedAtDestination', 'ReadyForHandout', 'HandedOut', 'Cancelled'].includes(row.status),
+        },
+      ],
+    },
   ];
 
   const handleAutoAssignSubmit = async (values: Record<string, any>): Promise<boolean> => {
@@ -223,7 +247,7 @@ const PackagesPage = () => {
     }
   };
 
-  if (isLoading) return <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (isLoading) return <EnhancedTableSkeleton />;
   if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load packages.</Alert></Box>;
 
   return (
@@ -288,6 +312,19 @@ const PackagesPage = () => {
           onFieldChange={(name, value) => { if (name === 'provisionMethod') setProvisionMethod(value as string); }}
         />
       </GenericDialog>
+
+      {editingId && tableData[editingId] && (
+        <EditPackageDialog
+          open
+          onClose={() => setEditingId(null)}
+          packageId={editingId}
+          packageData={{
+            weightKg: tableData[editingId].weightKg ?? null,
+            cbm: tableData[editingId].cbm ?? null,
+            note: tableData[editingId].note ?? null,
+          }}
+        />
+      )}
     </Box>
   );
 };

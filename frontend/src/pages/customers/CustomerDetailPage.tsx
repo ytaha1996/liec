@@ -25,6 +25,7 @@ import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../componen
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 interface Props {
   id: string;
@@ -78,6 +79,8 @@ const CustomerDetailPage = ({ id }: Props) => {
     queryKey: ['/api/customers', id],
     queryFn: () => getJson<any>(`/api/customers/${id}`),
   });
+
+  usePageTitle(data?.name ?? `Customer #${id}`);
 
   const updateCustomer = useMutation({
     mutationFn: (payload: Record<string, any>) => putJson(`/api/customers/${id}`, payload),

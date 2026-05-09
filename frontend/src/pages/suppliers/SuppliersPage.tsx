@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { Box, CircularProgress } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { Icon } from '@iconify/react';
 import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
@@ -17,10 +17,11 @@ import { DynamicField, IDynamicTextField, IDynamicCheckboxField } from '../../co
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
-import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const SuppliersPage: React.FC = () => {
+  usePageTitle('Suppliers');
   const qc = useQueryClient();
   const role = useUserRole();
   const [open, setOpen] = useState(false);
@@ -133,11 +134,7 @@ const SuppliersPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <EnhancedTableSkeleton />;
   }
 
   return (

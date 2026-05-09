@@ -20,11 +20,12 @@ import UploadIcon from '@mui/icons-material/Upload';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { toast } from 'react-toastify';
-import { api, uploadMultipart } from '../../api/client';
+import { api } from '../../api/client';
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import { formatDateTime } from '../../helpers/formatting-utils';
 import { MEDIA_STAGE_CHIPS } from '../../constants/statusColors';
+import { useMultiFileUpload } from './useMultiFileUpload';
 
 interface MediaItem {
   id: number;
@@ -50,20 +51,13 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
 
   const sc = MEDIA_STAGE_CHIPS[stage] ?? MEDIA_STAGE_CHIPS['Other'];
 
-  const upload = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append('stage', stage);
-      fd.append('file', file);
-      return uploadMultipart(`/api/packages/${packageId}/media`, fd);
-    },
-    onSuccess: () => {
-      toast.success('Photo uploaded');
-      qc.invalidateQueries({ queryKey: ['/api/packages', packageId, 'media'] });
-      qc.invalidateQueries({ queryKey: ['/api/packages', packageId] });
-    },
-    onError: () => toast.error('Upload failed'),
-  });
+  const { uploadMultiple, progress, isUploading } = useMultiFileUpload(packageId);
+
+  const handleFiles = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) uploadMultiple(stage, files);
+    e.target.value = '';
+  };
 
   const deleteMedia = useMutation({
     mutationFn: (mediaId: number) => api.delete(`/api/packages/${packageId}/media/${mediaId}`),
@@ -107,18 +101,14 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
             </Typography>
           </Stack>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Button size="small" variant="outlined" startIcon={<UploadIcon />} component="label">
+            {progress && (
+              <Typography variant="body2" color="text.secondary">
+                Uploading {progress.done}/{progress.total}…
+              </Typography>
+            )}
+            <Button size="small" variant="outlined" startIcon={<UploadIcon />} component="label" disabled={isUploading}>
               Upload
-              <input
-                hidden
-                type="file"
-                accept="image/*"
-                onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                  const file = e.target.files?.[0];
-                  if (file) upload.mutate(file);
-                  e.target.value = '';
-                }}
-              />
+              <input hidden type="file" accept="image/*" multiple onChange={handleFiles} />
             </Button>
             <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
           </Stack>
@@ -127,18 +117,9 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
           {media.length === 0 ? (
             <Box sx={{ py: 6, textAlign: 'center' }}>
               <Typography color="text.secondary" sx={{ mb: 2 }}>No photos yet.</Typography>
-              <Button variant="contained" startIcon={<UploadIcon />} component="label">
-                Upload First Photo
-                <input
-                  hidden
-                  type="file"
-                  accept="image/*"
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                    const file = e.target.files?.[0];
-                    if (file) upload.mutate(file);
-                    e.target.value = '';
-                  }}
-                />
+              <Button variant="contained" startIcon={<UploadIcon />} component="label" disabled={isUploading}>
+                Upload Photos
+                <input hidden type="file" accept="image/*" multiple onChange={handleFiles} />
               </Button>
             </Box>
           ) : (
@@ -257,7 +238,7 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
                 </IconButton>
                 <IconButton
                   size="small"
-                  sx={{ color: '#ef5350', bgcolor: 'rgba(255,255,255,0.1)' }}
+                  sx={{ color: 'error.main', bgcolor: 'rgba(255,255,255,0.1)' }}
                   onClick={() => { setLightboxIdx(null); handleDelete(currentItem); }}
                 >
                   <DeleteIcon fontSize="small" />
