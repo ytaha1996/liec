@@ -230,7 +230,12 @@ const EnhancedTable: React.FC<EnhancedTableProps> = ({ header, data, defaultOrde
   const renderFilter = (filter: ITableFilterType) => {
 
     if (filter.type === TableFilterTypes.SELECT) {
-      const items: Record<string, any> = Object.values(data).reduce((acc, c) => ({ ...acc, [c[filter.name]]: c[filter.name] }), {});
+      // Prefer caller-provided options (e.g. humanised label maps like
+      // SHIPMENT_STATUS_LABELS) so the dropdown reads "Ready to Depart"
+      // instead of "ReadyToDepart". Fall back to deriving from the data
+      // when no options were passed.
+      const items: Record<string, any> = filter.options
+        ?? Object.values(data).reduce((acc, c) => ({ ...acc, [c[filter.name]]: c[filter.name] }), {});
 
       return <GenericSelectInput
         key={filter.name}

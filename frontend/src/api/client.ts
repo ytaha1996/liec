@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { humanizeStatusInText } from '../helpers/humanize-status';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'https://liec-shipment.azurewebsites.net/'
@@ -27,7 +28,15 @@ export type GateError = {
   missing: Array<{ packageId: number; customerName?: string; stage: string }>;
 };
 
-export const parseApiError = (e: any) => e?.response?.data ?? { message: e?.message ?? 'Unknown error' };
+export const parseApiError = (e: any) => {
+  const payload = e?.response?.data ?? { message: e?.message ?? 'Unknown error' };
+  // Humanise CamelCase status tokens (e.g. "ReadyToShip" → "Ready to Ship")
+  // so backend transition errors surface readable text in toasts.
+  if (typeof payload.message === 'string') {
+    return { ...payload, message: humanizeStatusInText(payload.message) };
+  }
+  return payload;
+};
 
 export const getJson = <T,>(url: string) => api.get<T>(url).then((r) => r.data);
 export const postJson = <T,>(url: string, body?: any) => api.post<T>(url, body).then((r) => r.data);

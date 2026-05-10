@@ -8,3 +8,12 @@ export const decodeRoleFromToken = (token: string): string | null => {
     return payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] || null;
   } catch { return null; }
 };
+
+export const decodeUserIdFromToken = (token: string): number | null => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const raw = payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'];
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch { return null; }
+};

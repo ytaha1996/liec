@@ -6,6 +6,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { MEDIA_STAGE_CHIPS } from '../../constants/statusColors';
 import MediaViewerModal from './MediaViewerModal';
 import { useMultiFileUpload } from './useMultiFileUpload';
+import { useUserRole, canUploadPhotos } from '../../helpers/rbac';
 
 interface MediaItem {
   id: number;
@@ -24,6 +25,8 @@ interface MediaStageCardsProps {
 const STAGES = ['Receiving', 'Departure', 'Arrival', 'Other'];
 
 const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
+  const role = useUserRole();
+  const canUpload = canUploadPhotos(role);
   const [viewerStage, setViewerStage] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -97,38 +100,40 @@ const MediaStageCards = ({ packageId, media }: MediaStageCardsProps) => {
                   {count === 0 ? 'No photos' : `${count} photo${count !== 1 ? 's' : ''}`}
                 </Typography>
 
-                {/* Drop zone */}
-                <Box
-                  onDrop={handleDrop(stage)}
-                  onDragOver={handleDragOver(stage)}
-                  onDragLeave={handleDragLeave}
-                  onClick={() => fileInputRefs.current[stage]?.click()}
-                  sx={{
-                    border: '2px dashed',
-                    borderColor: isDragOver ? 'primary.main' : 'grey.400',
-                    backgroundColor: isDragOver ? 'action.hover' : 'transparent',
-                    borderRadius: 1,
-                    p: 1.5,
-                    mb: 1.5,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': { borderColor: 'primary.main', backgroundColor: 'action.hover' },
-                  }}
-                >
-                  <CloudUploadIcon sx={{ fontSize: 28, color: isDragOver ? 'primary.main' : 'grey.500', mb: 0.5 }} />
-                  <Typography variant="caption" display="block" color="text.secondary">
-                    Drop photos here or click to upload
-                  </Typography>
-                  <input
-                    ref={(el) => { fileInputRefs.current[stage] = el; }}
-                    hidden
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleFileInput(stage)}
-                  />
-                </Box>
+                {/* Drop zone — only render for roles that can upload */}
+                {canUpload && (
+                  <Box
+                    onDrop={handleDrop(stage)}
+                    onDragOver={handleDragOver(stage)}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => fileInputRefs.current[stage]?.click()}
+                    sx={{
+                      border: '2px dashed',
+                      borderColor: isDragOver ? 'primary.main' : 'grey.400',
+                      backgroundColor: isDragOver ? 'action.hover' : 'transparent',
+                      borderRadius: 1,
+                      p: 1.5,
+                      mb: 1.5,
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      '&:hover': { borderColor: 'primary.main', backgroundColor: 'action.hover' },
+                    }}
+                  >
+                    <CloudUploadIcon sx={{ fontSize: 28, color: isDragOver ? 'primary.main' : 'grey.500', mb: 0.5 }} />
+                    <Typography variant="caption" display="block" color="text.secondary">
+                      Drop photos here or click to upload
+                    </Typography>
+                    <input
+                      ref={(el) => { fileInputRefs.current[stage] = el; }}
+                      hidden
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileInput(stage)}
+                    />
+                  </Box>
+                )}
 
                 {stageProgress && (
                   <Box sx={{ mb: 1 }}>

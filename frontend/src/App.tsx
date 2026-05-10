@@ -17,7 +17,7 @@ export const App = () => (
           <ErrorBoundary>
             <Portal />
           </ErrorBoundary>
-          <ToastContainer position="top-right" autoClose={4000} />
+          <ToastContainer position="top-right" autoClose={4000} style={{ zIndex: 99999 }} />
         </BrowserRouter>
       </LocalizationProvider>
     </ThemeProviderWrapper>

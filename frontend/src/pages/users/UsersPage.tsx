@@ -22,6 +22,7 @@ import PageTitleWrapper from '../../components/PageTitleWrapper';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import { useUserRole, canManageUsers } from '../../helpers/rbac';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { decodeUserIdFromToken, getUserToken } from '../../helpers/user-token';
 
 const ROLE_ITEMS: Record<string, string> = {
   Admin: 'Admin',
@@ -43,6 +44,7 @@ const UsersPage: React.FC = () => {
   const role = useUserRole();
   const dispatch = useAppDispatch();
   const isAdmin = canManageUsers(role);
+  const currentUserId = decodeUserIdFromToken(getUserToken() ?? '');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -154,7 +156,7 @@ const UsersPage: React.FC = () => {
               onSubmit: () => remove.mutate(Number(id)),
             }));
           },
-          hidden: () => false,
+          hidden: (row: Record<string, any>) => Number(row.id) === currentUserId,
         },
       ],
     } as EnhancedTableActionHeader] : []),
