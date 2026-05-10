@@ -22,7 +22,10 @@ import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/pricing-configs';
 
-const buildFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
+const buildFields = (
+  currencyItems: Record<string, string>,
+  initial?: Record<string, any>,
+): Record<string, DynamicFieldTypes> => ({
   name: {
     type: DynamicField.TEXT,
     name: 'name',
@@ -32,11 +35,12 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     value: initial?.name ?? '',
   },
   currency: {
-    type: DynamicField.TEXT,
+    type: DynamicField.SELECT,
     name: 'currency',
     title: 'Currency',
     required: true,
     disabled: false,
+    items: currencyItems,
     value: initial?.currency ?? '',
   },
   effectiveFrom: {
@@ -91,6 +95,18 @@ const PricingConfigsPage = () => {
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
+
+  const { data: currencies = [] } = useQuery<any[]>({
+    queryKey: ['/api/currencies'],
+    queryFn: () => getJson<any[]>('/api/currencies'),
+  });
+
+  const currencyItems = (currencies as any[])
+    .filter((c) => c.isActive)
+    .reduce((acc: Record<string, string>, c: any) => {
+      acc[c.code] = `${c.code} — ${c.name}${c.symbol ? ` (${c.symbol})` : ''}`;
+      return acc;
+    }, {});
 
   const save = useMutation({
     mutationFn: (payload: Record<string, any>) =>
@@ -207,7 +223,7 @@ const PricingConfigsPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined)}
+          fields={buildFields(currencyItems, editing ?? undefined)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>

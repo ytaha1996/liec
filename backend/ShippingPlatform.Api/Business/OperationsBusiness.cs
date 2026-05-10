@@ -356,7 +356,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             if (input.Items is { Count: > 0 })
             {
                 foreach (var item in input.Items)
-                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, Unit = item.Unit, UnitPrice = item.UnitPrice, GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
+                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, Unit = item.Unit, UnitPrice = item.UnitPrice, UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(), GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
                 await db.SaveChangesAsync();
             }
 
@@ -582,6 +582,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             // UnitPrice is nullable end-to-end; null means "not specified". Display layers
             // (e.g., the commercial invoice) handle null with a documented fallback.
             UnitPrice = item.UnitPrice,
+            UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(),
             Note = item.Note,
         };
         db.PackageItems.Add(entity);
@@ -604,6 +605,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             Quantity = item.Quantity,
             Unit = item.Unit,
             UnitPrice = item.UnitPrice,
+            UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(),
             Note = item.Note,
         }).ToList();
         db.PackageItems.AddRange(entities);
@@ -624,6 +626,8 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         i.Quantity = input.Quantity;
         i.Unit = input.Unit;
         if (input.UnitPrice.HasValue) i.UnitPrice = input.UnitPrice.Value;
+        if (!string.IsNullOrWhiteSpace(input.UnitPriceCurrency))
+            i.UnitPriceCurrency = input.UnitPriceCurrency.ToUpperInvariant();
         i.Note = input.Note;
         await db.SaveChangesAsync();
         await db.Entry(i).Reference(x => x.GoodType).LoadAsync();

@@ -11,7 +11,11 @@ public class PackageItem
     public GoodType GoodType { get; set; } = null!;
     public int Quantity { get; set; } = 1;
     public Unit Unit { get; set; } = Unit.Box;
-    // Always denominated in the system's base currency (USD). See Currencies table.
     public decimal? UnitPrice { get; set; }
+    // Currency the operator entered the unit price in. Defaults to USD (the
+    // historical assumption + the system base currency). Storage stays in
+    // this currency; conversion to the active PricingConfig.Currency happens
+    // at display time via IPriceConverter.
+    [MaxLength(3)] public string UnitPriceCurrency { get; set; } = "USD";
     [MaxLength(500)] public string? Note { get; set; }
 }

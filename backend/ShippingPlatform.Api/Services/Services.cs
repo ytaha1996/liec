@@ -402,6 +402,17 @@ public class ExportService(
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("BOL Report");
 
+        // Pricing currency context — all packages on the shipment share the same
+        // PricingConfig.Currency at calc time, so a single header label is enough.
+        var currencyCode = shipment.Packages
+            .Where(p => p.Status != PackageStatus.Cancelled)
+            .Select(p => p.Currency)
+            .FirstOrDefault() ?? "USD";
+        var currencyEntity = await db.Currencies.FirstOrDefaultAsync(c => c.Code == currencyCode, ct);
+        var currencySymbol = currencyEntity?.Symbol ?? currencyCode;
+        // XAF (FCFA) doesn't use decimals in practice; everything else gets two.
+        var amountFormat = string.Equals(currencyCode, "XAF", StringComparison.OrdinalIgnoreCase) ? "#,##0" : "#,##0.00";
+
         // ── Title row ──
         ws.Range("A1:I1").Merge().SetValue("BILL OF LADING");
         StyleTitle(ws.Range("A1:I1"), 16);
@@ -410,8 +421,9 @@ public class ExportService(
         ws.Cell("A3").Value = "Container:"; ws.Cell("B3").Value = shipment.RefCode;
         ws.Cell("C3").Value = "TIIU:"; ws.Cell("D3").Value = shipment.TiiuCode ?? "—";
         ws.Cell("F3").Value = "BL No:"; ws.Cell("G3").Value = shipment.RefCode;
+        ws.Cell("H3").Value = "Currency:"; ws.Cell("I3").Value = $"{currencyCode} ({currencySymbol})";
         StyleMetaRow(ws.Range("A3:I3"));
-        ws.Cell("A3").Style.Font.Bold = true; ws.Cell("C3").Style.Font.Bold = true; ws.Cell("F3").Style.Font.Bold = true;
+        ws.Cell("A3").Style.Font.Bold = true; ws.Cell("C3").Style.Font.Bold = true; ws.Cell("F3").Style.Font.Bold = true; ws.Cell("H3").Style.Font.Bold = true;
 
         ws.Cell("A4").Value = "Origin:"; ws.Cell("B4").Value = $"{shipment.OriginWarehouse.Name} ({shipment.OriginWarehouse.Code})";
         ws.Cell("C4").Value = "Destination:"; ws.Cell("D4").Value = $"{shipment.DestinationWarehouse.Name} ({shipment.DestinationWarehouse.Code})";
@@ -459,10 +471,10 @@ public class ExportService(
             ws.Cell(row, 2).Value = g.CustomerName;
             ws.Cell(row, 3).Value = g.Cbm; ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.000";
             ws.Cell(row, 4).Value = g.WeightTons; ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
-            ws.Cell(row, 5).Value = g.Rate; ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0.00";
-            ws.Cell(row, 6).Value = g.Freight; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
-            ws.Cell(row, 7).Value = g.Fees; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
-            ws.Cell(row, 8).Value = g.Freight + g.Fees; ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 8).Style.Font.Bold = true;
+            ws.Cell(row, 5).Value = g.Rate; ws.Cell(row, 5).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 6).Value = g.Freight; ws.Cell(row, 6).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 7).Value = g.Fees; ws.Cell(row, 7).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 8).Value = g.Freight + g.Fees; ws.Cell(row, 8).Style.NumberFormat.Format = amountFormat; ws.Cell(row, 8).Style.Font.Bold = true;
             ws.Cell(row, 9).Value = "";
             StyleDataRow(ws.Range(row, 1, row, 9), row);
             row++;
@@ -472,9 +484,9 @@ public class ExportService(
         ws.Cell(row, 2).Value = "TOTAL"; ws.Cell(row, 2).Style.Font.Bold = true;
         ws.Cell(row, 3).Value = grouped.Sum(x => x.Cbm); ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.000";
         ws.Cell(row, 4).Value = grouped.Sum(x => x.WeightTons); ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
-        ws.Cell(row, 6).Value = grouped.Sum(x => x.Freight); ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
-        ws.Cell(row, 7).Value = grouped.Sum(x => x.Fees); ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
-        ws.Cell(row, 8).Value = grouped.Sum(x => x.Freight + x.Fees); ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 6).Value = grouped.Sum(x => x.Freight); ws.Cell(row, 6).Style.NumberFormat.Format = amountFormat;
+        ws.Cell(row, 7).Value = grouped.Sum(x => x.Fees); ws.Cell(row, 7).Style.NumberFormat.Format = amountFormat;
+        ws.Cell(row, 8).Value = grouped.Sum(x => x.Freight + x.Fees); ws.Cell(row, 8).Style.NumberFormat.Format = amountFormat;
         var totalsRange = ws.Range(row, 1, row, 9);
         totalsRange.Style.Font.Bold = true;
         totalsRange.Style.Border.TopBorder = XLBorderStyleValues.Double;
@@ -511,12 +523,18 @@ public class ExportService(
         if (grouped.Count == 0)
             throw new InvalidOperationException("Shipment has no active packages to export.");
 
+        // Resolve the symbol from the Currencies table so the invoice
+        // header reads e.g. "Freight: 12,500 FCFA" instead of just "XAF".
+        var currencyCode = grouped[0].FirstOrDefault()?.Currency ?? "USD";
+        var currencyEntity = await db.Currencies.FirstOrDefaultAsync(c => c.Code == currencyCode, ct);
+        var currencySymbol = currencyEntity?.Symbol ?? currencyCode;
+
         for (var i = 0; i < grouped.Count; i++)
         {
             var g = grouped[i];
             var name = SafeSheetName($"{i + 1}-{g.Key.Name}", i + 1);
             var ws = workbook.Worksheets.Add(name);
-            FillCustomerInvoiceSheet(ws, shipment, g);
+            FillCustomerInvoiceSheet(ws, shipment, g, currencySymbol);
         }
 
         using var ms = new MemoryStream();
@@ -537,13 +555,12 @@ public class ExportService(
         return clean.Length <= 31 ? clean : clean[..31];
     }
 
-    private static void FillCustomerInvoiceSheet(IXLWorksheet ws, Shipment shipment, IGrouping<Customer, Package> group)
+    private static void FillCustomerInvoiceSheet(IXLWorksheet ws, Shipment shipment, IGrouping<Customer, Package> group, string currencySymbol)
     {
         var customer = group.Key;
         var totalCbm = group.Sum(x => x.Cbm);
         var totalWeight = group.Sum(x => x.WeightKg);
         var totalFreight = group.Sum(x => x.ChargeAmount);
-        var currency = group.FirstOrDefault()?.Currency ?? "EUR";
 
         // ── Title ──
         ws.Range("A1:D1").Merge().SetValue("CUSTOMER INVOICE");
@@ -561,7 +578,7 @@ public class ExportService(
 
         ws.Cell("A5").Value = $"CBM: {Math.Round(totalCbm, 3)} m\u00B3";
         ws.Cell("B5").Value = $"Weight: {totalWeight / 1000m:N3} t";
-        ws.Cell("C5").Value = totalFreight <= 0 ? "FOR FREE" : $"Freight: {Math.Round(totalFreight, 0):N0} {currency}";
+        ws.Cell("C5").Value = totalFreight <= 0 ? "FOR FREE" : $"Freight: {Math.Round(totalFreight, 0):N0} {currencySymbol}";
         StyleMetaRow(ws.Range("A5:D5"));
         ws.Cell("A5").Style.Font.Bold = true; ws.Cell("B5").Style.Font.Bold = true; ws.Cell("C5").Style.Font.Bold = true;
 
@@ -653,7 +670,11 @@ public class ExportService(
             await db.SaveChangesAsync(ct);
         }
 
-        // Resolve FX rates: prefer Manual override, then Departed snapshot, then live current rates.
+        // Resolve FX rates from the Currencies table via the snapshot service:
+        // prefer Manual override → Departed snapshot → live FxRateService rate.
+        // The commercial-invoice template hand-codes USD/EUR/XAF positions; the
+        // numeric values flow in dynamically here, so changing the seeded
+        // Currencies.Rate column ripples through every regenerated invoice.
         var eurSnap = await fxSnap.ResolveForInvoiceAsync(shipmentId, "EUR");
         var xafSnap = await fxSnap.ResolveForInvoiceAsync(shipmentId, "XAF");
         var eurRate = eurSnap?.RateToBase ?? 1m;

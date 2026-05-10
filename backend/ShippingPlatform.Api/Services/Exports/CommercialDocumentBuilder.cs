@@ -17,6 +17,27 @@ public record InvoiceFxRates(
 
 public static class CommercialDocumentBuilder
 {
+    // ── Reference-template palette ────────────────────────────────────────
+    // Sourced from the supplied "Queen's Sleep" Packing List screenshot:
+    // medium-blue customer panel, navy meta text, very-light-blue zebra rows,
+    // navy outer border. All commercial documents share these colors so the
+    // Invoice and Packing List sheets read as one document.
+    private static readonly XLColor ClientBoxFill   = XLColor.FromHtml("#3D6FA3");
+    private static readonly XLColor ClientBoxText   = XLColor.FromHtml("#FFFFFF");
+    private static readonly XLColor DateLabelText   = XLColor.FromHtml("#1F3A5F");
+    private static readonly XLColor TableHeaderFill = XLColor.FromHtml("#3D6FA3");
+    private static readonly XLColor TableHeaderText = XLColor.FromHtml("#FFFFFF");
+    private static readonly XLColor RowAltFill      = XLColor.FromHtml("#E8F0F8");
+    private static readonly XLColor BorderNavy      = XLColor.FromHtml("#1F3A5F");
+    private static readonly XLColor FooterTotalFill = XLColor.FromHtml("#D6E3F0");
+
+    // Compose a short, name-free identifier shown in the customer-info block.
+    // Pattern: "{ISO2 country}{padded customer id}" — e.g. "GA0123". Mirrors
+    // the existing Customer ID cell so operators see the same code in both
+    // places. Customer.Name is intentionally never written to either sheet.
+    private static string BuildClientCode(string country2, int customerId) =>
+        $"{country2}{customerId:D4}";
+
     public static void Fill(
         IXLWorkbook workbook,
         Shipment shipment,
@@ -112,7 +133,8 @@ public static class CommercialDocumentBuilder
         ws.Row(5).Height = 6;
 
         // ── Header rows 6-9 (client / shipment metadata) ──
-        ws.Cell("A6").Value = $"To Client: {primaryCustomer.Name}";
+        var primaryClientCode = BuildClientCode(country2, primaryCustomer.Id);
+        ws.Cell("A6").Value = $"To Client: {primaryClientCode}";
         ws.Cell("C6").Value = "Date       ";
         ws.Cell("D6").Value = $" :  {invoiceDate:dd / MM / yyyy}";
 
@@ -137,6 +159,16 @@ public static class CommercialDocumentBuilder
         headerStyle.Font.FontName = "Century Gothic";
         headerStyle.Font.FontSize = 12;
         headerStyle.Font.Bold = true;
+
+        // ── Restyle: blue customer panel (left) + navy meta block (right) ──
+        var clientPanel = ws.Range("A6:B9");
+        clientPanel.Style.Fill.BackgroundColor = ClientBoxFill;
+        clientPanel.Style.Font.FontColor = ClientBoxText;
+        clientPanel.Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+        clientPanel.Style.Border.OutsideBorderColor = BorderNavy;
+
+        var metaBlock = ws.Range("C6:D8");
+        metaBlock.Style.Font.FontColor = DateLabelText;
 
         ws.Row(10).Height = 6.75;
 
@@ -166,10 +198,15 @@ public static class CommercialDocumentBuilder
         var hStyle = headerRange.Style;
         hStyle.Font.FontName = "Times New Roman"; hStyle.Font.FontSize = 14; hStyle.Font.Bold = true;
         hStyle.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        hStyle.Fill.BackgroundColor = TableHeaderFill;
+        hStyle.Font.FontColor = TableHeaderText;
         hStyle.Border.TopBorder = XLBorderStyleValues.Medium;
         hStyle.Border.LeftBorder = XLBorderStyleValues.Medium;
         hStyle.Border.RightBorder = XLBorderStyleValues.Medium;
+        hStyle.Border.BottomBorder = XLBorderStyleValues.Medium;
         hStyle.Border.InsideBorder = XLBorderStyleValues.Thin;
+        hStyle.Border.OutsideBorderColor = BorderNavy;
+        hStyle.Border.InsideBorderColor = BorderNavy;
 
         // ── Item rows starting at 12 ──
         var firstItemRow = 12;
@@ -182,7 +219,7 @@ public static class CommercialDocumentBuilder
             var unitCode = UnitLabels.ExcelCode.TryGetValue(line.Item.Unit, out var ec) ? ec : line.Item.Unit.ToString().ToUpperInvariant();
             var unitPrice = line.Item.UnitPrice ?? 10m;
 
-            if (multi) ws.Cell($"{col.Customer}{r}").Value = line.Package.Customer.Name;
+            if (multi) ws.Cell($"{col.Customer}{r}").Value = BuildClientCode(country2, line.Package.Customer.Id);
             ws.Cell($"{col.Description}{r}").Value = goodName;
             ws.Cell($"{col.Qty}{r}").Value = line.Item.Quantity;
             ws.Cell($"{col.Unit}{r}").Value = unitCode;
@@ -198,9 +235,14 @@ public static class CommercialDocumentBuilder
             var rs = rowRange.Style;
             rs.Font.FontName = "Times New Roman"; rs.Font.FontSize = 9; rs.Font.Bold = true;
             rs.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            // Zebra stripe — even-indexed rows get the light-blue tint.
+            if ((r - firstItemRow) % 2 == 0) rs.Fill.BackgroundColor = RowAltFill;
             rs.Border.InsideBorder = XLBorderStyleValues.Thin;
+            rs.Border.InsideBorderColor = BorderNavy;
             rs.Border.LeftBorder = XLBorderStyleValues.Medium;
             rs.Border.RightBorder = XLBorderStyleValues.Medium;
+            rs.Border.LeftBorderColor = BorderNavy;
+            rs.Border.RightBorderColor = BorderNavy;
             r++;
         }
 
@@ -216,8 +258,12 @@ public static class CommercialDocumentBuilder
         var totalsRange = ws.Range($"A{footerStart}:{col.HFormula}{footerStart}");
         totalsRange.Style.Font.FontName = "Century Gothic";
         totalsRange.Style.Font.FontSize = 12; totalsRange.Style.Font.Bold = true;
+        totalsRange.Style.Fill.BackgroundColor = FooterTotalFill;
+        totalsRange.Style.Font.FontColor = DateLabelText;
         totalsRange.Style.Border.TopBorder = XLBorderStyleValues.Medium;
         totalsRange.Style.Border.BottomBorder = XLBorderStyleValues.Medium;
+        totalsRange.Style.Border.TopBorderColor = BorderNavy;
+        totalsRange.Style.Border.BottomBorderColor = BorderNavy;
 
         var fr = footerStart + 1;
         ws.Cell($"A{fr}").Value = "FRIEGHT ($)"; // Preserve original misspelling
@@ -268,6 +314,16 @@ public static class CommercialDocumentBuilder
 
         fr += 2;
         ws.Cell($"A{fr}").Value = tpl.ThankYou;
+        var thanksRange = ws.Range($"A{fr}:{col.HFormula}{fr}");
+        thanksRange.Merge();
+        thanksRange.Style.Font.Italic = true;
+        thanksRange.Style.Font.FontColor = DateLabelText;
+        thanksRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+        // Outer page border — frames the whole document like the screenshot.
+        var outer = ws.Range($"A1:{col.HFormula}{fr}");
+        outer.Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+        outer.Style.Border.OutsideBorderColor = BorderNavy;
 
         ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
         ws.PageSetup.FitToPages(1, 0);
@@ -308,7 +364,8 @@ public static class CommercialDocumentBuilder
         c4.Font.FontName = "Century Gothic"; c4.Font.FontSize = 11; c4.Font.Bold = true;
         c4.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-        ws.Cell("A6").Value = $"To Client: {primaryCustomer.Name}";
+        var primaryClientCode = BuildClientCode(country2, primaryCustomer.Id);
+        ws.Cell("A6").Value = $"To Client: {primaryClientCode}";
         ws.Cell("C6").Value = "Date       ";
         ws.Cell("D6").Value = $" :  {invoiceDate:dd / MM /yyyy}";
 
@@ -322,6 +379,22 @@ public static class CommercialDocumentBuilder
         ws.Cell("D8").Value = $": {country2}{primaryCustomer.Id} \\\\ {shipment.RefCode}";
 
         ws.Cell("A9").Value = $"CONTAINER : {shipment.TiiuCode ?? string.Empty}";
+
+        // Match the Invoice sheet styling — blue customer panel + navy meta block.
+        var plClientPanel = ws.Range("A6:B9");
+        plClientPanel.Style.Font.FontName = "Century Gothic";
+        plClientPanel.Style.Font.FontSize = 11;
+        plClientPanel.Style.Font.Bold = true;
+        plClientPanel.Style.Fill.BackgroundColor = ClientBoxFill;
+        plClientPanel.Style.Font.FontColor = ClientBoxText;
+        plClientPanel.Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+        plClientPanel.Style.Border.OutsideBorderColor = BorderNavy;
+
+        var plMetaBlock = ws.Range("C6:D8");
+        plMetaBlock.Style.Font.FontName = "Century Gothic";
+        plMetaBlock.Style.Font.FontSize = 12;
+        plMetaBlock.Style.Font.Bold = true;
+        plMetaBlock.Style.Font.FontColor = DateLabelText;
 
         // Multi-customer for PL: insert Customer at A, push Description/Qty/Packaging/Unit right
         var col = multi
@@ -341,8 +414,15 @@ public static class CommercialDocumentBuilder
         var hStyle = headerRange.Style;
         hStyle.Font.FontName = "Times New Roman"; hStyle.Font.FontSize = 12; hStyle.Font.Bold = true;
         hStyle.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        hStyle.Fill.BackgroundColor = TableHeaderFill;
+        hStyle.Font.FontColor = TableHeaderText;
         hStyle.Border.TopBorder = XLBorderStyleValues.Medium;
+        hStyle.Border.BottomBorder = XLBorderStyleValues.Medium;
+        hStyle.Border.LeftBorder = XLBorderStyleValues.Medium;
+        hStyle.Border.RightBorder = XLBorderStyleValues.Medium;
         hStyle.Border.InsideBorder = XLBorderStyleValues.Thin;
+        hStyle.Border.OutsideBorderColor = BorderNavy;
+        hStyle.Border.InsideBorderColor = BorderNavy;
 
         var firstItemRow = 12;
         var r = firstItemRow;
@@ -350,11 +430,24 @@ public static class CommercialDocumentBuilder
         foreach (var line in lines)
         {
             var unitCode = UnitLabels.ExcelCode.TryGetValue(line.Item.Unit, out var ec) ? ec : line.Item.Unit.ToString().ToUpperInvariant();
-            if (multi) ws.Cell($"{col.Customer}{r}").Value = line.Package.Customer.Name;
+            if (multi) ws.Cell($"{col.Customer}{r}").Value = BuildClientCode(country2, line.Package.Customer.Id);
             ws.Cell($"{col.Description}{r}").Value = (line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}").ToUpperInvariant();
             ws.Cell($"{col.Qty}{r}").Value = line.Item.Quantity;
             ws.Cell($"{col.Packaging}{r}").Value = line.Item.Quantity;
             ws.Cell($"{col.UnitCode}{r}").Value = unitCode;
+
+            var rowRange = multi
+                ? ws.Range($"{col.Customer}{r}:{col.UnitCode}{r}")
+                : ws.Range($"{col.Description}{r}:{col.UnitCode}{r}");
+            rowRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            rowRange.Style.Font.FontName = "Times New Roman"; rowRange.Style.Font.FontSize = 11;
+            if ((r - firstItemRow) % 2 == 0) rowRange.Style.Fill.BackgroundColor = RowAltFill;
+            rowRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.InsideBorderColor = BorderNavy;
+            rowRange.Style.Border.LeftBorder = XLBorderStyleValues.Medium;
+            rowRange.Style.Border.RightBorder = XLBorderStyleValues.Medium;
+            rowRange.Style.Border.LeftBorderColor = BorderNavy;
+            rowRange.Style.Border.RightBorderColor = BorderNavy;
             r++;
         }
         var lastItemRow = r - 1;
@@ -365,10 +458,26 @@ public static class CommercialDocumentBuilder
         ws.Cell($"{col.UnitCode}{footerStart}").FormulaA1 = $"=SUM({col.Qty}{firstItemRow}:{col.Qty}{lastItemRow})";
         var ts = ws.Range($"A{footerStart}:{col.UnitCode}{footerStart}").Style;
         ts.Font.FontName = "Times New Roman"; ts.Font.FontSize = 11; ts.Font.Bold = true;
+        ts.Fill.BackgroundColor = FooterTotalFill;
+        ts.Font.FontColor = DateLabelText;
+        ts.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         ts.Border.TopBorder = XLBorderStyleValues.Medium;
         ts.Border.BottomBorder = XLBorderStyleValues.Medium;
+        ts.Border.TopBorderColor = BorderNavy;
+        ts.Border.BottomBorderColor = BorderNavy;
 
-        ws.Cell($"A{footerStart + 2}").Value = "Thank you for your business!";
+        var thanksRow = footerStart + 2;
+        ws.Cell($"A{thanksRow}").Value = "Thank you for your business!";
+        var thanksRange = ws.Range($"A{thanksRow}:{col.UnitCode}{thanksRow}");
+        thanksRange.Merge();
+        thanksRange.Style.Font.Italic = true;
+        thanksRange.Style.Font.FontColor = DateLabelText;
+        thanksRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+        // Outer page border — frames the whole document like the screenshot.
+        var outer = ws.Range($"A1:{col.UnitCode}{thanksRow}");
+        outer.Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+        outer.Style.Border.OutsideBorderColor = BorderNavy;
 
         ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
         ws.PageSetup.FitToPages(1, 0);

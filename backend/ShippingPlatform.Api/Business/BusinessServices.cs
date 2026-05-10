@@ -135,13 +135,13 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
     public async Task<PricingConfigDto?> GetPricingConfigAsync(int id) => (await db.PricingConfigs.FindAsync(id))?.ToDto();
     public async Task<PricingConfigDto> CreatePricingConfigAsync(UpsertPricingConfigRequest req)
     {
-        var e = new PricingConfig { Name = req.Name, Currency = req.Currency, EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, MinimumCharge = req.MinimumCharge, Status = req.Status };
+        var e = new PricingConfig { Name = req.Name, Currency = req.Currency.ToUpperInvariant(), EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, MinimumCharge = req.MinimumCharge, Status = req.Status };
         db.PricingConfigs.Add(e); await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> UpdatePricingConfigAsync(int id, UpsertPricingConfigRequest req)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
-        e.Name = req.Name; e.Currency = req.Currency; e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.MinimumCharge = req.MinimumCharge; e.Status = req.Status;
+        e.Name = req.Name; e.Currency = req.Currency.ToUpperInvariant(); e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.MinimumCharge = req.MinimumCharge; e.Status = req.Status;
         await db.SaveChangesAsync(); return e.ToDto();
     }
     public async Task<PricingConfigDto?> ActivatePricingConfigAsync(int id)

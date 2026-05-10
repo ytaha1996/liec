@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Dtos;
 using ShippingPlatform.Api.Models;
 
@@ -110,10 +112,15 @@ public class ApplyPricingOverrideRequestValidator : AbstractValidator<ApplyPrici
 
 public class UpsertPricingConfigRequestValidator : AbstractValidator<UpsertPricingConfigRequest>
 {
-    public UpsertPricingConfigRequestValidator()
+    public UpsertPricingConfigRequestValidator(AppDbContext db)
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Currency).NotEmpty().MaximumLength(10);
+        RuleFor(x => x.Currency)
+            .NotEmpty().Length(3).Matches(@"^[A-Za-z]{3}$").WithMessage("Currency must be a 3-letter ISO code.")
+            .MustAsync(async (code, ct) =>
+                !string.IsNullOrWhiteSpace(code) &&
+                await db.Currencies.AnyAsync(c => c.Code == code.ToUpper() && c.IsActive, ct))
+            .WithMessage("Currency does not exist or is inactive.");
         RuleFor(x => x.DefaultRatePerKg).GreaterThan(0);
         RuleFor(x => x.DefaultRatePerCbm).GreaterThan(0);
     }

@@ -42,6 +42,8 @@ import { useUserRole, canTransitionPackage, canEditPackageItems, canEditPackageW
 import { formatAuditEntry } from '../../helpers/audit-utils';
 import { usePageTitle } from '../../helpers/usePageTitle';
 import { UNIT_LABEL_EN } from '../../api/lookups';
+import { convertPrice, type CurrencyRow } from '../../helpers/fx-rates';
+import { formatPriceWithFlag } from '../../helpers/format-price';
 
 interface Props {
   id: string;
@@ -128,6 +130,11 @@ const PackageDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any[]>('/api/good-types'),
   });
 
+  const currenciesQuery = useQuery<CurrencyRow[]>({
+    queryKey: ['/api/currencies'],
+    queryFn: () => getJson<CurrencyRow[]>('/api/currencies'),
+  });
+
   const shipmentId = (data?.package ?? data)?.shipmentId;
   const shipmentQuery = useQuery<any>({
     queryKey: ['/api/shipments', shipmentId],
@@ -185,14 +192,34 @@ const PackageDetailPage = ({ id }: Props) => {
   );
 
   const items: any[] = data?.items ?? [];
+  // Display every item's unit price in the package's currency (the active
+  // PricingConfig.Currency at calc time). Items themselves are stored in
+  // their original currency (UnitPriceCurrency, defaults to USD); convert
+  // for display via the chained FX rates loaded from /api/currencies.
+  const displayCcy = ((data?.package ?? data)?.currency as string | undefined) ?? 'USD';
+  const currenciesList = currenciesQuery.data ?? [];
+  const displaySymbol = currenciesList.find(
+    (c) => c.code.toUpperCase() === displayCcy.toUpperCase(),
+  )?.symbol ?? displayCcy;
   const itemsTableData = items.reduce((acc: Record<string, any>, item: any) => {
+    const storedAmount = item.unitPrice == null ? null : Number(item.unitPrice);
+    const storedCcy = (item.unitPriceCurrency as string | undefined) ?? 'USD';
+    const display = storedAmount == null
+      ? { text: '—', converted: false, tooltip: undefined as string | undefined }
+      : formatPriceWithFlag(
+          convertPrice(currenciesList, storedAmount, storedCcy, displayCcy),
+          displayCcy,
+          storedCcy,
+          storedAmount,
+          displaySymbol,
+        );
     acc[item.id] = {
       ...item,
       goodName: item.goodTypeName || goodsMap[item.goodTypeId] || `#${item.goodTypeId}`,
       unitLabel: UNIT_LABEL_EN[item.unit] ?? item.unit ?? '—',
-      unitPriceDisplay: item.unitPrice == null
-        ? '—'
-        : `$ ${Number(item.unitPrice).toFixed(2)}`,
+      unitPriceDisplay: display.tooltip
+        ? `${display.text}  (orig: ${display.tooltip.replace(/^Original:\s*/, '')})`
+        : display.text,
     };
     return acc;
   }, {});

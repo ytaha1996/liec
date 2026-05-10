@@ -71,6 +71,7 @@ builder.Services.AddScoped<IInvoiceSequenceService, InvoiceSequenceService>();
 builder.Services.AddSingleton(sp => InvoiceTemplateConstants.FromConfig(sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IFxRateService, ShippingPlatform.Api.Services.FxRates.FxRateService>();
 builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService, ShippingPlatform.Api.Services.FxRates.ShipmentSnapshotService>();
+builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IPriceConverter, ShippingPlatform.Api.Services.FxRates.PriceConverter>();
 builder.Services.AddScoped<ICurrencyBusiness, CurrencyBusiness>();
 builder.Services.AddScoped<ITransitionRuleService, TransitionRuleService>();
 builder.Services.AddScoped<IAuthBusiness, AuthBusiness>();
@@ -147,27 +148,29 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 
+    // ── Currencies (seeded first so PricingConfig FK can resolve) ──────────
+    SeedHelper.SeedCurrencies(db);
+
     // ── Default Pricing Config ───────────────────────────────────────────────
+    // Default operations market: Central African CFA Franc (XAF / FCFA).
+    // 1 m³ = 275,000 FCFA; 1 metric ton = 500,000 FCFA → 1 kg = 500 FCFA.
     if (!db.PricingConfigs.Any())
     {
         db.PricingConfigs.Add(new PricingConfig
         {
-            Name             = "Standard Rate 2025",
-            Currency         = "EUR",
-            EffectiveFrom    = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            EffectiveTo      = null,
-            DefaultRatePerKg = 5.00m,
-            DefaultRatePerCbm = 15.00m,
-            Status           = PricingConfigStatus.Active,
+            Name              = "Standard XAF Rate",
+            Currency          = "XAF",
+            EffectiveFrom     = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EffectiveTo       = null,
+            DefaultRatePerKg  = 500m,
+            DefaultRatePerCbm = 275_000m,
+            Status            = PricingConfigStatus.Active,
         });
         db.SaveChanges();
     }
 
     // ── Customers ───────────────────────────────────────────────────────────
     SeedHelper.SeedCustomers(db);
-
-    // ── Currencies ──────────────────────────────────────────────────────────
-    SeedHelper.SeedCurrencies(db);
 }
 
 app.Run();
