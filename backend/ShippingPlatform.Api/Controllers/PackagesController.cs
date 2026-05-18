@@ -113,6 +113,31 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
         return Ok(result);
     }
 
+    [Authorize(Roles = "Admin,Manager")]
+    [HttpPost("api/packages/{id:int}/documents")]
+    public async Task<IActionResult> UploadDocument(int id, [FromForm] DocumentUploadRequest req)
+    {
+        req.AdminUserId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : (int?)null;
+        var result = await business.UploadDocumentAsync(id, req);
+        if (result is null) return NotFound();
+        if (result.GetType().GetProperty("code") is not null) return BadRequest(result);
+        return Ok(result);
+    }
+
+    [HttpGet("api/packages/{id:int}/documents")]
+    public async Task<IActionResult> ListDocuments(int id) => Ok(await business.ListDocumentsAsync(id));
+
+    [Authorize(Roles = "Admin,Manager")]
+    [HttpDelete("api/packages/{id:int}/documents/{documentId:int}")]
+    public async Task<IActionResult> DeleteDocument(int id, int documentId)
+    {
+        var adminId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : (int?)null;
+        var result = await business.DeleteDocumentAsync(id, documentId, adminId);
+        if (result is null) return NotFound();
+        if (result.GetType().GetProperty("code") is not null) return BadRequest(result);
+        return Ok(result);
+    }
+
     [Authorize(Roles = "Admin,Manager,Accountant")]
     [HttpPost("api/packages/{id:int}/pricing-override")]
     public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)

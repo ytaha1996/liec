@@ -14,6 +14,7 @@ export const UNIT_LABEL_EN: Record<string, string> = {
   Bag: 'Bag',
   Pallet: 'Pallet',
   Gallon: 'Gallon',
+  Bundle: 'Bundle',
 };
 
 export const useUnitsLookup = () =>

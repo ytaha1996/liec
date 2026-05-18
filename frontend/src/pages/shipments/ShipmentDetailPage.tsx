@@ -92,10 +92,20 @@ const ShipmentDetailPage = ({ id }: Props) => {
   const [editingPkgId, setEditingPkgId] = useState<string | null>(null);
   const [rtdPreview, setRtdPreview] = useState<any>(null);
 
-  const { data, isLoading, isError } = useQuery<any>({
-    queryKey: ['/api/shipments', id],
-    queryFn: () => getJson<any>(`/api/shipments/${id}`),
+  // Single aggregated endpoint: shipment + warehouses + packages-with-customer-names
+  // all in one round trip. Replaces 4 separate over-fetching queries
+  // (/api/shipments, /api/packages, /api/customers, /api/warehouses).
+  const { data: detail, isLoading, isError } = useQuery<any>({
+    queryKey: ['/api/shipments', id, 'detail'],
+    queryFn: () => getJson<any>(`/api/shipments/${id}/detail`),
   });
+  const data = detail?.shipment;
+  const shipmentPackages: any[] = detail?.packages ?? [];
+  const originWarehouseName: string = detail?.originWarehouseName ?? '';
+  const originWarehouseCode: string = detail?.originWarehouseCode ?? '';
+  const destinationWarehouseName: string = detail?.destinationWarehouseName ?? '';
+  const destinationWarehouseCode: string = detail?.destinationWarehouseCode ?? '';
+  const uniqueCustomerCount: number = detail?.uniqueCustomerCount ?? 0;
 
   usePageTitle(data ? `Shipment ${data.refCode}` : `Shipment #${id}`);
 
@@ -104,39 +114,10 @@ const ShipmentDetailPage = ({ id }: Props) => {
     queryFn: () => getJson<any[]>(`/api/shipments/${id}/audit-log`),
   });
 
-  const packagesQuery = useQuery<any[]>({
-    queryKey: ['/api/packages'],
-    queryFn: () => getJson<any[]>('/api/packages'),
-  });
-
-  const customersQuery = useQuery<any[]>({
-    queryKey: ['/api/customers'],
-    queryFn: () => getJson<any[]>('/api/customers'),
-  });
-
-  const warehousesQuery = useQuery<any[]>({
-    queryKey: ['/api/warehouses'],
-    queryFn: () => getJson<any[]>('/api/warehouses'),
-  });
-
-  const customersMap = (customersQuery.data ?? []).reduce((acc: Record<number, string>, c: any) => {
-    acc[c.id] = `${c.name} (#${c.id})`;
-    return acc;
-  }, {});
-
-  const warehousesMap = (warehousesQuery.data ?? []).reduce((acc: Record<number, string>, w: any) => {
-    acc[w.id] = `${w.name} (${w.code})`;
-    return acc;
-  }, {});
-
-  const shipmentPackages = (packagesQuery.data ?? []).filter(
-    (p) => String(p.shipmentId) === String(id),
-  );
-
   const packageTableData = shipmentPackages.reduce((acc: Record<string, any>, item: any) => {
     acc[item.id] = {
       ...item,
-      customer: customersMap[item.customerId] ?? `#${item.customerId}`,
+      customer: `${item.customerName} (#${item.customerId})`,
       hasDeparturePhotos: String(item.hasDeparturePhotos),
       hasArrivalPhotos: String(item.hasArrivalPhotos),
       chargeDisplay: item.chargeAmount > 0 ? `${Number(item.chargeAmount).toFixed(2)} ${item.currency}` : '—',
@@ -214,7 +195,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onSuccess: () => {
       setGate(null);
       toast.success('Shipment updated');
-      qc.invalidateQueries({ queryKey: ['/api/shipments', id] });
+      qc.invalidateQueries({ queryKey: ['/api/shipments', id, 'detail'] });
     },
     onError: (e: any) => {
       const payload = e?.response?.data ?? {};
@@ -224,8 +205,6 @@ const ShipmentDetailPage = ({ id }: Props) => {
       toast.error(payload.message ?? 'Transition failed');
     },
   });
-
-  const uniqueCustomerCount = new Set(shipmentPackages.map((p: any) => p.customerId)).size;
 
   const exportBol = useMutation({
     mutationFn: () => postJson<{ publicUrl: string }>(`/api/exports/shipments/${id}/bol-report`),
@@ -260,7 +239,7 @@ const ShipmentDetailPage = ({ id }: Props) => {
     onSuccess: (_data, variables) => {
       toast.success(`${variables.packageIds.length} package(s) updated successfully`);
       qc.invalidateQueries({ queryKey: ['/api/packages'] });
-      qc.invalidateQueries({ queryKey: ['/api/shipments', id] });
+      qc.invalidateQueries({ queryKey: ['/api/shipments', id, 'detail'] });
     },
     onError: (e: any) => {
       toast.error(e?.response?.data?.message ?? 'Bulk transition failed');
@@ -342,8 +321,12 @@ const ShipmentDetailPage = ({ id }: Props) => {
 
   const shipmentDisplayData = {
     ...data,
-    originWarehouse: warehousesMap[data.originWarehouseId] ?? `#${data.originWarehouseId}`,
-    destinationWarehouse: warehousesMap[data.destinationWarehouseId] ?? `#${data.destinationWarehouseId}`,
+    originWarehouse: originWarehouseName
+      ? `${originWarehouseName} (${originWarehouseCode})`
+      : `#${data.originWarehouseId}`,
+    destinationWarehouse: destinationWarehouseName
+      ? `${destinationWarehouseName} (${destinationWarehouseCode})`
+      : `#${data.destinationWarehouseId}`,
   };
 
   const activePackages = shipmentPackages.filter((p: any) => p.status !== 'Cancelled');
@@ -543,12 +526,12 @@ const ShipmentDetailPage = ({ id }: Props) => {
                 </Stack>
                 {missingDep.length > 0 && (
                   <Alert severity="warning" sx={{ mb: 1.5 }}>
-                    {missingDep.length} package(s) missing departure photos: {missingDep.map((p: any) => `#${p.id} (${customersMap[p.customerId] ?? p.customerId})`).join(', ')}
+                    {missingDep.length} package(s) missing departure photos: {missingDep.map((p: any) => `#${p.id} (${p.customerName ?? p.customerId})`).join(', ')}
                   </Alert>
                 )}
                 {missingArr.length > 0 && (
                   <Alert severity="info" sx={{ mb: 1.5 }}>
-                    {missingArr.length} package(s) missing arrival photos: {missingArr.map((p: any) => `#${p.id} (${customersMap[p.customerId] ?? p.customerId})`).join(', ')}
+                    {missingArr.length} package(s) missing arrival photos: {missingArr.map((p: any) => `#${p.id} (${p.customerName ?? p.customerId})`).join(', ')}
                   </Alert>
                 )}
               </>

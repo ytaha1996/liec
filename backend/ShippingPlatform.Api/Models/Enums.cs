@@ -12,7 +12,7 @@ public enum DeliveryResult { Pending, Sent, Failed, SkippedNoOptIn }
 public enum UserRole { Admin, Manager, Accountant, Field }
 
 // Append-only: numeric values are stable. Never reorder or delete entries.
-public enum Unit { Box = 1, Piece = 2, Crt = 3, Bag = 4, Pallet = 5, Gallon = 6 }
+public enum Unit { Box = 1, Piece = 2, Crt = 3, Bag = 4, Pallet = 5, Gallon = 6, Bundle = 7 }
 // `Live` is only ever returned in-memory by ResolveForInvoiceAsync for synthetic
 // fallback rates derived from current FxRateService values; it is never persisted.
 public enum ShipmentSnapshotEvent { Departed, Arrived, Manual, Live }

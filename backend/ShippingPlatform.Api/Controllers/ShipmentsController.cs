@@ -16,6 +16,9 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id) => (await business.GetAsync(id)) is { } s ? Ok(s) : NotFound();
 
+    [HttpGet("{id:int}/detail")]
+    public async Task<IActionResult> Detail(int id) => (await business.GetDetailAsync(id)) is { } d ? Ok(d) : NotFound();
+
     [Authorize(Roles = "Admin,Manager")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateShipmentRequest input)

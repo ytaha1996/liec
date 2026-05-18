@@ -38,6 +38,20 @@ public static class CommercialDocumentBuilder
     private static string BuildClientCode(string country2, int customerId) =>
         $"{country2}{customerId:D4}";
 
+    // Bilingual item name for excel cells. Format: "EN / AR" when both are
+    // present; falls back to whichever is set, or a placeholder.
+    public static string FormatItemName(GoodType? gt, int goodTypeId)
+    {
+        if (gt is null) return $"GoodType #{goodTypeId}";
+        var en = gt.NameEn?.Trim();
+        var ar = gt.NameAr?.Trim();
+        if (!string.IsNullOrEmpty(en) && !string.IsNullOrEmpty(ar))
+            return $"{en.ToUpperInvariant()} / {ar}";
+        if (!string.IsNullOrEmpty(en)) return en.ToUpperInvariant();
+        if (!string.IsNullOrEmpty(ar)) return ar;
+        return $"GoodType #{goodTypeId}";
+    }
+
     public static void Fill(
         IXLWorkbook workbook,
         Shipment shipment,
@@ -51,10 +65,11 @@ public static class CommercialDocumentBuilder
             .OrderBy(p => p.Id)
             .ToList();
 
-        var distinctCustomers = packages.Select(p => p.Customer).DistinctBy(c => c.Id).ToList();
         var primaryCustomer = packages.OrderBy(p => p.Id).Select(p => p.Customer).FirstOrDefault()
             ?? throw new InvalidOperationException("Shipment has no active packages.");
-        var multi = distinctCustomers.Count > 1;
+        // Customs office expects a single consignee (the primary customer).
+        // Per-customer detail goes through GenerateShipmentCustomerInvoicesAsync.
+        // The legacy multi-customer "Customer" column has been retired.
 
         var dest = shipment.DestinationWarehouse;
         var refCode = shipment.RefCode;
@@ -68,10 +83,10 @@ public static class CommercialDocumentBuilder
         var plSheetName = $" {refCode} PL {country2}";
 
         FillInvoiceSheet(workbook.Worksheets.Add(SafeSheet(invoiceSheetName)),
-            shipment, packages, primaryCustomer, multi, invoiceNumber, invoiceYear,
+            shipment, packages, primaryCustomer, invoiceNumber, invoiceYear,
             invoiceDate, country2, destCity, tpl, rates);
         FillPackingListSheet(workbook.Worksheets.Add(SafeSheet(plSheetName)),
-            shipment, packages, primaryCustomer, multi, invoiceNumber, invoiceYear,
+            shipment, packages, primaryCustomer, invoiceNumber, invoiceYear,
             invoiceDate, country2);
     }
 
@@ -88,7 +103,6 @@ public static class CommercialDocumentBuilder
         Shipment shipment,
         List<Package> packages,
         Customer primaryCustomer,
-        bool multi,
         int invoiceNumber,
         int invoiceYear,
         DateTime invoiceDate,
@@ -173,17 +187,12 @@ public static class CommercialDocumentBuilder
         ws.Row(10).Height = 6.75;
 
         // ── Items table column-letter map ──
-        // Single-customer (matches original sample exactly):
-        //   A=Description, B=QTY, C=Unit, D=Unit Price, E=Total, F=C, G=POSITION, H=H formula
-        // Multi-customer (Customer column inserted at A; everything shifts right):
-        //   A=Customer, B=Description, C=QTY, D=Unit, E=Unit Price, F=Total, G=C, H=POSITION, I=H formula
-        var col = multi
-            ? new ItemColumns("A", "B", "C", "D", "E", "F", "G", "H", "I")
-            : new ItemColumns(null, "A", "B", "C", "D", "E", "F", "G", "H");
+        // A=Description, B=QTY, C=Unit, D=Unit Price, E=Total, F=C, G=POSITION, H=H formula.
+        // Customer column has been retired — customs only sees the primary consignee.
+        var col = new ItemColumns("A", "B", "C", "D", "E", "F", "G", "H");
 
         // ── Row 11 — items table headers ──
         var headerRow = 11;
-        if (multi) ws.Cell($"{col.Customer}{headerRow}").Value = "Customer";
         ws.Cell($"{col.Description}{headerRow}").Value = "Description";
         ws.Cell($"{col.Qty}{headerRow}").Value = "QTY";
         ws.Cell($"{col.Unit}{headerRow}").Value = "Unit";
@@ -193,7 +202,6 @@ public static class CommercialDocumentBuilder
         ws.Cell($"{col.PositionTariff}{headerRow}").Value = "POSITION TARRIFAIRE ";
 
         var headerRange = ws.Range($"{col.Description}{headerRow}:{col.PositionTariff}{headerRow}");
-        if (multi) headerRange = ws.Range($"{col.Customer}{headerRow}:{col.PositionTariff}{headerRow}");
         ws.Row(headerRow).Height = 18;
         var hStyle = headerRange.Style;
         hStyle.Font.FontName = "Times New Roman"; hStyle.Font.FontSize = 14; hStyle.Font.Bold = true;
@@ -215,12 +223,12 @@ public static class CommercialDocumentBuilder
 
         foreach (var line in lines)
         {
-            var goodName = (line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}").ToUpperInvariant();
+            var goodName = FormatItemName(line.Item.GoodType, line.Item.GoodTypeId);
             var unitCode = UnitLabels.ExcelCode.TryGetValue(line.Item.Unit, out var ec) ? ec : line.Item.Unit.ToString().ToUpperInvariant();
             var unitPrice = line.Item.UnitPrice ?? 10m;
 
-            if (multi) ws.Cell($"{col.Customer}{r}").Value = BuildClientCode(country2, line.Package.Customer.Id);
             ws.Cell($"{col.Description}{r}").Value = goodName;
+            ws.Cell($"{col.Description}{r}").Style.Alignment.WrapText = true;
             ws.Cell($"{col.Qty}{r}").Value = line.Item.Quantity;
             ws.Cell($"{col.Unit}{r}").Value = unitCode;
             ws.Cell($"{col.UnitPrice}{r}").Value = unitPrice;
@@ -229,9 +237,7 @@ public static class CommercialDocumentBuilder
             // POSITION TARRIFAIRE col left blank for ops to fill in manually.
             ws.Cell($"{col.HFormula}{r}").FormulaA1 = $"={col.C}{r}*{col.PositionTariff}{r}*{rates.CountryPerEur.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
-            var rowRange = multi
-                ? ws.Range($"{col.Customer}{r}:{col.HFormula}{r}")
-                : ws.Range($"{col.Description}{r}:{col.HFormula}{r}");
+            var rowRange = ws.Range($"{col.Description}{r}:{col.HFormula}{r}");
             var rs = rowRange.Style;
             rs.Font.FontName = "Times New Roman"; rs.Font.FontSize = 9; rs.Font.Bold = true;
             rs.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -334,7 +340,6 @@ public static class CommercialDocumentBuilder
         Shipment shipment,
         List<Package> packages,
         Customer primaryCustomer,
-        bool multi,
         int invoiceNumber,
         int invoiceYear,
         DateTime invoiceDate,
@@ -397,20 +402,15 @@ public static class CommercialDocumentBuilder
         plMetaBlock.Style.Font.FontColor = DateLabelText;
 
         // Multi-customer for PL: insert Customer at A, push Description/Qty/Packaging/Unit right
-        var col = multi
-            ? new PlColumns("A", "B", "C", "D", "E")
-            : new PlColumns(null, "A", "B", "C", "D");
+        var col = new PlColumns("A", "B", "C", "D");
 
         var headerRow = 11;
-        if (multi) ws.Cell($"{col.Customer}{headerRow}").Value = "Customer";
         ws.Cell($"{col.Description}{headerRow}").Value = "DESCRIPTION";
         ws.Cell($"{col.Qty}{headerRow}").Value = "QTY";
         ws.Cell($"{col.Packaging}{headerRow}").Value = "PACKAGING ";
         ws.Cell($"{col.UnitCode}{headerRow}").Value = "UNIT";
 
-        var headerRange = multi
-            ? ws.Range($"{col.Customer}{headerRow}:{col.UnitCode}{headerRow}")
-            : ws.Range($"{col.Description}{headerRow}:{col.UnitCode}{headerRow}");
+        var headerRange = ws.Range($"{col.Description}{headerRow}:{col.UnitCode}{headerRow}");
         var hStyle = headerRange.Style;
         hStyle.Font.FontName = "Times New Roman"; hStyle.Font.FontSize = 12; hStyle.Font.Bold = true;
         hStyle.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -430,15 +430,13 @@ public static class CommercialDocumentBuilder
         foreach (var line in lines)
         {
             var unitCode = UnitLabels.ExcelCode.TryGetValue(line.Item.Unit, out var ec) ? ec : line.Item.Unit.ToString().ToUpperInvariant();
-            if (multi) ws.Cell($"{col.Customer}{r}").Value = BuildClientCode(country2, line.Package.Customer.Id);
-            ws.Cell($"{col.Description}{r}").Value = (line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}").ToUpperInvariant();
+            ws.Cell($"{col.Description}{r}").Value = FormatItemName(line.Item.GoodType, line.Item.GoodTypeId);
+            ws.Cell($"{col.Description}{r}").Style.Alignment.WrapText = true;
             ws.Cell($"{col.Qty}{r}").Value = line.Item.Quantity;
             ws.Cell($"{col.Packaging}{r}").Value = line.Item.Quantity;
             ws.Cell($"{col.UnitCode}{r}").Value = unitCode;
 
-            var rowRange = multi
-                ? ws.Range($"{col.Customer}{r}:{col.UnitCode}{r}")
-                : ws.Range($"{col.Description}{r}:{col.UnitCode}{r}");
+            var rowRange = ws.Range($"{col.Description}{r}:{col.UnitCode}{r}");
             rowRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             rowRange.Style.Font.FontName = "Times New Roman"; rowRange.Style.Font.FontSize = 11;
             if ((r - firstItemRow) % 2 == 0) rowRange.Style.Fill.BackgroundColor = RowAltFill;
@@ -484,7 +482,6 @@ public static class CommercialDocumentBuilder
     }
 
     private record ItemColumns(
-        string? Customer,
         string Description,
         string Qty,
         string Unit,
@@ -495,7 +492,6 @@ public static class CommercialDocumentBuilder
         string HFormula);
 
     private record PlColumns(
-        string? Customer,
         string Description,
         string Qty,
         string Packaging,

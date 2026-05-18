@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<SupplyOrder> SupplyOrders => Set<SupplyOrder>();
     public DbSet<Media> Media => Set<Media>();
+    public DbSet<PackageDocument> PackageDocuments => Set<PackageDocument>();
     public DbSet<WhatsAppCampaign> WhatsAppCampaigns => Set<WhatsAppCampaign>();
     public DbSet<WhatsAppDeliveryLog> WhatsAppDeliveryLogs => Set<WhatsAppDeliveryLog>();
     public DbSet<PackagePricingOverride> PricingOverrides => Set<PackagePricingOverride>();
@@ -116,6 +117,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Media>()
             .HasOne(x => x.RecordedByAdminUser).WithMany()
             .HasForeignKey(x => x.RecordedByAdminUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PackageDocument>().HasIndex(x => x.PackageId);
+        modelBuilder.Entity<PackageDocument>()
+            .HasOne(x => x.Package).WithMany()
+            .HasForeignKey(x => x.PackageId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<PackageDocument>()
+            .HasOne(x => x.UploadedByAdminUser).WithMany()
+            .HasForeignKey(x => x.UploadedByAdminUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // Package.Currency / PricingConfig.Currency → Currencies.Code (alternate key).

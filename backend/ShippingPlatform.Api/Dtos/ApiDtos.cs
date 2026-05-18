@@ -31,6 +31,38 @@ public record UpsertPricingConfigRequest(string Name, string Currency, DateTime 
 public record ShipmentDto(int Id, string RefCode, string? TiiuCode, int OriginWarehouseId, int DestinationWarehouseId, DateTime PlannedDepartureDate, DateTime PlannedArrivalDate, DateTime? ActualDepartureAt, DateTime? ActualArrivalAt, ShipmentStatus Status, decimal MaxWeightKg, decimal MaxCbm, decimal TotalWeightKg, decimal TotalCbm, DateTime CreatedAt);
 public record CreateShipmentRequest(int OriginWarehouseId, int DestinationWarehouseId, DateTime PlannedDepartureDate, DateTime PlannedArrivalDate, decimal MaxWeightKg = 0, decimal MaxCbm = 0, string? TiiuCode = null);
 
+// Aggregated payload for the shipment detail page. Bundles the shipment, its
+// warehouses (names + codes pre-resolved), and the full list of packages with
+// each customer's name embedded — so the FE never has to fetch
+// /api/customers, /api/warehouses, or /api/packages just to render the page.
+public record ShipmentDetailDto(
+    ShipmentDto Shipment,
+    string OriginWarehouseName,
+    string OriginWarehouseCode,
+    string DestinationWarehouseName,
+    string DestinationWarehouseCode,
+    List<ShipmentDetailPackageDto> Packages,
+    int UniqueCustomerCount,
+    int ActivePackageCount);
+
+public record ShipmentDetailPackageDto(
+    int Id,
+    int CustomerId,
+    string CustomerName,
+    PackageStatus Status,
+    decimal WeightKg,
+    decimal Cbm,
+    string Currency,
+    decimal AppliedRatePerKg,
+    decimal AppliedRatePerCbm,
+    decimal ChargeAmount,
+    bool HasDeparturePhotos,
+    bool HasArrivalPhotos,
+    bool HasPricingOverride,
+    int? SupplyOrderId,
+    string? Note,
+    DateTime CreatedAt);
+
 public record PackageDto(int Id, int ShipmentId, int CustomerId, ProvisionMethod ProvisionMethod, PackageStatus Status, decimal WeightKg, decimal Cbm, string Currency, decimal AppliedRatePerKg, decimal AppliedRatePerCbm, decimal ChargeAmount, bool HasDeparturePhotos, bool HasArrivalPhotos, bool HasPricingOverride, int? SupplyOrderId, string? Note, DateTime CreatedAt);
 public record InlineSupplyOrderRequest(int SupplierId, string Name, decimal PurchasePrice, string? Details = null);
 public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, decimal? WeightKg = null, decimal? Cbm = null, string? Note = null, List<UpsertPackageItemRequest>? Items = null, InlineSupplyOrderRequest? SupplyOrder = null);
@@ -48,6 +80,8 @@ public record ApplyPricingOverrideRequest(PricingOverrideType OverrideType, deci
 public record PricingOverrideDto(int Id, PricingOverrideType OverrideType, decimal OriginalValue, decimal NewValue, string Reason, DateTime CreatedAt);
 
 public record LookupItemDto(int Value, string Code, string Label);
+
+public record PackageDocumentDto(int Id, string FileName, string PublicUrl, string ContentType, long SizeBytes, string? Notes, int? UploadedByAdminUserId, DateTime UploadedAt);
 
 public record CurrencyDto(int Id, string Code, string Name, string? Symbol, bool IsBase, string? AnchorCurrencyCode, decimal? Rate, bool IsActive, DateTime UpdatedAt);
 public record UpsertCurrencyRequest(string Code, string Name, string? Symbol, bool IsBase, string? AnchorCurrencyCode, decimal? Rate, bool IsActive = true);

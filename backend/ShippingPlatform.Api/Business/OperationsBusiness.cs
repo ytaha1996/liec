@@ -10,6 +10,7 @@ public interface IShipmentBusiness
 {
     Task<object> ListAsync(ShipmentStatus? status, string? q = null, DateTime? dateFrom = null, DateTime? dateTo = null, int? page = null, int pageSize = 25);
     Task<ShipmentDto?> GetAsync(int id);
+    Task<ShipmentDetailDto?> GetDetailAsync(int id);
     Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input);
     Task<(ShipmentDto? dto, object? error)> SetStatusAsync(int id, ShipmentStatus status);
     Task<(ShipmentDto? dto, object? error)> UpdateAsync(int id, UpdateShipmentRequest req);
@@ -39,6 +40,42 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
     }
 
     public async Task<ShipmentDto?> GetAsync(int id) => (await db.Shipments.FirstOrDefaultAsync(x => x.Id == id))?.ToDto();
+
+    public async Task<ShipmentDetailDto?> GetDetailAsync(int id)
+    {
+        // One round-trip materialises shipment + both warehouses + packages
+        // + customer names. AsSplitQuery avoids a cartesian explosion if a
+        // shipment has many packages with many items elsewhere.
+        var s = await db.Shipments
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Where(x => x.Id == id)
+            .Include(x => x.OriginWarehouse)
+            .Include(x => x.DestinationWarehouse)
+            .Include(x => x.Packages).ThenInclude(p => p.Customer)
+            .FirstOrDefaultAsync();
+        if (s is null) return null;
+
+        var packages = s.Packages
+            .OrderBy(p => p.Id)
+            .Select(p => new ShipmentDetailPackageDto(
+                p.Id, p.CustomerId, p.Customer.Name,
+                p.Status, p.WeightKg, p.Cbm,
+                p.Currency, p.AppliedRatePerKg, p.AppliedRatePerCbm, p.ChargeAmount,
+                p.HasDeparturePhotos, p.HasArrivalPhotos, p.HasPricingOverride,
+                p.SupplyOrderId, p.Note, p.CreatedAt))
+            .ToList();
+
+        return new ShipmentDetailDto(
+            s.ToDto(),
+            s.OriginWarehouse?.Name ?? "",
+            s.OriginWarehouse?.Code ?? "",
+            s.DestinationWarehouse?.Name ?? "",
+            s.DestinationWarehouse?.Code ?? "",
+            packages,
+            s.Packages.Select(p => p.CustomerId).Distinct().Count(),
+            s.Packages.Count(p => p.Status != PackageStatus.Cancelled));
+    }
 
     public async Task<(ShipmentDto? dto, string? error)> CreateAsync(CreateShipmentRequest input)
     {
@@ -303,6 +340,9 @@ public interface IPackageBusiness
     Task<object?> UploadMediaAsync(int id, MediaUploadRequest req);
     Task<List<object>> ListMediaAsync(int id);
     Task<object?> DeleteMediaAsync(int packageId, int mediaId);
+    Task<object?> UploadDocumentAsync(int id, DocumentUploadRequest req);
+    Task<List<PackageDocumentDto>> ListDocumentsAsync(int id);
+    Task<object?> DeleteDocumentAsync(int packageId, int documentId, int? adminUserId);
     Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId);
     Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id);
     Task<(int transitioned, object? error)> BulkTransitionAsync(int shipmentId, BulkTransitionRequest request);
@@ -545,7 +585,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Package is shipped and immutable." });
+        if (p.Status >= PackageStatus.ArrivedAtDestination) return (null, new { code = "PACKAGE_LOCKED", message = "Package is at destination and immutable." });
 
         bool weightChanged = false;
         if (req.WeightKg.HasValue) { if (req.WeightKg.Value <= 0) return (null, new { code = "VALIDATION_ERROR", message = "Weight must be greater than 0." }); p.WeightKg = req.WeightKg.Value; weightChanged = true; }
@@ -571,7 +611,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
+        if (p.Status >= PackageStatus.ArrivedAtDestination) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package has arrived at destination." });
 
         var entity = new PackageItem
         {
@@ -595,7 +635,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
+        if (p.Status >= PackageStatus.ArrivedAtDestination) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package has arrived at destination." });
         if (items.Count == 0) return (new List<PackageItemDto>(), null);
 
         var entities = items.Select(item => new PackageItem
@@ -618,7 +658,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.ReadyToShip) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." });
+        if (p.Status >= PackageStatus.ArrivedAtDestination) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package has arrived at destination." });
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId);
         if (i is null) return (null, null);
 
@@ -637,7 +677,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
     public async Task<object?> DeleteItemAsync(int id, int itemId)
     {
         var p = await db.Packages.FindAsync(id); if (p is null) return null;
-        if (p.Status >= PackageStatus.ReadyToShip) return new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package is ReadyToShip or beyond." };
+        if (p.Status >= PackageStatus.ArrivedAtDestination) return new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package has arrived at destination." };
         var i = await db.PackageItems.FirstOrDefaultAsync(x => x.PackageId == id && x.Id == itemId); if (i is null) return null;
         db.PackageItems.Remove(i);
         await db.SaveChangesAsync();
@@ -683,11 +723,73 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         return new { ok = true };
     }
 
+    // Document upload allow-list. Matched by file extension (case-insensitive)
+    // because browser-reported Content-Type is unreliable (especially on
+    // Windows). Anything else returns 400 VALIDATION_ERROR.
+    private static readonly string[] AllowedDocumentExtensions =
+        [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];
+    private const long MaxDocumentSizeBytes = 20L * 1024 * 1024; // 20 MB
+
+    public async Task<object?> UploadDocumentAsync(int id, DocumentUploadRequest req)
+    {
+        var p = await db.Packages.FindAsync(id);
+        if (p is null) return null;
+        if (req.File is null || req.File.Length == 0) return new { code = "VALIDATION_ERROR", message = "File required." };
+        if (req.File.Length > MaxDocumentSizeBytes)
+            return new { code = "VALIDATION_ERROR", message = "File must be 20 MB or smaller." };
+
+        var ext = Path.GetExtension(req.File.FileName)?.ToLowerInvariant() ?? string.Empty;
+        if (!AllowedDocumentExtensions.Contains(ext))
+            return new { code = "VALIDATION_ERROR", message = "Only PDF, Word, Excel, and PowerPoint files are allowed." };
+
+        await using var stream = req.File.OpenReadStream();
+        var forced = $"documents/packages/{id}/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}{ext}";
+        var contentType = req.File.ContentType ?? "application/octet-stream";
+        // Reuse the existing media container; "documents/" prefix keeps the listing organised.
+        var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, stream, contentType, forced);
+
+        var doc = new PackageDocument
+        {
+            PackageId = id,
+            FileName = req.File.FileName,
+            BlobKey = key,
+            PublicUrl = url,
+            ContentType = contentType,
+            SizeBytes = req.File.Length,
+            Notes = req.Notes,
+            UploadedByAdminUserId = req.AdminUserId,
+        };
+        db.PackageDocuments.Add(doc);
+        await db.SaveChangesAsync();
+        await audit.LogAsync("Package", id, "DocumentUpload", null, $"name={doc.FileName} key={doc.BlobKey}", req.AdminUserId);
+        return new PackageDocumentDto(doc.Id, doc.FileName, doc.PublicUrl, doc.ContentType, doc.SizeBytes, doc.Notes, doc.UploadedByAdminUserId, doc.UploadedAt);
+    }
+
+    public async Task<List<PackageDocumentDto>> ListDocumentsAsync(int id) =>
+        await db.PackageDocuments
+            .Where(x => x.PackageId == id)
+            .OrderByDescending(x => x.UploadedAt)
+            .Select(d => new PackageDocumentDto(d.Id, d.FileName, d.PublicUrl, d.ContentType, d.SizeBytes, d.Notes, d.UploadedByAdminUserId, d.UploadedAt))
+            .ToListAsync();
+
+    public async Task<object?> DeleteDocumentAsync(int packageId, int documentId, int? adminUserId)
+    {
+        var p = await db.Packages.FindAsync(packageId);
+        if (p is null) return null;
+        var doc = await db.PackageDocuments.FirstOrDefaultAsync(x => x.Id == documentId && x.PackageId == packageId);
+        if (doc is null) return null;
+        await blob.DeleteAsync(cfg["AzureBlob:MediaContainer"] ?? "media", doc.BlobKey);
+        db.PackageDocuments.Remove(doc);
+        await db.SaveChangesAsync();
+        await audit.LogAsync("Package", packageId, "DocumentDelete", $"name={doc.FileName}", null, adminUserId);
+        return new { ok = true };
+    }
+
     public async Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId)
     {
         var p = await db.Packages.FindAsync(id);
         if (p is null) return (null, null);
-        if (p.Status >= PackageStatus.Shipped) return (null, new { code = "PACKAGE_LOCKED", message = "Cannot override pricing on a shipped package." });
+        if (p.Status >= PackageStatus.HandedOut) return (null, new { code = "PACKAGE_LOCKED", message = "Cannot override pricing on a package that has been handed out." });
         if (string.IsNullOrWhiteSpace(req.Reason)) return (null, new { code = "VALIDATION_ERROR", message = "Reason is required." });
         if (req.OverrideType != PricingOverrideType.TotalCharge && req.NewValue <= 0)
             return (null, new { code = "VALIDATION_ERROR", message = "Rate must be greater than 0." });

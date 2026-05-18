@@ -29,6 +29,7 @@ import MainPageSection from '../../components/layout-components/main-layout/Main
 import DetailPageLayout from '../../components/layout-components/main-layout/DetailPageLayout';
 import { MainPageAction } from '../../components/layout-components/main-layout/MainPageTitle';
 import MediaStageCards from '../../components/media/MediaStageCards';
+import PackageDocuments from '../../components/documents/PackageDocuments';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import PricingOverrideHistory from '../../components/pricing/PricingOverrideHistory';
 import Loader from '../../components/Loader';
@@ -72,6 +73,11 @@ const ALLOWED_TRANSITIONS: Record<string, { label: string; action: string; isCan
   HandedOut: [],
   Cancelled: [],
 };
+
+// Mirror the backend lock: pricing override blocks once the package has been
+// HandedOut (or Cancelled). Operators can still adjust money during transit
+// and at destination.
+const PRICING_OVERRIDE_LOCKED = new Set(['HandedOut', 'Cancelled']);
 
 const PKG_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'shipmentRef', title: 'Shipment', width: 'third' },
@@ -305,9 +311,9 @@ const PackageDetailPage = ({ id }: Props) => {
     // `Package.Currency` is the freight-charge currency from the active pricing config; it is
     // unrelated to PackageItem.UnitPrice (always USD). Hidden here to avoid confusing operators —
     // unit prices in the items table render as "$ X.XX" by contract.
-    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } } : {}) },
-    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } } : {}) },
-    { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', ...(canOverridePricing(role) ? { action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } } : {}) },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', width: 'third', ...(canOverridePricing(role) && !PRICING_OVERRIDE_LOCKED.has(pkg.status) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerCbm'); setOverrideDialogOpen(true); } } } : {}) },
+    { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', width: 'third', ...(canOverridePricing(role) && !PRICING_OVERRIDE_LOCKED.has(pkg.status) ? { action: { label: 'Override', onClick: () => { setOverrideType('RatePerKg'); setOverrideDialogOpen(true); } } } : {}) },
+    { type: InformationWidgetFieldTypes.Text, name: 'chargeAmount', title: 'Charge Amount', width: 'third', ...(canOverridePricing(role) && !PRICING_OVERRIDE_LOCKED.has(pkg.status) ? { action: { label: 'Override', onClick: () => { setOverrideType('TotalCharge'); setOverrideDialogOpen(true); } } } : {}) },
   ];
 
   const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[pkg.status] ?? []).filter(
@@ -421,7 +427,7 @@ const PackageDetailPage = ({ id }: Props) => {
               fields={pricingFields}
               data={pkgDisplay}
             >
-              {canEditPackageWeight(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip'].includes(pkg.status) && (
+              {canEditPackageWeight(role) && ['Draft', 'Received', 'Packed', 'ReadyToShip', 'Shipped'].includes(pkg.status) && (
                 <Box sx={{ mt: 1 }}>
                   <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => setEditPkgOpen(true)}>
                     Edit Weight / CBM / Note
@@ -436,6 +442,7 @@ const PackageDetailPage = ({ id }: Props) => {
         {tab === 2 && canUploadPhotos(role) && (
           <MainPageSection title="Photos">
             <MediaStageCards packageId={id} media={mediaQuery.data ?? []} />
+            <PackageDocuments packageId={id} />
           </MainPageSection>
         )}
 

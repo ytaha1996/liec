@@ -185,7 +185,10 @@ public class PricingService(AppDbContext db) : IPricingService
 {
     public async Task RecalculateAsync(Package package)
     {
-        if (package.Status >= PackageStatus.Shipped || package.HasPricingOverride) return;
+        // Allow recalcs while the package is in transit (Shipped). Lock only
+        // once it has Arrived at destination — at that point the price is
+        // committed for customs/billing and edits go through an override.
+        if (package.Status >= PackageStatus.ArrivedAtDestination || package.HasPricingOverride) return;
 
         var now = DateTime.UtcNow;
         var active = await db.PricingConfigs.FirstOrDefaultAsync(x =>
@@ -199,7 +202,12 @@ public class PricingService(AppDbContext db) : IPricingService
         package.AppliedRatePerKg = rateKg;
         package.AppliedRatePerCbm = rateCbm;
         package.Currency = active.Currency;
-        var calculated = Math.Max(package.WeightKg * rateKg, package.Cbm * rateCbm);
+        // Weight-first pricing: weight is the canonical billing basis. CBM is
+        // the fallback only when no weight has been entered (dimensional-weight
+        // cases not yet supported).
+        var calculated = package.WeightKg > 0
+            ? package.WeightKg * rateKg
+            : package.Cbm * rateCbm;
         package.ChargeAmount = active.MinimumCharge > 0 ? Math.Max(calculated, active.MinimumCharge) : calculated;
     }
 }
@@ -392,9 +400,15 @@ public class ExportService(
     }
 
     // ── Shared styling constants ──
-    private static readonly XLColor BrandTeal = XLColor.FromHtml("#00796B");
-    private static readonly XLColor HeaderGray = XLColor.FromHtml("#F5F5F5");
-    private static readonly XLColor AltRowColor = XLColor.FromHtml("#F9F9F9");
+    // Navy/blue palette unifies BOL + Customer Invoice with the Commercial
+    // Invoice + Packing List look (which use the same colors defined in
+    // CommercialDocumentBuilder).
+    private static readonly XLColor TableHeaderFill = XLColor.FromHtml("#3D6FA3");
+    private static readonly XLColor TableHeaderText = XLColor.FromHtml("#FFFFFF");
+    private static readonly XLColor RowAltFill      = XLColor.FromHtml("#E8F0F8");
+    private static readonly XLColor BorderNavy      = XLColor.FromHtml("#1F3A5F");
+    private static readonly XLColor FooterTotalFill = XLColor.FromHtml("#D6E3F0");
+    private static readonly XLColor DateLabelText   = XLColor.FromHtml("#1F3A5F");
 
     public async Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default)
     {
@@ -498,6 +512,7 @@ public class ExportService(
         ws.SheetView.FreezeRows(8);
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
         ws.PageSetup.FitToPages(1, 0);
+        ApplyOuterBorder(ws);
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
@@ -601,7 +616,8 @@ public class ExportService(
         {
             foreach (var line in lines)
             {
-                ws.Cell(row, 1).Value = line.Item.GoodType?.NameEn ?? $"GoodType #{line.Item.GoodTypeId}";
+                ws.Cell(row, 1).Value = ShippingPlatform.Api.Services.Exports.CommercialDocumentBuilder.FormatItemName(line.Item.GoodType, line.Item.GoodTypeId);
+                ws.Cell(row, 1).Style.Alignment.WrapText = true;
                 ws.Cell(row, 2).Value = line.Item.Quantity;
                 ws.Cell(row, 3).Value = UnitLabels.En.TryGetValue(line.Item.Unit, out var label) ? label : line.Item.Unit.ToString();
                 ws.Cell(row, 4).Value = string.IsNullOrWhiteSpace(line.Item.Note) ? (line.PackageNote ?? string.Empty) : line.Item.Note;
@@ -618,6 +634,7 @@ public class ExportService(
         ws.SheetView.FreezeRows(7);
         ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
         ws.PageSetup.FitToPages(1, 0);
+        ApplyOuterBorder(ws);
     }
 
     // ── Shared styling helpers ──
@@ -625,8 +642,8 @@ public class ExportService(
     {
         range.Style.Font.Bold = true;
         range.Style.Font.FontSize = fontSize;
-        range.Style.Font.FontColor = XLColor.White;
-        range.Style.Fill.BackgroundColor = BrandTeal;
+        range.Style.Font.FontColor = TableHeaderText;
+        range.Style.Fill.BackgroundColor = TableHeaderFill;
         range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         range.Worksheet.Row(range.FirstRow().RowNumber()).Height = fontSize * 2.2;
@@ -634,27 +651,49 @@ public class ExportService(
 
     private static void StyleMetaRow(IXLRange range)
     {
-        range.Style.Fill.BackgroundColor = HeaderGray;
         range.Style.Font.FontSize = 10;
+        range.Style.Font.FontColor = DateLabelText;
     }
 
     private static void StyleColumnHeaders(IXLRange range)
     {
         range.Style.Font.Bold = true;
-        range.Style.Font.FontColor = XLColor.White;
-        range.Style.Fill.BackgroundColor = BrandTeal;
+        range.Style.Font.FontColor = TableHeaderText;
+        range.Style.Fill.BackgroundColor = TableHeaderFill;
         range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        range.Style.Border.TopBorder = XLBorderStyleValues.Medium;
         range.Style.Border.BottomBorder = XLBorderStyleValues.Medium;
-        range.Style.Border.BottomBorderColor = BrandTeal;
+        range.Style.Border.TopBorderColor = BorderNavy;
+        range.Style.Border.BottomBorderColor = BorderNavy;
     }
 
     private static void StyleDataRow(IXLRange range, int rowIndex)
     {
-        if (rowIndex % 2 == 0) range.Style.Fill.BackgroundColor = AltRowColor;
+        if (rowIndex % 2 == 0) range.Style.Fill.BackgroundColor = RowAltFill;
         range.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-        range.Style.Border.InsideBorderColor = XLColor.FromHtml("#E0E0E0");
+        range.Style.Border.InsideBorderColor = BorderNavy;
         range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        range.Style.Border.OutsideBorderColor = XLColor.FromHtml("#E0E0E0");
+        range.Style.Border.OutsideBorderColor = BorderNavy;
+    }
+
+    // Applies a thick navy outer border to the used range — gives BOL + Customer
+    // Invoice the same framed look as Commercial Invoice + Packing List.
+    private static void ApplyOuterBorder(IXLWorksheet ws)
+    {
+        var used = ws.RangeUsed();
+        if (used is null) return;
+        used.Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+        used.Style.Border.OutsideBorderColor = BorderNavy;
+    }
+
+    // Footer/total rows: light-blue fill + navy text + thick navy top border.
+    private static void StyleFooterRow(IXLRange range)
+    {
+        range.Style.Font.Bold = true;
+        range.Style.Font.FontColor = DateLabelText;
+        range.Style.Fill.BackgroundColor = FooterTotalFill;
+        range.Style.Border.TopBorder = XLBorderStyleValues.Medium;
+        range.Style.Border.TopBorderColor = BorderNavy;
     }
 
     public async Task<string> GenerateShipmentCommercialDocumentsAsync(int shipmentId, CancellationToken ct = default)

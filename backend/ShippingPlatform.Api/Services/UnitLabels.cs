@@ -12,6 +12,7 @@ public static class UnitLabels
         [Unit.Bag]    = "Bag",
         [Unit.Pallet] = "Pallet",
         [Unit.Gallon] = "Gallon",
+        [Unit.Bundle] = "Bundle",
     };
 
     public static readonly IReadOnlyDictionary<Unit, string> ExcelCode = new Dictionary<Unit, string>
@@ -22,5 +23,6 @@ public static class UnitLabels
         [Unit.Bag]    = "BAG",
         [Unit.Pallet] = "PALLET",
         [Unit.Gallon] = "GAL",
+        [Unit.Bundle] = "BDL",
     };
 }
