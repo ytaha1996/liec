@@ -1,0 +1,187 @@
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Box, Button, Divider, IconButton, Stack, Typography } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { toast } from 'react-toastify';
+import { getJson, postJson, parseApiError } from '../../../api/client';
+import GenericDialog from '../../../components/GenericDialog/GenericDialog';
+import DynamicFormWidget from '../../../components/dynamic-widget/DynamicFormWidget';
+import { DynamicField } from '../../../components/dynamic-widget';
+import GenericInput from '../../../components/input-components/GenericTextInput';
+import GenericNumberInput from '../../../components/input-components/GenericNumberInput';
+import GenericSelectInput from '../../../components/input-components/GenericSelectInput';
+import { useUnitsLookup } from '../../../api/lookups';
+
+interface AddPackageDialogProps {
+  open: boolean;
+  onClose: () => void;
+  shipmentId: string;
+}
+
+interface InlineItem {
+  goodTypeId: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  note: string;
+}
+
+const emptyItem = (): InlineItem => ({ goodTypeId: '', quantity: '1', unit: 'Box', unitPrice: '', note: '' });
+
+const AddPackageDialog = ({ open, onClose, shipmentId }: AddPackageDialogProps) => {
+  const qc = useQueryClient();
+  const [newPkgItems, setNewPkgItems] = useState<InlineItem[]>([emptyItem(), emptyItem(), emptyItem()]);
+  const [provisionMethod, setProvisionMethod] = useState('CustomerProvided');
+
+  useEffect(() => {
+    if (open) setNewPkgItems([emptyItem(), emptyItem(), emptyItem()]);
+  }, [open]);
+
+  const unitsQuery = useUnitsLookup();
+  const unitItems: Record<string, string> = (unitsQuery.data ?? []).reduce(
+    (acc: Record<string, string>, u) => { acc[u.code] = u.label; return acc; }, {},
+  );
+
+  const customersQuery = useQuery<any[]>({
+    queryKey: ['/api/customers'],
+    queryFn: () => getJson<any[]>('/api/customers'),
+  });
+
+  const goodTypesQuery = useQuery<any[]>({
+    queryKey: ['/api/good-types'],
+    queryFn: () => getJson<any[]>('/api/good-types'),
+  });
+
+  const suppliersQuery = useQuery<any[]>({
+    queryKey: ['/api/suppliers'],
+    queryFn: () => getJson<any[]>('/api/suppliers'),
+  });
+
+  const customersItems = (customersQuery.data ?? []).reduce(
+    (acc: Record<string, string>, c: any) => { acc[String(c.id)] = `${c.name} (#${c.id})`; return acc; }, {},
+  );
+
+  const goodTypesItems = (goodTypesQuery.data ?? []).reduce(
+    (acc: Record<string, string>, g: any) => { acc[String(g.id)] = g.nameEn; return acc; }, {},
+  );
+
+  const suppliersItems = (suppliersQuery.data ?? []).reduce(
+    (acc: Record<string, string>, s: any) => { acc[String(s.id)] = s.name; return acc; }, {},
+  );
+
+  const isProcured = provisionMethod === 'ProcuredForCustomer';
+
+  const handleClose = () => {
+    onClose();
+    setNewPkgItems([emptyItem(), emptyItem(), emptyItem()]);
+    setProvisionMethod('CustomerProvided');
+  };
+
+  const handleSubmit = async (values: Record<string, any>): Promise<boolean> => {
+    try {
+      const body: Record<string, any> = {
+        customerId: Number(values.customerId),
+        provisionMethod: values.provisionMethod,
+        supplyOrderId: null,
+        weightKg: values.weightKg ? Number(values.weightKg) : null,
+        cbm: values.cbm ? Number(values.cbm) : null,
+        note: values.note || null,
+        items: newPkgItems.filter(i => i.goodTypeId).map(i => ({
+          goodTypeId: Number(i.goodTypeId),
+          quantity: Number(i.quantity) || 1,
+          unit: i.unit || 'Box',
+          unitPrice: i.unitPrice === '' || i.unitPrice == null ? null : Number(i.unitPrice),
+          note: i.note || null,
+        })),
+      };
+      if (values.provisionMethod === 'ProcuredForCustomer') {
+        body.supplyOrder = {
+          supplierId: Number(values.soSupplierId),
+          name: values.soName,
+          purchasePrice: Number(values.soPurchasePrice),
+          details: values.soDetails || null,
+        };
+      }
+      await postJson(`/api/shipments/${shipmentId}/packages`, body);
+      toast.success('Package created');
+      qc.invalidateQueries({ queryKey: ['/api/packages'] });
+      qc.invalidateQueries({ queryKey: ['/api/shipments', shipmentId] });
+      handleClose();
+      return true;
+    } catch (e: any) {
+      toast.error(parseApiError(e).message ?? 'Failed to create package');
+      return false;
+    }
+  };
+
+  return (
+    <GenericDialog open={open} onClose={handleClose} title="Add Package to Shipment">
+      <DynamicFormWidget
+        title=""
+        drawerMode
+        fields={{
+          customerId: { type: DynamicField.SELECT, name: 'customerId', title: 'Customer', required: true, disabled: false, value: '', items: customersItems, grid: { xs: 6 } },
+          provisionMethod: { type: DynamicField.SELECT, name: 'provisionMethod', title: 'Provision Method', required: true, disabled: false, value: 'CustomerProvided', items: { CustomerProvided: 'Customer Provided', ProcuredForCustomer: 'Procured For Customer' }, grid: { xs: 6 } },
+          weightKg: { type: DynamicField.NUMBER, name: 'weightKg', title: 'Weight (kg)', required: false, disabled: false, value: 0, min: 0, grid: { xs: 6 } },
+          cbm: { type: DynamicField.NUMBER, name: 'cbm', title: 'CBM', required: false, disabled: false, value: 0, min: 0, grid: { xs: 6 } },
+          note: { type: DynamicField.TEXT, name: 'note', title: 'Note', required: false, disabled: false, value: '' },
+          ...(isProcured ? {
+            soSupplierId: { type: DynamicField.SELECT, name: 'soSupplierId', title: 'Supplier', required: true, disabled: false, value: '', items: suppliersItems, grid: { xs: 6 } },
+            soName: { type: DynamicField.TEXT, name: 'soName', title: 'Item / Order Name', required: true, disabled: false, value: '', grid: { xs: 6 } },
+            soPurchasePrice: { type: DynamicField.NUMBER, name: 'soPurchasePrice', title: 'Purchase Price', required: true, disabled: false, value: '', min: 0, grid: { xs: 6 } },
+            soDetails: { type: DynamicField.TEXT, name: 'soDetails', title: 'Details', required: false, disabled: false, value: '', grid: { xs: 6 } },
+          } : {}),
+        }}
+        onSubmit={handleSubmit}
+        onFieldChange={(name, value) => { if (name === 'provisionMethod') setProvisionMethod(value as string); }}
+      >
+        <Divider />
+        <Typography variant="subtitle1">Items (optional)</Typography>
+        <Box sx={{ minWidth: 720 }}>
+          {newPkgItems.map((item, idx) => (
+            <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <Box sx={{ flex: 2 }}>
+                <GenericSelectInput name={`item-good-type-${idx}`} title="Good Type" value={item.goodTypeId} items={goodTypesItems} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], goodTypeId: v }; setNewPkgItems(updated);
+                }} type="" error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <GenericNumberInput name={`item-qty-${idx}`} title="Qty" value={item.quantity} min={1} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], quantity: v }; setNewPkgItems(updated);
+                }} error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <GenericSelectInput name={`item-unit-${idx}`} title="Unit" value={item.unit} items={unitItems} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unit: v ?? 'Box' }; setNewPkgItems(updated);
+                }} type="" error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <GenericNumberInput name={`item-unit-price-${idx}`} title="Unit Price ($)" value={item.unitPrice} min={0} step={0.01} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], unitPrice: v }; setNewPkgItems(updated);
+                }} error="" disabled={false} />
+              </Box>
+              <Box sx={{ flex: 2 }}>
+                <GenericInput name={`item-note-${idx}`} title="Note" value={item.note} onChange={(v: any) => {
+                  const updated = [...newPkgItems]; updated[idx] = { ...updated[idx], note: v }; setNewPkgItems(updated);
+                }} type="text" error="" disabled={false} />
+              </Box>
+              <IconButton size="small" disabled={newPkgItems.length <= 1} onClick={() => setNewPkgItems(items => items.filter((_, i) => i !== idx))}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ))}
+          <Stack direction="row" gap={1} sx={{ mt: 1 }}>
+            <Button size="small" variant="outlined" onClick={() => setNewPkgItems(items => [...items, emptyItem()])}>
+              + Add Item
+            </Button>
+            <Button size="small" variant="outlined" onClick={() => setNewPkgItems(items => [...items, emptyItem(), emptyItem(), emptyItem(), emptyItem(), emptyItem()])}>
+              + Add 5 Rows
+            </Button>
+          </Stack>
+        </Box>
+      </DynamicFormWidget>
+    </GenericDialog>
+  );
+};
+
+export default AddPackageDialog;

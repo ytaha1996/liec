@@ -10,4 +10,6 @@ public class MediaUploadRequest
     public string? OperatorName { get; set; }
     public string? Notes { get; set; }
     public IFormFile? File { get; set; }
+    // Set by controller from JWT claims, not from form. Null if the claim is missing.
+    public int? AdminUserId { get; set; }
 }

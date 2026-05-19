@@ -50,6 +50,7 @@ const GenericDateRangePicker: React.FC<IGenericDateRangePickerProps> = ({
             label="From"
             value={fromValue}
             onChange={handleFromChange}
+            format="DD-MM-YYYY"
             disabled={disabled}
             slotProps={{ textField: { size: 'small', error: !!error } }}
           />
@@ -58,6 +59,7 @@ const GenericDateRangePicker: React.FC<IGenericDateRangePickerProps> = ({
             label="To"
             value={toValue}
             onChange={handleToChange}
+            format="DD-MM-YYYY"
             disabled={disabled}
             slotProps={{ textField: { size: 'small', error: !!error } }}
           />

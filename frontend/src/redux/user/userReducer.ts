@@ -1,10 +1,17 @@
 import { createSlice } from '@reduxjs/toolkit'
 import type { PayloadAction } from '@reduxjs/toolkit'
 import { IUserStore } from './types'
-import { clearUserToken, getUserToken, setUserToken } from '../../helpers/user-token'
+import { clearUserToken, decodeRoleFromToken, getUserToken, setUserToken } from '../../helpers/user-token'
+
+// Read the token + role synchronously at module load. Without this, the
+// avatar momentarily shows the empty/default role on a fresh tab open
+// because the role-decode previously happened in a useEffect (one render
+// after the first paint).
+const _initialToken = getUserToken() ?? '';
+const _initialRole = _initialToken ? (decodeRoleFromToken(_initialToken) ?? '') : '';
 
 const initialState: IUserStore = {
-    token: '',
+    token: _initialToken,
     user: {
         email: "",
         active: false,
@@ -12,8 +19,8 @@ const initialState: IUserStore = {
         mobileNumber: "",
     },
     active: false,
-    role: "",
-    isAuthenticated: false,
+    role: _initialRole,
+    isAuthenticated: !!_initialToken,
 }
 
 export const userSlice = createSlice({

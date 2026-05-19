@@ -49,7 +49,7 @@ const AppLauncherModules: React.FC<IAppLauncherModulesProps> = ({
       open
     >
       {Object.values(applications).map((app) =>
-        Object.keys(app.modules).map(
+        Object.keys(app.modules).filter(moduleName => !app.modules[moduleName].hidden).map(
           (moduleName) =>
             (!searchKey ||
               !searchKey.trim() ||
@@ -58,7 +58,7 @@ const AppLauncherModules: React.FC<IAppLauncherModulesProps> = ({
                 .includes(searchKey.toLowerCase())) && (
               <NavLink
                 key={moduleName}
-                to={app.route + app.modules[moduleName].route}
+                to={app.modules[moduleName].route}
                 className={({ isActive }) =>
                   cx(classes.moduleLink, { [classes.activeLink]: isActive })
                 }

@@ -1,27 +1,29 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { Box, CircularProgress } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { Icon } from '@iconify/react';
 import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhancedTableColumnType,
   IEnhancedTextHeader,
-  EnhancedTableNumberHeader,
   EnhancedTableColoredChipHeader,
   EnhancedTableActionHeader,
   EnhanceTableHeaderTypes,
 } from '../../components/enhanced-table';
 import DynamicFormWidget from '../../components/dynamic-widget/DynamicFormWidget';
-import { DynamicField, IDynamicTextField, IDynamicNumberField, IDynamicCheckboxField } from '../../components/dynamic-widget';
+import { DynamicField, IDynamicTextField, IDynamicCheckboxField } from '../../components/dynamic-widget';
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
-import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const GoodTypesPage: React.FC = () => {
+  usePageTitle('Good Types');
   const qc = useQueryClient();
+  const role = useUserRole();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -65,8 +67,30 @@ const GoodTypesPage: React.FC = () => {
   const header: EnhanceTableHeaderTypes[] = [
     { id: 'nameEn', label: 'Name (EN)', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
     { id: 'nameAr', label: 'Name (AR)', type: EnhancedTableColumnType.TEXT, numeric: false, disablePadding: false } as IEnhancedTextHeader,
-    { id: 'ratePerKg', label: 'Rate/Kg', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
-    { id: 'ratePerM3', label: 'Rate/M³', type: EnhancedTableColumnType.NUMBER, numeric: true, disablePadding: false } as EnhancedTableNumberHeader,
+    {
+      id: 'canBreak',
+      label: 'Can Break',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        true: { color: '#fff', backgroundColor: '#f57c00' },
+        false: { color: '#fff', backgroundColor: '#9e9e9e' },
+      },
+      chipLabels: { true: 'Yes', false: 'No' },
+    } as EnhancedTableColoredChipHeader,
+    {
+      id: 'canBurn',
+      label: 'Can Burn',
+      type: EnhancedTableColumnType.COLORED_CHIP,
+      numeric: false,
+      disablePadding: false,
+      chipColors: {
+        true: { color: '#fff', backgroundColor: '#c62828' },
+        false: { color: '#fff', backgroundColor: '#9e9e9e' },
+      },
+      chipLabels: { true: 'Yes', false: 'No' },
+    } as EnhancedTableColoredChipHeader,
     {
       id: 'isActive',
       label: 'Active',
@@ -90,7 +114,7 @@ const GoodTypesPage: React.FC = () => {
           icon: <Icon icon="mdi:pencil" />,
           label: 'Edit',
           onClick: (id: string) => openEdit(id),
-          hidden: (_row: Record<string, any>) => false,
+          hidden: () => !canWriteMasterData(role),
         },
       ],
     } as EnhancedTableActionHeader,
@@ -113,22 +137,22 @@ const GoodTypesPage: React.FC = () => {
       disabled: false,
       value: formValues.nameAr || '',
     } as IDynamicTextField,
-    ratePerKg: {
-      type: DynamicField.NUMBER,
-      name: 'ratePerKg',
-      title: 'Rate per Kg',
+    canBreak: {
+      type: DynamicField.CHECKBOX,
+      name: 'canBreak',
+      title: 'Can Break',
       required: false,
       disabled: false,
-      value: formValues.ratePerKg ?? '',
-    } as IDynamicNumberField,
-    ratePerM3: {
-      type: DynamicField.NUMBER,
-      name: 'ratePerM3',
-      title: 'Rate per M³',
+      value: formValues.canBreak ?? false,
+    } as IDynamicCheckboxField,
+    canBurn: {
+      type: DynamicField.CHECKBOX,
+      name: 'canBurn',
+      title: 'Can Burn',
       required: false,
       disabled: false,
-      value: formValues.ratePerM3 ?? '',
-    } as IDynamicNumberField,
+      value: formValues.canBurn ?? false,
+    } as IDynamicCheckboxField,
     isActive: {
       type: DynamicField.CHECKBOX,
       name: 'isActive',
@@ -149,11 +173,7 @@ const GoodTypesPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <EnhancedTableSkeleton />;
   }
 
   return (
@@ -161,12 +181,10 @@ const GoodTypesPage: React.FC = () => {
       <PageTitleWrapper>
         <MainPageTitle
           title="Good Types"
-          action={{ title: 'Create Good Type', onClick: openCreate }}
+          action={canWriteMasterData(role) ? { title: 'Create Good Type', onClick: openCreate } : undefined}
         />
       </PageTitleWrapper>
-      <MainPageSection title="Good Types">
         <EnhancedTable header={header} data={tableData} title="Good Types" />
-      </MainPageSection>
       <GenericDialog
         open={open}
         onClose={() => setOpen(false)}

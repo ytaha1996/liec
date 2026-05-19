@@ -6,8 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import { postJson, parseApiError } from '../../api/client';
 import { LoginUser } from '../../redux/user/userReducer';
 import { useAppDispatch } from '../../redux/hooks';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const LoginPage: React.FC = () => {
+  usePageTitle('Sign in');
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [email, setEmail] = useState('admin@local');

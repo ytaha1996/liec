@@ -1,24 +1,56 @@
 import { IApplication } from './IApplication';
 import { IUserStore } from './redux/user/types';
+import { MODULE_ACCESS, UserRole } from './helpers/rbac';
 
-export const applications = (user: IUserStore): Record<string, IApplication> => {
+export const applications = (_user: IUserStore): Record<string, IApplication> => {
+  const role = (_user.role || 'Field') as UserRole;
+  const canSee = (mod: string) => MODULE_ACCESS[mod]?.includes(role) ?? false;
+
   return {
-    shipping: {
-      title: 'Shipping Platform',
-      name: 'shipping',
-      route: '/',
+    operations: {
+      title: 'Operations',
+      name: 'operations',
+      route: '/ops',
+      icon: '/app-icons/operations.svg',
       modules: {
-        dashboard: { name: 'dashboard', route: '/dashboard', title: 'Dashboard' },
-        customers: { name: 'customers', route: '/customers', title: 'Customers' },
-        warehouses: { name: 'warehouses', route: '/warehouses', title: 'Warehouses' },
-        goodTypes: { name: 'goodTypes', route: '/good-types', title: 'Good Types' },
-        goods: { name: 'goods', route: '/goods', title: 'Goods' },
-        pricing: { name: 'pricing', route: '/pricing-configs', title: 'Pricing' },
-        shipments: { name: 'shipments', route: '/shipments', title: 'Shipments' },
-        packages: { name: 'packages', route: '/packages', title: 'Packages' },
-        suppliers: { name: 'suppliers', route: '/suppliers', title: 'Suppliers' },
-        supplyOrders: { name: 'supplyOrders', route: '/supply-orders', title: 'Supply Orders' },
-        messaging: { name: 'messaging', route: '/messaging-logs', title: 'Messaging' },
+        dashboard: { name: 'dashboard', route: '/ops/dashboard', title: 'Dashboard', hidden: !canSee('dashboard') },
+        shipments: { name: 'shipments', route: '/ops/shipments', title: 'Shipments', hidden: !canSee('shipments') },
+        packages: { name: 'packages', route: '/ops/packages', title: 'Packages', hidden: !canSee('packages') },
+      }
+    },
+    masterData: {
+      title: 'Master Data',
+      name: 'masterData',
+      route: '/master',
+      icon: '/app-icons/master-data.svg',
+      modules: {
+        customers: { name: 'customers', route: '/master/customers', title: 'Customers', hidden: !canSee('customers') },
+        warehouses: { name: 'warehouses', route: '/master/warehouses', title: 'Warehouses', hidden: !canSee('warehouses') },
+        goodTypes: { name: 'goodTypes', route: '/master/good-types', title: 'Good Types', hidden: !canSee('goodTypes') },
+        pricing: { name: 'pricing', route: '/master/pricing-configs', title: 'Pricing', hidden: !canSee('pricing') },
+        suppliers: { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers', hidden: !canSee('suppliers') },
+        supplyOrders: { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders', hidden: !canSee('supplyOrders') },
+        currencies: { name: 'currencies', route: '/master/currencies', title: 'Currencies', hidden: !canSee('currencies') },
+      }
+    },
+    communications: {
+      title: 'Communications',
+      name: 'communications',
+      route: '/comms',
+      icon: '/app-icons/communications.svg',
+      modules: {
+        messaging: { name: 'messaging', route: '/comms/messaging-logs', title: 'Messaging Logs', hidden: !canSee('messaging') },
+        groupHelper: { name: 'groupHelper', route: '/comms/group-helper-export', title: 'Group Helper Export', hidden: !canSee('groupHelper') },
+      }
+    },
+    admin: {
+      title: 'Admin',
+      name: 'admin',
+      route: '/admin',
+      icon: '/app-icons/admin.svg',
+      hidden: !canSee('users'),
+      modules: {
+        users: { name: 'users', route: '/admin/users', title: 'Users', hidden: !canSee('users') },
       }
     }
   };

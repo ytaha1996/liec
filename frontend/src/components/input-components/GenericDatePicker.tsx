@@ -57,6 +57,7 @@ const GenericDatePicker: React.FC<IGenericDatePickerProps> = ({
       <DatePicker
         value={dayjsValue}
         label={title}
+        format="DD-MM-YYYY"
         minDate={dayjsMin}
         maxDate={dayjsMax}
         disabled={disabled}

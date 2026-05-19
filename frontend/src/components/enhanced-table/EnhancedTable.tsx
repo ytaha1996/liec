@@ -189,9 +189,21 @@ const EnhancedTable: React.FC<EnhancedTableProps> = ({ header, data, defaultOrde
     } else {
       setFilteredData(data);
     }
-
-    setPage(0);
   }, [data, searchKey, filterValues, rowsPerPage]);
+
+  // Reset to page 0 when the user changes search/filter/page-size — but NOT
+  // when `data` simply refetches (e.g., after a row mutation). For data
+  // changes we only clamp the current page if it has fallen past the last
+  // valid page.
+  useEffect(() => {
+    setPage(0);
+  }, [searchKey, filterValues, rowsPerPage]);
+
+  useEffect(() => {
+    const count = Object.keys(filteredData || {}).length;
+    const lastPage = Math.max(0, Math.ceil(count / rowsPerPage) - 1);
+    setPage((p) => Math.min(p, lastPage));
+  }, [filteredData, rowsPerPage]);
 
 
   const visibleRows = React.useMemo(
@@ -218,7 +230,12 @@ const EnhancedTable: React.FC<EnhancedTableProps> = ({ header, data, defaultOrde
   const renderFilter = (filter: ITableFilterType) => {
 
     if (filter.type === TableFilterTypes.SELECT) {
-      const items: Record<string, any> = Object.values(data).reduce((acc, c) => ({ ...acc, [c[filter.name]]: c[filter.name] }), {});
+      // Prefer caller-provided options (e.g. humanised label maps like
+      // SHIPMENT_STATUS_LABELS) so the dropdown reads "Ready to Depart"
+      // instead of "ReadyToDepart". Fall back to deriving from the data
+      // when no options were passed.
+      const items: Record<string, any> = filter.options
+        ?? Object.values(data).reduce((acc, c) => ({ ...acc, [c[filter.name]]: c[filter.name] }), {});
 
       return <GenericSelectInput
         key={filter.name}

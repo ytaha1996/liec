@@ -1,6 +1,7 @@
 import { TableBody, TableRow, TableCell, Link, Chip, Checkbox, Tooltip, IconButton, useTheme, Box } from '@mui/material';
 import { EnhancedTableColoredChipHeader, EnhancedTableColumnType, EnhanceTableHeaderTypes } from '.';
 import { formatCurrencyNumber, formatDate, formatDateTime, formatIntPhoneNumber } from '../../helpers/formatting-utils';
+import { BRAND_TEAL } from '../../constants/statusColors';
 
 
 interface EnhancedTableBodyProps {
@@ -88,27 +89,40 @@ const EnhancedTableBody: React.FC<EnhancedTableBodyProps> = ({ header, data, sel
 
   return (
     <TableBody>
-      {Object.entries(data).map(([key, row]) => (
-        <TableRow key={key} tabIndex={-1} hover style={{
-          backgroundColor: selected.includes(key) ? '#f0f8ff' : '#fff',
-          transition: 'background-color 0.2s ease',
-        }}>
-          <TableCell padding="checkbox">
-            <Checkbox
-              checked={selected.includes(key)}
-              inputProps={{
-                'aria-labelledby': `enhanced-table-checkbox-${key}`,
-              }}
-              onClick={() => handleCheckboxClick(key)}
-            />
-          </TableCell >
-          {header.map((column) => (
-            <TableCell key={column.id} align={column.numeric ? 'right' : 'left'} style={{ padding: '12px', color: '#25A8B3' }}>
-              {renderCellContent(row[column.id], column, key, row)}
+      {Object.entries(data).map(([key, row]) => {
+        const hasClickable = header.some(
+          (h) =>
+            h.type === EnhancedTableColumnType.Clickable ||
+            h.type === EnhancedTableColumnType.Action,
+        );
+        return (
+          <TableRow
+            key={key}
+            tabIndex={-1}
+            hover
+            selected={selected.includes(key)}
+            sx={{
+              cursor: hasClickable ? 'pointer' : 'default',
+              transition: 'background-color 0.2s ease',
+            }}
+          >
+            <TableCell padding="checkbox">
+              <Checkbox
+                checked={selected.includes(key)}
+                inputProps={{
+                  'aria-labelledby': `enhanced-table-checkbox-${key}`,
+                }}
+                onClick={() => handleCheckboxClick(key)}
+              />
             </TableCell>
-          ))}
-        </TableRow>
-      ))}
+            {header.map((column) => (
+              <TableCell key={column.id} align={column.numeric ? 'right' : 'left'} sx={{ padding: '12px', color: BRAND_TEAL }}>
+                {renderCellContent(row[column.id], column, key, row)}
+              </TableCell>
+            ))}
+          </TableRow>
+        );
+      })}
     </TableBody>
   );
 };

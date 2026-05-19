@@ -1,5 +1,5 @@
 // DynamicFormWidget.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { DynamicField, DynamicFieldTypes, prepareValuesForSubmission } from '.';
 import GenericInput from '../input-components/GenericTextInput';
 import GenericTextAreaInput from '../input-components/GenericTextAreaInput';
@@ -64,7 +64,17 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
   const [formState, setFormState] = useState<IDynamicFormState | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Build initial state from fields
+  // Key the init effect on the serialised initial values, not on `fields` identity.
+  // Why: parents call `buildFields(...)` inline on every render, so the `fields`
+  // reference changes whenever the parent re-renders (e.g., after a mutation
+  // settles). Depending on `[fields]` would wipe in-progress user input on every
+  // such re-render. Re-init only when the actual initial values change (e.g.,
+  // when editing switches to a different record).
+  const initialValuesKey = useMemo(
+    () => JSON.stringify(Object.values(fields).map((f) => [f.name, f.value])),
+    [fields]
+  );
+
   useEffect(() => {
     const initialValues: Record<string, any> = {};
     const initialErrors: Record<string, string> = {};
@@ -79,7 +89,8 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
       errors: initialErrors,
       touched: initialTouched
     });
-  }, [fields]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialValuesKey]);
 
   // Validate a single field
   const validateField = useCallback(
@@ -93,60 +104,67 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
           field.conditionalRequired(values));
       if (dynamicRequired && isEmpty(fieldValue)) return 'Required';
       if (isEmpty(fieldValue)) return '';
-      switch (field.type) {
-        case DynamicField.TEXT:
-          return field.regex && !field.regex.test(fieldValue)
-            ? `Invalid ${field.title}`
-            : '';
-        case DynamicField.NUMBER:
-        case DynamicField.CURRENCY:
-          if (!isValidNumber(fieldValue)) return 'Invalid Number!';
-          const fieldNumber = Number(fieldValue);
-          if (!isEmpty(field.min) && fieldNumber < (field.min as number))
-            return `Minimum value is ${field.min}`;
-          if (!isEmpty(field.max) && fieldNumber > (field.max as number))
-            return `Maximum value is ${field.max}`;
-          return '';
-        case DynamicField.DATE:
-          if (!dayjs(fieldValue).isValid()) return 'Invalid Date!';
-          const fieldDate = dayjs(fieldValue);
-          if (!isEmpty(field.min) && fieldDate.isBefore(field.min))
-            return `Minimum Date is ${formatDate(field.min)}`;
-          if (!isEmpty(field.max) && fieldDate.isAfter(field.max))
-            return `Maximum Date is ${formatDate(field.max)}`;
-          return '';
-        case DynamicField.FILE:
-          if (typeof fieldValue !== 'string') {
-            const fileValue = fieldValue as File;
-            if (
-              field.maxSizeInMbs &&
-              fileValue.size > field.maxSizeInMbs * 1024 * 1024
-            )
-              return `Max file size is ${field.maxSizeInMbs} MB`;
-          } else if (isEmpty(fieldValue)) {
-            return 'Required';
+      const builtInError: string = (() => {
+        switch (field.type) {
+          case DynamicField.TEXT:
+            return field.regex && !field.regex.test(fieldValue)
+              ? `Invalid ${field.title}`
+              : '';
+          case DynamicField.NUMBER:
+          case DynamicField.CURRENCY: {
+            if (!isValidNumber(fieldValue)) return 'Invalid Number!';
+            const fieldNumber = Number(fieldValue);
+            if (!isEmpty(field.min) && fieldNumber < (field.min as number))
+              return `Minimum value is ${field.min}`;
+            if (!isEmpty(field.max) && fieldNumber > (field.max as number))
+              return `Maximum value is ${field.max}`;
+            return '';
           }
-          return '';
-        case DynamicField.MULTISELECT:
-        case DynamicField.TAGS: {
-          const arr = fieldValue as string[];
-          if (!Array.isArray(arr)) return 'Invalid';
-          if (dynamicRequired && arr.length === 0) return 'Required';
-          return '';
+          case DynamicField.DATE: {
+            if (!dayjs(fieldValue).isValid()) return 'Invalid Date!';
+            const fieldDate = dayjs(fieldValue);
+            if (!isEmpty(field.min) && fieldDate.isBefore(field.min))
+              return `Minimum Date is ${formatDate(field.min)}`;
+            if (!isEmpty(field.max) && fieldDate.isAfter(field.max))
+              return `Maximum Date is ${formatDate(field.max)}`;
+            return '';
+          }
+          case DynamicField.FILE:
+            if (typeof fieldValue !== 'string') {
+              const fileValue = fieldValue as File;
+              if (
+                field.maxSizeInMbs &&
+                fileValue.size > field.maxSizeInMbs * 1024 * 1024
+              )
+                return `Max file size is ${field.maxSizeInMbs} MB`;
+            } else if (isEmpty(fieldValue)) {
+              return 'Required';
+            }
+            return '';
+          case DynamicField.MULTISELECT:
+          case DynamicField.TAGS: {
+            const arr = fieldValue as string[];
+            if (!Array.isArray(arr)) return 'Invalid';
+            if (dynamicRequired && arr.length === 0) return 'Required';
+            return '';
+          }
+          case DynamicField.CHECKBOXLIST: {
+            const arrValue = fieldValue as string[];
+            if (!Array.isArray(arrValue)) return 'Invalid';
+            if (dynamicRequired && arrValue.length === 0) return 'Required';
+            if (!isEmpty(field.minOptions) && arrValue.length < (field.minOptions as number))
+              return `Minimum allowed options is ${field.minOptions}`;
+            if (!isEmpty(field.maxOptions) && arrValue.length > (field.maxOptions as number))
+              return `Maximum allowed options is ${field.maxOptions}`;
+            return '';
+          }
+          default:
+            return '';
         }
-        case DynamicField.CHECKBOXLIST: {
-          const arrValue = fieldValue as string[];
-          if (!Array.isArray(arrValue)) return 'Invalid';
-          if (dynamicRequired && arrValue.length === 0) return 'Required';
-          if (!isEmpty(field.minOptions) && arrValue.length < (field.minOptions as number))
-            return `Minimum allowed options is ${field.minOptions}`;
-          if (!isEmpty(field.maxOptions) && arrValue.length > (field.maxOptions as number))
-            return `Maximum allowed options is ${field.maxOptions}`;
-          return '';
-        }
-        default:
-          return '';
-      }
+      })();
+      if (builtInError) return builtInError;
+      if (field.customValidator) return field.customValidator(fieldValue, values);
+      return '';
     },
     [fields]
   );
@@ -209,7 +227,14 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
       );
       await onSubmit(preparedValues);
     } else {
-      toast.error('Incomplete Form!');
+      const firstError = Object.entries(newErrors).find(([, msg]) => !isEmpty(msg));
+      if (firstError) {
+        const [fieldName, msg] = firstError;
+        const f = Object.values(fields).find((x) => x.name === fieldName);
+        toast.error(f ? `${f.title}: ${msg}` : msg);
+      } else {
+        toast.error('Please fix the errors below.');
+      }
     }
     setSubmitting(false);
   };
@@ -258,7 +283,14 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
         case DynamicField.TEXTAREA:
           return <GenericTextAreaInput {...commonProps} />;
         case DynamicField.NUMBER:
-          return <GenericNumberInput {...commonProps} />;
+          return (
+            <GenericNumberInput
+              {...commonProps}
+              min={(field as any).min}
+              max={(field as any).max}
+              step={(field as any).step}
+            />
+          );
         case DynamicField.PHONENUMBER:
           return <GenericPhoneInput {...commonProps} type="text" />;
         case DynamicField.CURRENCY:

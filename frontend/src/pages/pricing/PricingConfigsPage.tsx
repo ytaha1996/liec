@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box } from '@mui/material';
+import { Alert, Box } from '@mui/material';
+import EnhancedTableSkeleton from '../../components/EnhancedTableSkeleton';
 import { toast } from 'react-toastify';
-import { getJson, postJson, putJson } from '../../api/client';
+import { getJson, postJson, putJson, parseApiError } from '../../api/client';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import {
   EnhanceTableHeaderTypes,
@@ -13,12 +14,18 @@ import { DynamicField, DynamicFieldTypes } from '../../components/dynamic-widget
 import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import EditIcon from '@mui/icons-material/Edit';
+import { PRICING_CONFIG_STATUS_LABELS } from '../../constants/statusLabels';
+import { PRICING_CONFIG_STATUS_CHIPS } from '../../constants/statusColors';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import { usePageTitle } from '../../helpers/usePageTitle';
 
 const ENDPOINT = '/api/pricing-configs';
 
-const buildFields = (initial?: Record<string, any>): Record<string, DynamicFieldTypes> => ({
+const buildFields = (
+  currencyItems: Record<string, string>,
+  initial?: Record<string, any>,
+): Record<string, DynamicFieldTypes> => ({
   name: {
     type: DynamicField.TEXT,
     name: 'name',
@@ -28,11 +35,12 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     value: initial?.name ?? '',
   },
   currency: {
-    type: DynamicField.TEXT,
+    type: DynamicField.SELECT,
     name: 'currency',
     title: 'Currency',
     required: true,
     disabled: false,
+    items: currencyItems,
     value: initial?.currency ?? '',
   },
   effectiveFrom: {
@@ -59,25 +67,46 @@ const buildFields = (initial?: Record<string, any>): Record<string, DynamicField
     disabled: false,
     value: initial?.defaultRatePerKg ?? '',
   },
-  defaultRatePerM3: {
+  defaultRatePerCbm: {
     type: DynamicField.NUMBER,
-    name: 'defaultRatePerM3',
-    title: 'Default Rate Per M3',
+    name: 'defaultRatePerCbm',
+    title: 'Default Rate Per CBM',
     required: true,
     disabled: false,
-    value: initial?.defaultRatePerM3 ?? '',
+    value: initial?.defaultRatePerCbm ?? '',
+  },
+  minimumCharge: {
+    type: DynamicField.NUMBER,
+    name: 'minimumCharge',
+    title: 'Minimum Charge (0 = none)',
+    required: false,
+    disabled: false,
+    value: initial?.minimumCharge ?? 0,
   },
 });
 
 const PricingConfigsPage = () => {
+  usePageTitle('Pricing Configs');
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
-  const { data = [] } = useQuery<any[]>({
+  const { data = [], isLoading, isError } = useQuery<any[]>({
     queryKey: [ENDPOINT],
     queryFn: () => getJson<any[]>(ENDPOINT),
   });
+
+  const { data: currencies = [] } = useQuery<any[]>({
+    queryKey: ['/api/currencies'],
+    queryFn: () => getJson<any[]>('/api/currencies'),
+  });
+
+  const currencyItems = (currencies as any[])
+    .filter((c) => c.isActive)
+    .reduce((acc: Record<string, string>, c: any) => {
+      acc[c.code] = `${c.code} — ${c.name}${c.symbol ? ` (${c.symbol})` : ''}`;
+      return acc;
+    }, {});
 
   const save = useMutation({
     mutationFn: (payload: Record<string, any>) =>
@@ -88,7 +117,7 @@ const PricingConfigsPage = () => {
       setDialogOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Save failed'),
   });
 
   const activate = useMutation({
@@ -97,7 +126,7 @@ const PricingConfigsPage = () => {
       toast.success('Config activated');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Activate failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Activate failed'),
   });
 
   const retire = useMutation({
@@ -106,7 +135,7 @@ const PricingConfigsPage = () => {
       toast.success('Config retired');
       qc.invalidateQueries({ queryKey: [ENDPOINT] });
     },
-    onError: () => toast.error('Retire failed'),
+    onError: (e: any) => toast.error(parseApiError(e).message ?? 'Retire failed'),
   });
 
   const tableData = (data ?? []).reduce((acc: Record<string, any>, item: any) => {
@@ -125,13 +154,8 @@ const PricingConfigsPage = () => {
       type: EnhancedTableColumnType.COLORED_CHIP,
       numeric: false,
       disablePadding: false,
-      chipColors: {
-        Active: { color: '#fff', backgroundColor: '#2e7d32' },
-        Draft: { color: '#333', backgroundColor: '#e0e0e0' },
-        Scheduled: { color: '#fff', backgroundColor: '#0288d1' },
-        Retired: { color: '#fff', backgroundColor: '#616161' },
-      },
-      chipLabels: {},
+      chipColors: PRICING_CONFIG_STATUS_CHIPS,
+      chipLabels: PRICING_CONFIG_STATUS_LABELS,
     },
     {
       id: 'actions',
@@ -174,6 +198,9 @@ const PricingConfigsPage = () => {
     }
   };
 
+  if (isLoading) return <EnhancedTableSkeleton />;
+  if (isError) return <Box sx={{ p: 3 }}><Alert severity="error">Failed to load pricing configs.</Alert></Box>;
+
   return (
     <Box>
       <MainPageTitle
@@ -196,7 +223,7 @@ const PricingConfigsPage = () => {
         <DynamicFormWidget
           title=""
           drawerMode
-          fields={buildFields(editing ?? undefined)}
+          fields={buildFields(currencyItems, editing ?? undefined)}
           onSubmit={handleSubmit}
         />
       </GenericDialog>

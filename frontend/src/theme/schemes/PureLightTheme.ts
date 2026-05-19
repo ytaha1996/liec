@@ -1,15 +1,15 @@
 import { alpha, createTheme, lighten, darken } from '@mui/material';
 
 const themeColors = {
-  primary: '#1a4f9c',   // Shipping platform branding blue
-  secondary: '#6E759F', // Soft gray/purple
+  primary: '#00A6A6',   // BRAND_TEAL — section headers, primary actions, focus rings
+  secondary: '#243043', // BRAND_NAVY — dialog/drawer headers, secondary chips
   success: '#57CA22',
   warning: '#FFA319',
   error: '#FF1943',
   info: '#33C2FF',
   black: '#1B1B1B',
   white: '#FFFFFF',
-  primaryAlt: '#000C57'
+  primaryAlt: '#181F2C' // BRAND_NAVY darkened
 };
 
 

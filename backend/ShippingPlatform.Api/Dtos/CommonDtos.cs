@@ -3,8 +3,15 @@ using ShippingPlatform.Api.Models;
 namespace ShippingPlatform.Api.Dtos;
 
 public record LoginRequest(string Email, string Password);
-public record LoginResponse(string Token, string Email);
+public record LoginResponse(string Token, string Email, string Role);
 public record GateFailure(string Code, string Message, List<MissingGateItem> Missing);
 public record MissingGateItem(int PackageId, string CustomerName, MediaStage Stage);
 public record StatusRequest(string Status);
 public record ExportRequest(string Format);
+
+public record UpdateShipmentRequest(string? TiiuCode, DateTime? PlannedDepartureDate, DateTime? PlannedArrivalDate, decimal? MaxWeightKg = null, decimal? MaxCbm = null);
+
+public record BulkTransitionRequest(int[] PackageIds, string Action);
+public record BulkTransitionError(int PackageId, string Reason);
+
+public record PagedResult<T>(List<T> Items, int Total, int Page, int PageSize);

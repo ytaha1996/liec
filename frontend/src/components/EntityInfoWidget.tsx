@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
+import { BRAND_TEAL } from '../constants/statusColors';
 
 export interface IEntityClassification {
   color: string;
@@ -121,7 +122,7 @@ const EntityInfo: React.FC<EntityInfoProps> = ({ view, onToggle }) => {
                     width: 60,
                     height: 60,
                     cursor: 'pointer',
-                    border: '2px solid #25a8b3',
+                    border: `2px solid ${BRAND_TEAL}`,
                   }}
                 />
               )}
@@ -144,7 +145,7 @@ const EntityInfo: React.FC<EntityInfoProps> = ({ view, onToggle }) => {
                 <Typography variant="body2" sx={{ color: '#1b1b1bb3', fontWeight: '500' }}>
                   {label}:
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#25a8b3', fontWeight: 'bold' }}>
+                <Typography variant="body2" sx={{ color: BRAND_TEAL, fontWeight: 'bold' }}>
                   {value}
                 </Typography>
               </Box>
@@ -158,7 +159,7 @@ const EntityInfo: React.FC<EntityInfoProps> = ({ view, onToggle }) => {
                   value={progress}
                   sx={{
                     backgroundColor: '#e0e0e0',
-                    '& .MuiLinearProgress-bar': { backgroundColor: '#25a8b3' },
+                    '& .MuiLinearProgress-bar': { backgroundColor: BRAND_TEAL },
                   }}
                 />
                 <Typography variant="caption" sx={{ display: 'block', textAlign: 'right', color: '#1b1b1bb3' }}>

@@ -11,6 +11,9 @@ interface IGenericInputProps {
     name: string;
     onBlur?: (name: string) => void;
     disabled?: boolean;
+    min?: number;
+    max?: number;
+    step?: number;
 }
 
 const useStyles = tss.create({
@@ -26,7 +29,7 @@ const useStyles = tss.create({
     },
 });
 
-const GenericNumberInput: React.FC<IGenericInputProps> = ({ title, value, disabled, error, onChange, name, onBlur = () => { } }) => {
+const GenericNumberInput: React.FC<IGenericInputProps> = ({ title, value, disabled, error, onChange, name, min, max, step, onBlur = () => { } }) => {
     const { classes, cx } = useStyles();
     return <GenericInputWrapper title={""} error={error} name={name}>
         <TextField
@@ -37,8 +40,10 @@ const GenericNumberInput: React.FC<IGenericInputProps> = ({ title, value, disabl
             error={!!error}
             size="medium"
             disabled={disabled}
+            inputProps={{ min, max, step }}
             className={cx(classes.input, !!error ? classes.errorInput : undefined)}
             onChange={(e) => onChange(e.target.value)}
+            onFocus={(e) => e.target.select()}
             onBlur={() => onBlur(name)} />
     </GenericInputWrapper>
 }
