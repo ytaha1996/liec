@@ -72,10 +72,13 @@ const EnhancedTableBody: React.FC<EnhancedTableBodyProps> = ({ header, data, sel
                 '&:hover': {
                   background: '#fff'
                 },
-                color: theme.palette.primary.main
+                color: theme.palette.primary.main,
+                // Default 40px tap target on phones (iOS 44px / Android 48dp
+                // guideline); shrink to 32px on desktop where mouse precision
+                // is fine.
+                padding: { xs: '8px', md: '4px' },
               }}
               color="inherit"
-              size="small"
               onClick={() => action.onClick(rowId)}
             >
               {action.icon}
@@ -116,7 +119,7 @@ const EnhancedTableBody: React.FC<EnhancedTableBodyProps> = ({ header, data, sel
               />
             </TableCell>
             {header.map((column) => (
-              <TableCell key={column.id} align={column.numeric ? 'right' : 'left'} sx={{ padding: '12px', color: BRAND_TEAL }}>
+              <TableCell key={column.id} align={column.numeric ? 'right' : 'left'} sx={{ padding: { xs: '8px 6px', md: '12px' }, fontSize: { xs: 13, sm: 14 }, color: BRAND_TEAL }}>
                 {renderCellContent(row[column.id], column, key, row)}
               </TableCell>
             ))}

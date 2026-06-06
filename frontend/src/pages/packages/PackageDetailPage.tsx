@@ -22,7 +22,7 @@ import { GateError, api, getJson, postJson, parseApiError } from '../../api/clie
 import { useAppDispatch } from '../../redux/hooks';
 import { OpenConfirmation } from '../../redux/confirmation/confirmationReducer';
 import EditIcon from '@mui/icons-material/Edit';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import Breadcrumbs from '../../components/Breadcrumbs';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
@@ -340,12 +340,11 @@ const PackageDetailPage = ({ id }: Props) => {
 
   return (
     <>
-    <Box sx={{ px: 3, pt: 2 }}>
-      <Button variant="text" size="small" startIcon={<ArrowBackIcon />}
-        onClick={() => navigate(shipmentId ? `/ops/shipments/${shipmentId}` : '/ops/packages')} sx={{ color: 'text.secondary' }}>
-        {shipmentId ? 'Back to Shipment' : 'All Packages'}
-      </Button>
-    </Box>
+    <Breadcrumbs items={[
+      { label: 'Packages', href: '/ops/packages' },
+      ...(shipmentId ? [{ label: `Shipment #${shipmentId}`, href: `/ops/shipments/${shipmentId}` }] : []),
+      { label: `Package #${id}` },
+    ]} />
     <DetailPageLayout
       title={`Package #${id}`}
       chips={

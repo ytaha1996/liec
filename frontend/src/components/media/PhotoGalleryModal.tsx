@@ -8,6 +8,7 @@ import {
   IconButton,
   MenuItem,
   Select,
+  useMediaQuery,
   Stack,
   Typography,
 } from '@mui/material';
@@ -33,6 +34,7 @@ const PhotoGalleryModal = ({ open, onClose, packageId, title }: PhotoGalleryModa
   const { uploadMultiple, progress, isUploading } = useMultiFileUpload(packageId);
   const role = useUserRole();
   const canUpload = canUploadPhotos(role);
+  const fullScreen = useMediaQuery('(max-width:600px)');
 
   const { data: media = [] } = useQuery<any[]>({
     queryKey: ['/api/packages', packageId, 'media'],
@@ -47,7 +49,7 @@ const PhotoGalleryModal = ({ open, onClose, packageId, title }: PhotoGalleryModa
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth fullScreen={fullScreen}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {title ?? `Package #${packageId} Photos`}
         <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>

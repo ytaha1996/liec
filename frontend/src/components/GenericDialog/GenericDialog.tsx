@@ -5,6 +5,8 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import { makeStyles } from 'tss-react/mui';
 
 interface GenericDialogProps {
@@ -47,9 +49,13 @@ const GenericDialog: React.FC<PropsWithChildren<GenericDialogProps>> = ({
   children,
 }) => {
   const { classes } = useStyles();
+  // Phones get the full viewport — fragile dialogs at maxWidth="md" otherwise
+  // clip and the close affordance becomes hard to reach.
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
       <DialogTitle className={classes.dialogTitle}>
         {title}
         {headerAction && <div className={classes.headerAction}>{headerAction}</div>}

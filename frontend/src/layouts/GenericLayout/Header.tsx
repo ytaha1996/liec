@@ -130,27 +130,28 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
 
   return (
     <AppBar position="fixed" sx={{
-      padding: 1,
+      px: { xs: 0.5, sm: 1 },
+      py: { xs: 0, sm: 1 },
       zIndex: (theme) => theme.zIndex.drawer + 1,
-      height: '80px'
+      height: { xs: 56, sm: 64, md: 80 },
     }}>
-      <Container maxWidth="xl">
-        <Toolbar disableGutters>
+      <Container maxWidth="xl" sx={{ px: { xs: 1, sm: 2 } }}>
+        <Toolbar disableGutters sx={{ minHeight: { xs: 56, sm: 64, md: 64 } }}>
 
           <Typography
             variant="h6"
             noWrap
             component="a"
             sx={{
-              mr: 2,
-              display: { xs: 'none', md: 'flex' },
+              mr: { xs: 1, sm: 2 },
+              display: 'flex',
               fontFamily: 'cursive',
               fontWeight: 'bold',
-              fontSize: '18px',
-              letterSpacing: '.1rem',
+              fontSize: { xs: 15, sm: 18 },
+              letterSpacing: { xs: '0', sm: '.1rem' },
               color: '#fff',
               textDecoration: 'none',
-              padding: '0 5px 0 5px',
+              padding: '0 5px',
               zIndex: 1000,
             }}
           >
@@ -202,7 +203,8 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
           </Box>
 
           <AppLauncher applications={applications(currentUser)} appLauncherUrl={''} />
-          <Box sx={{ flexGrow: 1, display: 'flex' }}>
+          {/* Desktop nav — hidden on phones (hamburger covers nav on `xs`). */}
+          <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
             {pages.map((page, index) => (
               <Button
                 key={page}
@@ -213,15 +215,29 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
               </Button>
             ))}
           </Box>
+          {/* Spacer so the user/avatar cluster sits at the right edge on mobile. */}
+          <Box sx={{ flexGrow: 1, display: { xs: 'block', md: 'none' } }} />
 
           <Box sx={{ flexGrow: 0, display: 'flex', alignItems: 'center' }}>
             <Tooltip title="Search (Ctrl+K)">
-              <IconButton onClick={() => setCmdOpen(true)} sx={{ color: 'white', mr: 1 }}>
+              <IconButton onClick={() => setCmdOpen(true)} sx={{ color: 'white', mr: { xs: 0.5, sm: 1 } }}>
                 <SearchIcon />
               </IconButton>
             </Tooltip>
             {currentUser?.role && (
-              <Chip label={currentUser.role} size="small" sx={{ mr: 1, color: '#fff', borderColor: 'rgba(255,255,255,0.5)' }} variant="outlined" />
+              <Chip
+                label={currentUser.role}
+                size="small"
+                sx={{
+                  mr: 1,
+                  color: '#fff',
+                  borderColor: 'rgba(255,255,255,0.5)',
+                  // Role chip is decorative; hide it on phones to free up
+                  // header width for the avatar and search.
+                  display: { xs: 'none', sm: 'inline-flex' },
+                }}
+                variant="outlined"
+              />
             )}
             <Tooltip title={currentUser ? `${currentUser.user.username}` : 'User'}>
               <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
@@ -229,8 +245,9 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
                   sx={{
                     color: 'white',
                     fontWeight: 'bold',
-                    width: 40,
-                    height: 40,
+                    width: { xs: 32, sm: 40 },
+                    height: { xs: 32, sm: 40 },
+                    fontSize: { xs: 14, sm: 16 },
                   }}
                 >
                   {userInitials}
@@ -238,7 +255,7 @@ const Header: React.FC<HeaderProps> = ({ pages = [], links = [], appName = '' })
               </IconButton>
             </Tooltip>
             <Menu
-              sx={{ mt: '45px' }}
+              sx={{ mt: { xs: '40px', sm: '45px' } }}
               id="menu-appbar-user"
               anchorEl={anchorElUser}
               anchorOrigin={{

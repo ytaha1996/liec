@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box } from '@mui/material';
 import MainPageTitle, { MainPageAction } from './MainPageTitle';
+import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../../theme/tokens';
 
 interface DetailPageLayoutProps {
   title: string;
@@ -12,7 +13,7 @@ interface DetailPageLayoutProps {
 const DetailPageLayout: React.FC<DetailPageLayoutProps> = ({ title, chips, actions, children }) => (
   <Box>
     <MainPageTitle title={title} chips={chips} actions={actions} />
-    <Box sx={{ px: 3, pb: 3 }}>
+    <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>
       {children}
     </Box>
   </Box>

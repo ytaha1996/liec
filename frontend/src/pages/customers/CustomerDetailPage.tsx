@@ -18,6 +18,7 @@ import GenericDialog from '../../components/GenericDialog/GenericDialog';
 import { buildCustomerFields } from './customerFields';
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import PageTitleWrapper from '../../components/PageTitleWrapper';
+import Breadcrumbs from '../../components/Breadcrumbs';
 import InformationWidget, { InformationWidgetFieldTypes, IInformationWidgetField } from '../../components/information-widget';
 import EnhancedTable from '../../components/enhanced-table/EnhancedTable';
 import EmptyState from '../../components/EmptyState';
@@ -26,6 +27,7 @@ import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 interface Props {
   id: string;
@@ -209,6 +211,10 @@ const CustomerDetailPage = ({ id }: Props) => {
 
   return (
     <Box>
+      <Breadcrumbs items={[
+        { label: 'Customers', href: '/master/customers' },
+        { label: data.name },
+      ]} />
       <PageTitleWrapper>
         <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap">
           <Typography variant="h3" component="h1" sx={{ fontWeight: 700, color: '#00A6A6' }}>
@@ -223,7 +229,7 @@ const CustomerDetailPage = ({ id }: Props) => {
         </Stack>
       </PageTitleWrapper>
 
-      <Box sx={{ px: 3, pb: 3 }}>
+      <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>
         <InformationWidget
           title="Info"
           fields={CUSTOMER_INFO_FIELDS}

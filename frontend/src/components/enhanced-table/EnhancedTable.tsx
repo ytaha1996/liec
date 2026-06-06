@@ -25,10 +25,13 @@ interface EnhancedTableProps {
 
 
 const useStyles = makeStyles()(
-  (_theme) => ({
+  (theme) => ({
     filters: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
+      // Stack to one column on phones, two on small tablets, four on desktop.
+      gridTemplateColumns: '1fr',
+      [theme.breakpoints.up('sm')]: { gridTemplateColumns: 'repeat(2, 1fr)' },
+      [theme.breakpoints.up('md')]: { gridTemplateColumns: 'repeat(4, 1fr)' },
       gap: '16px',
       padding: '16px',
       backgroundColor: '#f9f9f9',
@@ -267,13 +270,23 @@ const EnhancedTable: React.FC<EnhancedTableProps> = ({ header, data, defaultOrde
     <Card style={{ overflow: "visible" }}>
       <CardHeader
         sx={{
-          minHeight: '65px',
+          minHeight: { xs: 'auto', sm: 65 },
           backgroundColor: theme.palette.primary.main,
-          borderBottom: '1px solid ${theme.palette.divider}',
-          borderRadius: '10px 10px 0 0'
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          borderRadius: '10px 10px 0 0',
+          // Stack title above toolbar on phones so the search bar gets
+          // the full width instead of fighting the title for space.
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: { xs: 1, sm: 0 },
+          '.MuiCardHeader-action': {
+            m: { xs: 0, sm: 'auto' },
+            width: { xs: '100%', sm: 'auto' },
+            alignSelf: 'stretch',
+          },
         }}
         title={
-          <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: '18px', color: theme.palette.common.white }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: 16, sm: 18 }, color: theme.palette.common.white }}>
             {title}
           </Typography>
         }
@@ -284,8 +297,18 @@ const EnhancedTable: React.FC<EnhancedTableProps> = ({ header, data, defaultOrde
       </Box>
       <Box sx={{ width: '100%' }}>
         <Paper sx={{ width: '100%', mb: 2 }}>
-          <TableContainer>
-            <Table aria-labelledby="tableTitle">
+          <TableContainer
+            sx={{
+              // Wide tables scroll horizontally inside their container on
+              // phones instead of forcing the whole page to scroll. The
+              // sticky header keeps column names visible during vertical
+              // scroll on long lists.
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              maxHeight: { xs: '70vh', md: 'none' },
+            }}
+          >
+            <Table stickyHeader aria-labelledby="tableTitle" sx={{ minWidth: { xs: 'auto', sm: 720 } }}>
               <EnhancedTableHead
                 header={header}
                 order={order}

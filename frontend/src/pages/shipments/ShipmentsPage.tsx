@@ -22,6 +22,7 @@ import { SHIPMENT_STATUS_CHIPS } from '../../constants/statusColors';
 import { SHIPMENT_STATUS_LABELS } from '../../constants/statusLabels';
 import { usePageTitle } from '../../helpers/usePageTitle';
 import { useDebouncedValue } from '../../helpers/useDebouncedValue';
+import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 const ENDPOINT = '/api/shipments';
 
@@ -223,13 +224,13 @@ const ShipmentsPage = () => {
         } : undefined}
       />
 
-      <Box sx={{ px: 3, pb: 3 }}>
+      <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>
         <TextField
           size="small"
           label="Search by Ref Code or TIIU"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ mb: 2, minWidth: 300 }}
+          sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
         />
         {Object.keys(tableData).length === 0 && (
           <EmptyState message="No shipments found." hint="Create one to get started." />

@@ -10,6 +10,8 @@ interface IGenericLayout {
   appName?: string;
 }
 
+// Content offset tracks the responsive AppBar height in Header.tsx
+// (xs: 56, sm: 64, md: 80).
 const useStyles = makeStyles()((theme) => ({
   mainContainer: {
     display: 'flex',
@@ -22,11 +24,19 @@ const useStyles = makeStyles()((theme) => ({
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    marginTop: '80px',
     position: 'relative',
-    height: 'calc(100vh - 80px)',
-    overflow: 'auto'
-  }
+    overflow: 'auto',
+    marginTop: 56,
+    height: 'calc(100vh - 56px)',
+    [theme.breakpoints.up('sm')]: {
+      marginTop: 64,
+      height: 'calc(100vh - 64px)',
+    },
+    [theme.breakpoints.up('md')]: {
+      marginTop: 80,
+      height: 'calc(100vh - 80px)',
+    },
+  },
 }));
 
 const GenericLayout: React.FC<React.PropsWithChildren<IGenericLayout>> = ({

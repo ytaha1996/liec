@@ -19,7 +19,7 @@ interface IAppLauncherModalProps {
   applications: Record<string, IApplication>;
 }
 
-const useStyles = makeStyles()(() => ({
+const useStyles = makeStyles()((theme) => ({
   dialogPaper: {
     height: '100%',
     display: 'flex',
@@ -30,20 +30,30 @@ const useStyles = makeStyles()(() => ({
     fontSize: '22px',
     lineHeight: '27px',
     borderBottom: '1px solid rgba(220, 220, 220, 0.5)',
-    padding: '16px 24px',
+    padding: '12px 16px',
     display: 'flex',
-    flexDirection: 'row',
-    gap: '30px',
+    flexDirection: 'column',
+    gap: 12,
+    [theme.breakpoints.up('sm')]: {
+      flexDirection: 'row',
+      gap: 30,
+      padding: '16px 24px',
+      alignItems: 'center',
+    },
   },
   titleWrapper: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingRight: 36, // leave space for the close icon
   },
   titleText: {
     fontWeight: 600,
-    fontSize: '20px',
+    fontSize: '18px',
     margin: 0,
+    [theme.breakpoints.up('sm')]: {
+      fontSize: '20px',
+    },
   },
   searchField: {
     width: '100%',
@@ -51,8 +61,8 @@ const useStyles = makeStyles()(() => ({
   },
   closeIcon: {
     position: 'absolute',
-    top: '16px',
-    right: '16px',
+    top: 8,
+    right: 8,
     color: '#666',
     '&:hover': {
       color: '#000',
@@ -61,7 +71,10 @@ const useStyles = makeStyles()(() => ({
   dialogContent: {
     flex: 1,
     overflowY: 'auto',
-    padding: '24px',
+    padding: 16,
+    [theme.breakpoints.up('sm')]: {
+      padding: 24,
+    },
   },
 }));
 

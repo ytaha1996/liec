@@ -12,6 +12,7 @@ import {
   IconButton,
   Stack,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -48,6 +49,7 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
   const qc = useQueryClient();
   const dispatch = useAppDispatch();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const fullScreen = useMediaQuery('(max-width:600px)');
 
   const sc = MEDIA_STAGE_CHIPS[stage] ?? MEDIA_STAGE_CHIPS['Other'];
 
@@ -92,7 +94,7 @@ const MediaViewerModal = ({ open, onClose, packageId, stage, media }: MediaViewe
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={fullScreen}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Chip label={stage} size="small" sx={{ backgroundColor: sc.backgroundColor, color: sc.color, fontWeight: 600 }} />

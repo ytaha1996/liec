@@ -9,6 +9,7 @@ import { BRAND_TEAL, BRAND_NAVY, BRAND_PURPLE, SHIPMENT_STATUS_CHIPS, PKG_STATUS
 import { SHIPMENT_STATUS_LABELS, PKG_STATUS_LABELS } from '../../constants/statusLabels';
 import Loader from '../../components/Loader';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { PAGE_PADDING_X } from '../../theme/tokens';
 
 interface StatCardProps {
   title: string;
@@ -19,11 +20,11 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, color = BRAND_TEAL, subtitle }) => (
   <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
-    <CardContent sx={{ p: 3 }}>
-      <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5 }}>
+    <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+      <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 0.5, fontSize: { xs: 12, sm: 14 } }}>
         {title}
       </Typography>
-      <Typography variant="h3" sx={{ fontWeight: 700, color }}>
+      <Typography variant="h3" sx={{ fontWeight: 700, color, fontSize: { xs: 20, sm: 28, md: 32 }, lineHeight: 1.2 }}>
         {value}
       </Typography>
       {subtitle && (
@@ -42,7 +43,7 @@ interface StatusBreakdownProps {
 
 const StatusBreakdown: React.FC<StatusBreakdownProps> = ({ title, data, chips, labels }) => (
   <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
-    <CardContent sx={{ p: 3 }}>
+    <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
       <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 1.5 }}>
         {title}
       </Typography>
@@ -86,11 +87,11 @@ const DashboardPage: React.FC = () => {
       <PageTitleWrapper>
         <MainPageTitle title="Dashboard" subtitle="Operations overview" />
       </PageTitleWrapper>
-      <Box sx={{ px: 3, pb: 4 }}>
+      <Box sx={{ px: PAGE_PADDING_X, pb: { xs: 3, sm: 4 } }}>
         {activePending < 2 && (
           <Alert
             severity="warning"
-            sx={{ mb: 3 }}
+            sx={{ mb: { xs: 2, sm: 3 } }}
             action={
               <Button color="inherit" size="small" onClick={() => navigate('/ops/shipments')}>
                 Create Shipment
@@ -102,7 +103,7 @@ const DashboardPage: React.FC = () => {
         )}
 
         {(s.packagesMissingDeparturePhotos > 0 || s.packagesMissingArrivalPhotos > 0) && (
-          <Alert severity="info" sx={{ mb: 3 }}>
+          <Alert severity="info" sx={{ mb: { xs: 2, sm: 3 } }}>
             {s.packagesMissingDeparturePhotos > 0 && (
               <span>{s.packagesMissingDeparturePhotos} package(s) missing departure photos. </span>
             )}
@@ -112,7 +113,7 @@ const DashboardPage: React.FC = () => {
           </Alert>
         )}
 
-        <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 3 } }}>
           <Grid item xs={6} sm={3}>
             <StatCard title="Customers" value={s.totalCustomers ?? 0} color={BRAND_TEAL} />
           </Grid>
@@ -127,7 +128,7 @@ const DashboardPage: React.FC = () => {
           </Grid>
         </Grid>
 
-        <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 3 } }}>
           <Grid item xs={12} md={6}>
             <StatusBreakdown title="Shipments by Status" data={shipmentsByStatus} chips={SHIPMENT_STATUS_CHIPS} labels={SHIPMENT_STATUS_LABELS} />
           </Grid>
@@ -136,7 +137,7 @@ const DashboardPage: React.FC = () => {
           </Grid>
         </Grid>
 
-        <Stack direction="row" gap={2}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} gap={{ xs: 1, sm: 2 }}>
           <Button variant="contained" onClick={() => navigate('/ops/shipments')}>View Shipments</Button>
           <Button variant="outlined" onClick={() => navigate('/ops/packages')}>View Packages</Button>
         </Stack>

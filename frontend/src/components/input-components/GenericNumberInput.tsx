@@ -40,7 +40,10 @@ const GenericNumberInput: React.FC<IGenericInputProps> = ({ title, value, disabl
             error={!!error}
             size="medium"
             disabled={disabled}
-            inputProps={{ min, max, step }}
+            // `inputMode="decimal"` triggers the numeric keypad on mobile
+            // browsers without the spinner; `enterKeyHint="next"` makes the
+            // virtual keyboard's enter key advance.
+            inputProps={{ min, max, step, inputMode: 'decimal', enterKeyHint: 'next' }}
             className={cx(classes.input, !!error ? classes.errorInput : undefined)}
             onChange={(e) => onChange(e.target.value)}
             onFocus={(e) => e.target.select()}

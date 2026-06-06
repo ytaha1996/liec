@@ -30,7 +30,11 @@ const useStyles = makeStyles()(
       flexWrap: "wrap",
     },
     leftSection: {
-      display: "flex"
+      // `flex: 1` lets the search bar grow to fill the available toolbar
+      // width — critical on mobile where the toolbar gets the full row.
+      display: "flex",
+      flex: 1,
+      minWidth: 0,
     },
     title: {
       display: "block",
@@ -46,7 +50,8 @@ const useStyles = makeStyles()(
       color: "white"
     },
     searchFieldWrapper: {
-      margin: "0 15px 0 0"
+      margin: "0 15px 0 0",
+      width: "100%",
     },
     dropdownButton: {
       backgroundColor: "#6e759f",

@@ -16,7 +16,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import Breadcrumbs from '../../components/Breadcrumbs';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import EditIcon from '@mui/icons-material/Edit';
 import { Link as RouterLink } from 'react-router-dom';
@@ -396,12 +396,10 @@ const ShipmentDetailPage = ({ id }: Props) => {
 
   return (
     <>
-      <Box sx={{ px: 3, pt: 2 }}>
-        <Button variant="text" size="small" startIcon={<ArrowBackIcon />}
-          onClick={() => navigate('/ops/shipments')} sx={{ color: 'text.secondary' }}>
-          All Shipments
-        </Button>
-      </Box>
+      <Breadcrumbs items={[
+        { label: 'Shipments', href: '/ops/shipments' },
+        { label: data.refCode },
+      ]} />
       <DetailPageLayout
         title={`Shipment ${data.refCode}`}
         chips={statusChip}

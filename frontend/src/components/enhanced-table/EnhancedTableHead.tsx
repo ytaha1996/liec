@@ -43,7 +43,10 @@ const EnhancedTableHead: React.FC<EnhancedTableHeadProps> = (props) => {
               backgroundColor: theme.palette.background.default,
               color: theme.palette.text.secondary,
               fontWeight: 'bold',
-              borderBottom: `1px solid ${theme.palette.divider}`
+              borderBottom: `1px solid ${theme.palette.divider}`,
+              // Tighter padding on phones reclaims horizontal cell space.
+              padding: { xs: '6px 4px', md: '12px' },
+              fontSize: { xs: 12, sm: 14 },
             }}
           >
             <TableSortLabel
@@ -51,6 +54,7 @@ const EnhancedTableHead: React.FC<EnhancedTableHeadProps> = (props) => {
               direction={orderBy === headCell.id ? order : 'asc'}
               onClick={createSortHandler(headCell.id)}
               sx={{
+                fontSize: { xs: 12, sm: 14 },
                 '&.MuiTableSortLabel-root:hover': {
                   color: theme.palette.primary.main,
                 },

@@ -50,21 +50,20 @@ const GenericDrawer: React.FC<PropsWithChildren<GenericDrawerProps>> = ({ childr
 
     return (
         <Drawer
-            anchor="bottom"
+            // Right-anchored drawer on desktop, bottom-anchored on mobile so
+            // the keyboard doesn't push the form off-screen.
+            anchor="right"
             open={open}
-            ModalProps={{ keepMounted: true, slotProps: { backdrop: { invisible: true } } }}
+            onClose={onClose}
+            ModalProps={{ keepMounted: true }}
             PaperProps={{
                 sx: {
-                    width: '350px',
-                    position: 'absolute',
-                    right: 0,
-                    bottom: 0,
-                    maxHeight: '70%',
-                    borderTopLeftRadius: 8,
-                    borderTopRightRadius: 0,
-                    left: "unset",
-                    height: "700px",
-                    "transition": "width 2s",
+                    // Full viewport on phones, fixed 420px on tablets+.
+                    width: { xs: '100vw', sm: 420 },
+                    maxWidth: '100vw',
+                    height: '100%',
+                    borderTopLeftRadius: { xs: 0, sm: 8 },
+                    borderBottomLeftRadius: { xs: 0, sm: 8 },
                 },
             }}
         >

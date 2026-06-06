@@ -578,6 +578,12 @@ export const PureLightTheme = createTheme({
           textTransform: 'none',
           paddingLeft: 16,
           paddingRight: 16,
+          // Keyboard a11y: visible focus ring; mouse focus stays clean.
+          '&:focus-visible': {
+            outline: '2px solid',
+            outlineColor: colors.primary.main,
+            outlineOffset: '2px',
+          },
 
           '.MuiSvgIcon-root': {
             transition: 'all .2s'
@@ -652,6 +658,12 @@ export const PureLightTheme = createTheme({
         root: {
           borderRadius: 8,
           padding: 8,
+          // Match MuiButton's focus ring so keyboard users have parity.
+          '&:focus-visible': {
+            outline: '2px solid',
+            outlineColor: colors.primary.main,
+            outlineOffset: '2px',
+          },
 
           '& .MuiTouchRipple-root': {
             borderRadius: 8

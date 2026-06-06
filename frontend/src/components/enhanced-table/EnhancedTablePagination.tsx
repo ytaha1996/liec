@@ -1,4 +1,4 @@
-import { TablePagination } from '@mui/material';
+import { TablePagination, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import React from 'react';
 
@@ -18,10 +18,15 @@ const EnhancedTablePagination: React.FC<EnhancedTablePaginationProps> = ({
   onRowsPerPageChange,
 }) => {
   const theme = useTheme();
+  // Compact controls on phones: fewer per-page options, no first/last
+  // buttons, tighter typography.
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <TablePagination
-      rowsPerPageOptions={[10, 25, 50, 100]}
+      rowsPerPageOptions={isMobile ? [10, 25] : [10, 25, 50, 100]}
+      showFirstButton={!isMobile}
+      showLastButton={!isMobile}
       component="div"
       count={count}
       rowsPerPage={rowsPerPage}
@@ -32,9 +37,13 @@ const EnhancedTablePagination: React.FC<EnhancedTablePaginationProps> = ({
         borderTop: 1,
         borderColor: theme.palette.divider,
         backgroundColor: theme.palette.background.default,
-        padding: theme.spacing(1),
+        padding: { xs: 0.5, sm: 1 },
         color: theme.palette.text.secondary,
-        borderRadius: '0 0 10px 10px'
+        borderRadius: '0 0 10px 10px',
+        '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 }, minHeight: { xs: 48, sm: 52 } },
+        '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+          fontSize: { xs: 12, sm: 14 },
+        },
       }}
     />
   );

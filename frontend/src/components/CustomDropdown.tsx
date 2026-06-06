@@ -31,6 +31,7 @@ const useStyles = makeStyles()({
         display: 'block',
         width: "100%",
         textTransform: "none !important" as any,
+        transition: 'background-color 0.15s ease',
         '&:hover': {
             backgroundColor: '#f1f1f1'
         }

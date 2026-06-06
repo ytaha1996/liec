@@ -36,15 +36,22 @@ interface IInformationWidgetProps {
 const useStyles = makeStyles()((theme) => ({
   gridContainer: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
+    // One column on phones, two on tablets, three on desktop.
+    gridTemplateColumns: '1fr',
+    [theme.breakpoints.up('sm')]: { gridTemplateColumns: 'repeat(2, 1fr)' },
+    [theme.breakpoints.up('md')]: { gridTemplateColumns: 'repeat(3, 1fr)' },
     gap: '16px',
     width: '100%',
   },
+  // `width: 'full'` and `'two-third'` only apply at md+ where the 3-col grid exists.
+  // Below md the field flows naturally one-per-row (sm) or full width (xs).
   colFull: {
-    gridColumn: '1 / span 3',
+    [theme.breakpoints.up('md')]: { gridColumn: '1 / span 3' },
+    [theme.breakpoints.only('sm')]: { gridColumn: '1 / span 2' },
   },
   colTwoThirds: {
-    gridColumn: '1 / span 2',
+    [theme.breakpoints.up('md')]: { gridColumn: '1 / span 2' },
+    [theme.breakpoints.only('sm')]: { gridColumn: '1 / span 2' },
   },
   fieldTitle: {
     display: 'block',

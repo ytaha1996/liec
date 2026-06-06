@@ -12,7 +12,7 @@ import GenericImageListInput from '../input-components/GenericImageListInput';
 import GenericButton from '../GenericButton';
 import { isEmpty, isValidNumber } from '../../helpers/validation-utils';
 import MainPageTitle from '../layout-components/main-layout/MainPageTitle';
-import { Card, Grid } from '@mui/material';
+import { Box, Card, Grid } from '@mui/material';
 import { makeStyles } from 'tss-react/mui';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../helpers/formatting-utils';
@@ -367,28 +367,55 @@ const DynamicFormWidget: React.FC<IDynamicFormWidgetProps> = ({
     if (!formState) return null;
     return (
       <>
-        <div>
+        <Grid container spacing={{ xs: 1.5, sm: 2 }}>
           {Object.values(fields)
             .filter((field) =>
               typeof field.conditionalHidden === 'function'
                 ? !field.conditionalHidden(formState.values)
                 : true
             )
-            .map((field) => (
-              <Grid key={field.name} {...(field.grid || { xs: 12 })}>
-                {renderField(field)}
-              </Grid>
-            ))}
-        </div>
+            .map((field) => {
+              // Force-full-width on phones regardless of caller's grid hint.
+              // Caller-supplied `sm/md` still wins on larger screens.
+              const g = field.grid ?? {};
+              return (
+                <Grid
+                  key={field.name}
+                  xs={12}
+                  sm={(g as any).sm ?? (g as any).xs ?? 12}
+                  md={(g as any).md ?? (g as any).sm ?? (g as any).xs ?? 12}
+                >
+                  {renderField(field)}
+                </Grid>
+              );
+            })}
+        </Grid>
         {children && (
           <div className={classes.additionalContent}>{children}</div>
         )}
-        <GenericButton
-          type="button"
-          onClick={submit}
-          disabled={submitting}
-          text="Submit"
-        />
+        <Box
+          sx={{
+            // Sticky submit so the action stays visible on long mobile forms.
+            // Bottom padding picks up the iOS home-indicator safe area on
+            // notched phones so the button is never under the gesture bar.
+            position: 'sticky',
+            bottom: 0,
+            bgcolor: 'background.paper',
+            borderTop: 1,
+            borderColor: 'divider',
+            pt: 2,
+            pb: { xs: 'calc(env(safe-area-inset-bottom, 0px) + 16px)', sm: 2 },
+            mt: 2,
+            zIndex: 1,
+          }}
+        >
+          <GenericButton
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            text="Submit"
+          />
+        </Box>
       </>
     );
   };

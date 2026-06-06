@@ -18,6 +18,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 const ENDPOINT = '/api/customers';
 
@@ -138,7 +139,7 @@ const CustomersPage = () => {
         } : undefined}
       />
 
-      <Box sx={{ px: 3, pb: 3 }}>
+      <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>
         <EnhancedTable
           title="Customers"
           header={tableHeaders}

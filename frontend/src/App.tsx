@@ -7,7 +7,22 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { useMediaQuery, useTheme } from '@mui/material';
 import ErrorBoundary from './components/ErrorBoundary';
+
+// Toast lives inside ThemeProvider so it can read the breakpoint. On phones
+// the top-right position overlaps the hamburger menu; top-center reads better.
+const ResponsiveToastContainer = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  return (
+    <ToastContainer
+      position={isMobile ? 'top-center' : 'top-right'}
+      autoClose={4000}
+      style={{ zIndex: 99999 }}
+    />
+  );
+};
 
 export const App = () => (
   <Provider store={store}>
@@ -17,7 +32,7 @@ export const App = () => (
           <ErrorBoundary>
             <Portal />
           </ErrorBoundary>
-          <ToastContainer position="top-right" autoClose={4000} style={{ zIndex: 99999 }} />
+          <ResponsiveToastContainer />
         </BrowserRouter>
       </LocalizationProvider>
     </ThemeProviderWrapper>

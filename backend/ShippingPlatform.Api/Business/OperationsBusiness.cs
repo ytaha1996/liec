@@ -84,11 +84,6 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (origin is null) return (null, "Origin warehouse not found.");
         if (input.PlannedArrivalDate.Date < input.PlannedDepartureDate.Date)
             return (null, "Planned arrival must be on or after planned departure.");
-        // Capacity caps must not exceed the origin warehouse's caps. 0 = unbounded shipment, skips check.
-        if (origin.MaxWeightKg > 0 && input.MaxWeightKg > 0 && input.MaxWeightKg > origin.MaxWeightKg)
-            return (null, $"Shipment MaxWeightKg ({input.MaxWeightKg}) exceeds origin warehouse capacity ({origin.MaxWeightKg}).");
-        if (origin.MaxCbm > 0 && input.MaxCbm > 0 && input.MaxCbm > origin.MaxCbm)
-            return (null, $"Shipment MaxCbm ({input.MaxCbm}) exceeds origin warehouse capacity ({origin.MaxCbm}).");
 
         var shipment = new Shipment
         {
@@ -129,29 +124,20 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         if (req.PlannedDepartureDate.HasValue) s.PlannedDepartureDate = req.PlannedDepartureDate.Value;
         if (req.PlannedArrivalDate.HasValue) s.PlannedArrivalDate = req.PlannedArrivalDate.Value;
 
-        // Capacity caps must not exceed the origin warehouse's caps. 0 = unbounded shipment.
-        if (req.MaxWeightKg.HasValue || req.MaxCbm.HasValue)
+        // Negative caps still rejected, but the shipment's MaxWeightKg/MaxCbm are
+        // no longer constrained by the origin warehouse's caps — operators can
+        // declare a shipment larger than the warehouse on paper.
+        if (req.MaxWeightKg.HasValue)
         {
-            var origin = await db.Warehouses.FirstOrDefaultAsync(x => x.Id == s.OriginWarehouseId);
-            if (origin is not null)
-            {
-                if (req.MaxWeightKg.HasValue)
-                {
-                    if (req.MaxWeightKg.Value < 0)
-                        return (null, new { code = "VALIDATION_ERROR", message = "MaxWeightKg cannot be negative." });
-                    if (origin.MaxWeightKg > 0 && req.MaxWeightKg.Value > 0 && req.MaxWeightKg.Value > origin.MaxWeightKg)
-                        return (null, new { code = "EXCEEDS_WAREHOUSE_CAPACITY", message = $"Shipment MaxWeightKg ({req.MaxWeightKg}) exceeds origin warehouse capacity ({origin.MaxWeightKg})." });
-                    s.MaxWeightKg = req.MaxWeightKg.Value;
-                }
-                if (req.MaxCbm.HasValue)
-                {
-                    if (req.MaxCbm.Value < 0)
-                        return (null, new { code = "VALIDATION_ERROR", message = "MaxCbm cannot be negative." });
-                    if (origin.MaxCbm > 0 && req.MaxCbm.Value > 0 && req.MaxCbm.Value > origin.MaxCbm)
-                        return (null, new { code = "EXCEEDS_WAREHOUSE_CAPACITY", message = $"Shipment MaxCbm ({req.MaxCbm}) exceeds origin warehouse capacity ({origin.MaxCbm})." });
-                    s.MaxCbm = req.MaxCbm.Value;
-                }
-            }
+            if (req.MaxWeightKg.Value < 0)
+                return (null, new { code = "VALIDATION_ERROR", message = "MaxWeightKg cannot be negative." });
+            s.MaxWeightKg = req.MaxWeightKg.Value;
+        }
+        if (req.MaxCbm.HasValue)
+        {
+            if (req.MaxCbm.Value < 0)
+                return (null, new { code = "VALIDATION_ERROR", message = "MaxCbm cannot be negative." });
+            s.MaxCbm = req.MaxCbm.Value;
         }
 
         await db.SaveChangesAsync();

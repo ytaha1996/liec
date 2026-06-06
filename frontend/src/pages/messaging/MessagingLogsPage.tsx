@@ -12,6 +12,7 @@ import MainPageTitle from '../../components/layout-components/main-layout/MainPa
 import MainPageSection from '../../components/layout-components/main-layout/MainPageSection';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 const MessagingLogsPage = () => {
   usePageTitle('Messaging Logs');
@@ -99,7 +100,7 @@ const MessagingLogsPage = () => {
     <Box>
       <MainPageTitle title="Messaging Logs" />
 
-      <Box sx={{ px: 3, pb: 3 }}>
+      <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>
         <MainPageSection title="Campaigns">
           <EnhancedTable
             title="Campaigns"

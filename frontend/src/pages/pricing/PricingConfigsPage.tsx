@@ -19,6 +19,7 @@ import { PRICING_CONFIG_STATUS_CHIPS } from '../../constants/statusColors';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 const ENDPOINT = '/api/pricing-configs';
 
@@ -211,7 +212,7 @@ const PricingConfigsPage = () => {
         }}
       />
 
-      <Box sx={{ px: 3, pb: 3 }}>
+      <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>
         <EnhancedTable title="Pricing Configs" header={tableHeaders} data={tableData} defaultOrder="name" />
       </Box>
 
