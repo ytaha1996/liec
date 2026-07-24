@@ -12,7 +12,7 @@ import { DetailPageLayout, MainPageSection, type MainPageAction } from '@/compon
 import { InformationWidget, InformationWidgetFieldTypes, type IInformationWidgetField } from '@/components/information-widget';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { Loader, EmptyState } from '@/components/feedback';
-import { MediaStageCards, PhotoGalleryModal, type MediaItem } from '@/components/media';
+import { MediaStageCards, PhotoGalleryModal, PackageDocuments, type MediaItem } from '@/components/media';
 import { getJson, postJson, deleteJson } from '@/api/client';
 import { parseApiError, type GateError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
@@ -28,6 +28,7 @@ import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS, SHIPMENT_STATUS_LABELS }
 import { useAppDispatch } from '@/redux/hooks';
 import { OpenConfirmation } from '@/redux/confirmation/confirmationReducer';
 import { ItemDialog } from './components/ItemDialog';
+import { BulkAddItemsDialog } from './components/BulkAddItemsDialog';
 import { PricingOverrideDialog } from './components/PricingOverrideDialog';
 import { EditPackageDialog } from './components/EditPackageDialog';
 
@@ -125,12 +126,15 @@ export default function PackageDetailPage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const role = useUserRole();
+  // Documents write access matches the backend gate (Admin/Manager).
+  const canManageDocs = canEditPackageItems(role);
   usePageTitle(`Package #${id}`);
 
   const [gate, setGate] = useState<GateError | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryStage, setGalleryStage] = useState<string | undefined>();
   const [addItemOpen, setAddItemOpen] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PackageItem | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerCbm' | 'TotalCharge'>('RatePerKg');
@@ -459,16 +463,21 @@ export default function PackageDetailPage() {
               title="Items"
               actions={
                 canEditPackageItems(role) ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setEditingItem(null);
-                      setAddItemOpen(true);
-                    }}
-                  >
-                    <Plus className="mr-1 size-4" />
-                    Add Item
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditingItem(null);
+                        setAddItemOpen(true);
+                      }}
+                    >
+                      <Plus className="mr-1 size-4" />
+                      Add Item
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setBulkAddOpen(true)}>
+                      Bulk Add
+                    </Button>
+                  </>
                 ) : null
               }
             >
@@ -527,7 +536,7 @@ export default function PackageDetailPage() {
           </TabsContent>
 
           {canUploadPhotos(role) && (
-            <TabsContent value="photos" className="mt-4">
+            <TabsContent value="photos" className="mt-4 space-y-4">
               <MainPageSection title="Photos">
                 <MediaStageCards
                   packageId={id}
@@ -543,6 +552,7 @@ export default function PackageDetailPage() {
                   canUpload={canUploadPhotos(role)}
                 />
               </MainPageSection>
+              <PackageDocuments packageId={id} canWrite={canManageDocs} />
             </TabsContent>
           )}
 
@@ -590,6 +600,15 @@ export default function PackageDetailPage() {
         }}
         packageId={id}
         editingItem={editingItem as unknown as Record<string, unknown> | null}
+        goodsItems={goodsItems}
+        unitItems={unitItems}
+        onSaved={() => pkg.reload()}
+      />
+
+      <BulkAddItemsDialog
+        open={bulkAddOpen}
+        onClose={() => setBulkAddOpen(false)}
+        packageId={id}
         goodsItems={goodsItems}
         unitItems={unitItems}
         onSaved={() => pkg.reload()}

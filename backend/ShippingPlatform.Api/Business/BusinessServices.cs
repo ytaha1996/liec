@@ -45,7 +45,9 @@ public class AuthBusiness(AppDbContext db, ITokenService tokens, IConfiguration 
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
         await db.SaveChangesAsync();
-        return (LoginOutcome.Success, new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString()), null);
+        // Username = email local-part (AdminUser has no separate username field).
+        var username = user.Email.Contains('@') ? user.Email[..user.Email.IndexOf('@')] : user.Email;
+        return (LoginOutcome.Success, new LoginResponse(tokens.Create(user), user.Email, user.Role.ToString(), user.IsActive, username), null);
     }
 
     public async Task<(bool ok, string? error)> ChangePasswordAsync(int userId, ChangePasswordRequest req)
@@ -94,13 +96,18 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
     public async Task<WarehouseDto> CreateWarehouseAsync(UpsertWarehouseRequest req)
     {
         var e = new Warehouse { Code = req.Code, Name = req.Name, City = req.City, Country = req.Country, MaxWeightKg = req.MaxWeightKg, MaxCbm = req.MaxCbm, IsActive = req.IsActive };
-        db.Warehouses.Add(e); await db.SaveChangesAsync(); return e.ToDto();
+        db.Warehouses.Add(e); await db.SaveChangesAsync();
+        await audit.LogAsync("Warehouse", e.Id, "Create", null, $"code={e.Code} name={e.Name} active={e.IsActive}");
+        return e.ToDto();
     }
     public async Task<WarehouseDto?> UpdateWarehouseAsync(int id, UpsertWarehouseRequest req)
     {
         var e = await db.Warehouses.FindAsync(id); if (e is null) return null;
+        var old = $"code={e.Code} name={e.Name} maxKg={e.MaxWeightKg} maxCbm={e.MaxCbm} active={e.IsActive}";
         e.Code = req.Code; e.Name = req.Name; e.City = req.City; e.Country = req.Country; e.MaxWeightKg = req.MaxWeightKg; e.MaxCbm = req.MaxCbm; e.IsActive = req.IsActive;
-        await db.SaveChangesAsync(); return e.ToDto();
+        await db.SaveChangesAsync();
+        await audit.LogAsync("Warehouse", e.Id, "Update", old, $"code={e.Code} name={e.Name} maxKg={e.MaxWeightKg} maxCbm={e.MaxCbm} active={e.IsActive}");
+        return e.ToDto();
     }
 
     public async Task<List<GoodTypeDto>> ListGoodTypesAsync() => (await db.GoodTypes.ToListAsync()).Select(x => x.ToDto()).ToList();
@@ -108,13 +115,18 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
     public async Task<GoodTypeDto> CreateGoodTypeAsync(UpsertGoodTypeRequest req)
     {
         var e = new GoodType { NameEn = req.NameEn, NameAr = req.NameAr, CanBreak = req.CanBreak, CanBurn = req.CanBurn, IsActive = req.IsActive };
-        db.GoodTypes.Add(e); await db.SaveChangesAsync(); return e.ToDto();
+        db.GoodTypes.Add(e); await db.SaveChangesAsync();
+        await audit.LogAsync("GoodType", e.Id, "Create", null, $"nameEn={e.NameEn} active={e.IsActive}");
+        return e.ToDto();
     }
     public async Task<GoodTypeDto?> UpdateGoodTypeAsync(int id, UpsertGoodTypeRequest req)
     {
         var e = await db.GoodTypes.FindAsync(id); if (e is null) return null;
+        var old = $"nameEn={e.NameEn} canBreak={e.CanBreak} canBurn={e.CanBurn} active={e.IsActive}";
         e.NameEn = req.NameEn; e.NameAr = req.NameAr; e.CanBreak = req.CanBreak; e.CanBurn = req.CanBurn; e.IsActive = req.IsActive;
-        await db.SaveChangesAsync(); return e.ToDto();
+        await db.SaveChangesAsync();
+        await audit.LogAsync("GoodType", e.Id, "Update", old, $"nameEn={e.NameEn} canBreak={e.CanBreak} canBurn={e.CanBurn} active={e.IsActive}");
+        return e.ToDto();
     }
 
     public async Task<List<SupplierDto>> ListSuppliersAsync() => (await db.Suppliers.ToListAsync()).Select(x => x.ToDto()).ToList();
@@ -122,13 +134,18 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
     public async Task<SupplierDto> CreateSupplierAsync(UpsertSupplierRequest req)
     {
         var e = new Supplier { Name = req.Name, Email = req.Email, IsActive = req.IsActive };
-        db.Suppliers.Add(e); await db.SaveChangesAsync(); return e.ToDto();
+        db.Suppliers.Add(e); await db.SaveChangesAsync();
+        await audit.LogAsync("Supplier", e.Id, "Create", null, $"name={e.Name} active={e.IsActive}");
+        return e.ToDto();
     }
     public async Task<SupplierDto?> UpdateSupplierAsync(int id, UpsertSupplierRequest req)
     {
         var e = await db.Suppliers.FindAsync(id); if (e is null) return null;
+        var old = $"name={e.Name} email={e.Email} active={e.IsActive}";
         e.Name = req.Name; e.Email = req.Email; e.IsActive = req.IsActive;
-        await db.SaveChangesAsync(); return e.ToDto();
+        await db.SaveChangesAsync();
+        await audit.LogAsync("Supplier", e.Id, "Update", old, $"name={e.Name} email={e.Email} active={e.IsActive}");
+        return e.ToDto();
     }
 
     public async Task<List<PricingConfigDto>> ListPricingConfigsAsync() => (await db.PricingConfigs.ToListAsync()).Select(x => x.ToDto()).ToList();
@@ -136,13 +153,18 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
     public async Task<PricingConfigDto> CreatePricingConfigAsync(UpsertPricingConfigRequest req)
     {
         var e = new PricingConfig { Name = req.Name, Currency = req.Currency.ToUpperInvariant(), EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, MinimumCharge = req.MinimumCharge, Status = req.Status };
-        db.PricingConfigs.Add(e); await db.SaveChangesAsync(); return e.ToDto();
+        db.PricingConfigs.Add(e); await db.SaveChangesAsync();
+        await audit.LogAsync("PricingConfig", e.Id, "Create", null, $"name={e.Name} ccy={e.Currency} kg={e.DefaultRatePerKg} cbm={e.DefaultRatePerCbm} min={e.MinimumCharge} status={e.Status}");
+        return e.ToDto();
     }
     public async Task<PricingConfigDto?> UpdatePricingConfigAsync(int id, UpsertPricingConfigRequest req)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
+        var old = $"name={e.Name} ccy={e.Currency} kg={e.DefaultRatePerKg} cbm={e.DefaultRatePerCbm} min={e.MinimumCharge} status={e.Status}";
         e.Name = req.Name; e.Currency = req.Currency.ToUpperInvariant(); e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.MinimumCharge = req.MinimumCharge; e.Status = req.Status;
-        await db.SaveChangesAsync(); return e.ToDto();
+        await db.SaveChangesAsync();
+        await audit.LogAsync("PricingConfig", e.Id, "Update", old, $"name={e.Name} ccy={e.Currency} kg={e.DefaultRatePerKg} cbm={e.DefaultRatePerCbm} min={e.MinimumCharge} status={e.Status}");
+        return e.ToDto();
     }
     public async Task<PricingConfigDto?> ActivatePricingConfigAsync(int id)
     {
@@ -266,7 +288,7 @@ public interface ICustomerBusiness
     Task<WhatsAppConsentDto?> PatchConsentAsync(int id, WhatsAppConsentDto consent);
 }
 
-public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
+public class CustomerBusiness(AppDbContext db, IAuditService audit) : ICustomerBusiness
 {
     public async Task<List<CustomerDto>> ListAsync(string? q)
     {
@@ -289,6 +311,7 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
         db.WhatsAppConsents.Add(new WhatsAppConsent { CustomerId = entity.Id, OptInStatusUpdates = true, OptInDeparturePhotos = true, OptInArrivalPhotos = true });
         await db.SaveChangesAsync();
         await db.Entry(entity).Reference(x => x.WhatsAppConsent).LoadAsync();
+        await audit.LogAsync("Customer", entity.Id, "Create", null, $"name={entity.Name} phone={entity.PrimaryPhone} active={entity.IsActive}");
         return (entity.ToDto(), null);
     }
 
@@ -301,8 +324,10 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
         if (await db.Customers.AnyAsync(c => c.PrimaryPhone == phone && c.Id != id))
             return (null, "A customer with this phone number already exists.", false);
 
+        var old = $"name={e.Name} phone={e.PrimaryPhone} active={e.IsActive}";
         e.Name = req.Name; e.PrimaryPhone = phone; e.Email = req.Email; e.CompanyName = req.CompanyName; e.TaxId = req.TaxId; e.BillingAddress = req.BillingAddress; e.IsActive = req.IsActive;
         await db.SaveChangesAsync();
+        await audit.LogAsync("Customer", e.Id, "Update", old, $"name={e.Name} phone={e.PrimaryPhone} active={e.IsActive}");
         return (e.ToDto(), null, false);
     }
 
@@ -311,11 +336,14 @@ public class CustomerBusiness(AppDbContext db) : ICustomerBusiness
         var c = await db.Customers.Include(x => x.WhatsAppConsent).FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return null;
         if (c.WhatsAppConsent is null) c.WhatsAppConsent = new WhatsAppConsent { CustomerId = id };
+        var old = $"status={c.WhatsAppConsent.OptInStatusUpdates} dep={c.WhatsAppConsent.OptInDeparturePhotos} arr={c.WhatsAppConsent.OptInArrivalPhotos}";
         c.WhatsAppConsent.OptInStatusUpdates = consent.OptInStatusUpdates;
         c.WhatsAppConsent.OptInDeparturePhotos = consent.OptInDeparturePhotos;
         c.WhatsAppConsent.OptInArrivalPhotos = consent.OptInArrivalPhotos;
         c.WhatsAppConsent.OptedOutAt = consent.OptedOutAt;
         await db.SaveChangesAsync();
+        await audit.LogAsync("Customer", id, "ConsentUpdate", old,
+            $"status={consent.OptInStatusUpdates} dep={consent.OptInDeparturePhotos} arr={consent.OptInArrivalPhotos}");
         return new WhatsAppConsentDto(c.WhatsAppConsent.OptInStatusUpdates, c.WhatsAppConsent.OptInDeparturePhotos, c.WhatsAppConsent.OptInArrivalPhotos, c.WhatsAppConsent.OptedOutAt);
     }
 }

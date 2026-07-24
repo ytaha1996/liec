@@ -138,19 +138,21 @@ Useful when porting future features against the old `frontend/`:
 
 `DynamicFormWidget` field configs (`DynamicField.TEXT`, etc.) are name-for-name compatible with the originals — copy the `buildFields(...)` function and adjust imports.
 
-## Known gaps from the original (additive)
+## Feature parity — complete
 
-The following pieces of the old app don't exist yet in `frontend-new/` — wire them in if the feature is needed:
+All features from the original MUI app are ported:
 
-- **BulkAddItemsDialog** on PackageDetailPage — the bulk-add item flow was deferred. Single-item add via `ItemDialog` covers the common case.
-- **PackageDocuments** section (file uploads alongside photos) on PackageDetailPage.
-- **FxSnapshotsSection** on ShipmentDetailPage — FX rate snapshot UI.
-- **CommandPalette** — Ctrl+K global search. shadcn `<Command>` primitive is installed; wire when ready.
-- **AppLauncher modal** — header hamburger already lists all modules; the launcher modal is optional polish.
+- **BulkAddItemsDialog** — PackageDetailPage → Items tab → "Bulk Add" (POST `/items/bulk`).
+- **PackageDocuments** — PackageDetailPage → Photos tab (20 MB max, PDF/Word/Excel/PowerPoint).
+- **Bulk package transitions** — ShipmentDetailPage packages table: select rows → action bar
+  (ready-to-ship / arrive / handout / cancel), gated by `canBulkTransitionPackages`.
+- **FxSnapshotsSection** — ShipmentDetailPage; manual rate override + removal (Admin/Manager).
+- **CommandPalette** — Ctrl+K/⌘K or the header search icon; quick-nav to modules + live search
+  of shipments, packages and customers (role-aware).
+- **AppLauncher** — grid launcher via the header apps icon; role-filtered, searchable.
 
-## Cutover plan
+## Status (legacy `frontend/` was removed)
 
-1. Both apps boot against the same backend.
-2. Smoke-test `frontend-new/` against staging — log in, walk every route, verify each CRUD action round-trips.
-3. Address the gaps above if business-critical for your release.
-4. Point production at `frontend-new/`; delete `frontend/`.
+This is the sole frontend. RBAC is enforced at three layers: nav visibility (`application.ts`),
+route guards (`RequireAuth` + `RequireModule` in `App.tsx`), and per-action `can*` checks —
+mirroring the backend's `[Authorize(Roles=...)]` attributes. See `docs/ROLES_AND_PERMISSIONS.md`.

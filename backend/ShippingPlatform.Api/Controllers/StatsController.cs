@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
@@ -13,34 +12,43 @@ public class StatsController(AppDbContext db) : ControllerBase
     [HttpGet("overview")]
     public async Task<IActionResult> Overview()
     {
-        var shipments = await db.Shipments.ToListAsync();
-        var packages = await db.Packages.ToListAsync();
+        // All aggregation happens DB-side — no table scans into memory.
+        var shipmentsByStatus = (await db.Shipments
+                .GroupBy(x => x.Status)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToListAsync())
+            .ToDictionary(g => g.Key.ToString(), g => g.Count);
 
-        var shipmentsByStatus = shipments.GroupBy(x => x.Status.ToString())
-            .ToDictionary(g => g.Key, g => g.Count());
+        var packagesByStatus = (await db.Packages
+                .GroupBy(x => x.Status)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToListAsync())
+            .ToDictionary(g => g.Key.ToString(), g => g.Count);
 
-        var packagesByStatus = packages.GroupBy(x => x.Status.ToString())
-            .ToDictionary(g => g.Key, g => g.Count());
+        var packagesMissingDeparturePhotos = await db.Packages.CountAsync(x =>
+            !x.HasDeparturePhotos && x.Status != PackageStatus.Cancelled && x.Status != PackageStatus.Draft);
 
-        var packagesMissingDeparturePhotos = packages
-            .Count(x => !x.HasDeparturePhotos && x.Status != PackageStatus.Cancelled && x.Status != PackageStatus.Draft);
-
-        var packagesMissingArrivalPhotos = packages
-            .Count(x => !x.HasArrivalPhotos && x.Status >= PackageStatus.Shipped && x.Status != PackageStatus.Cancelled);
+        var packagesMissingArrivalPhotos = await db.Packages.CountAsync(x =>
+            !x.HasArrivalPhotos && x.Status >= PackageStatus.Shipped && x.Status != PackageStatus.Cancelled);
 
         var now = DateTime.UtcNow;
         var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var shipmentsThisMonth = shipments.Count(x => x.CreatedAt >= monthStart);
+        var shipmentsThisMonth = await db.Shipments.CountAsync(x => x.CreatedAt >= monthStart);
 
         // Financial aggregate is not for warehouse staff — Field gets the
         // operational stats but no company-wide charge totals.
         decimal? totalPendingCharges = null;
         if (!User.IsInRole("Field"))
         {
-            var activeStatuses = new[] { PackageStatus.Draft, PackageStatus.Received, PackageStatus.Packed, PackageStatus.ReadyToShip, PackageStatus.Shipped, PackageStatus.ArrivedAtDestination, PackageStatus.ReadyForHandout };
-            totalPendingCharges = packages
+            var activeStatuses = new[]
+            {
+                PackageStatus.Draft, PackageStatus.Received, PackageStatus.Packed,
+                PackageStatus.ReadyToShip, PackageStatus.Shipped,
+                PackageStatus.ArrivedAtDestination, PackageStatus.ReadyForHandout,
+            };
+            totalPendingCharges = await db.Packages
                 .Where(x => activeStatuses.Contains(x.Status))
-                .Sum(x => x.ChargeAmount);
+                .SumAsync(x => (decimal?)x.ChargeAmount) ?? 0;
         }
 
         var totalCustomers = await db.Customers.CountAsync(x => x.IsActive);

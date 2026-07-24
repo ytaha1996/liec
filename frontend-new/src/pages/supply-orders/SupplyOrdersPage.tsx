@@ -6,13 +6,12 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { GenericTextArea, GenericInput } from '@/components/inputs';
-import { TableSkeleton, EmptyState } from '@/components/feedback';
+import { GenericTextArea } from '@/components/inputs';
+import { TableSkeleton, EmptyState, LoadFailed } from '@/components/feedback';
 import { getJson, postJson, putJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useUserRole, canWriteMasterData } from '@/helpers/rbac';
 import { SUPPLY_ORDER_STATUS_LABELS } from '@/constants/statusLabels';
@@ -121,22 +120,19 @@ export default function SupplyOrdersPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
-  const [search, setSearch] = useState('');
-  const debounced = useDebouncedValue(search, 300);
 
-  const orders = useLoader<SupplyOrder[]>(() =>
-    getJson<SupplyOrder[]>(
-      debounced ? `${ENDPOINT}?q=${encodeURIComponent(debounced)}` : ENDPOINT,
-    ),
-  );
+  // Single search: EnhancedTable's client-side box covers current volumes.
+  const orders = useLoader<SupplyOrder[]>(() => getJson<SupplyOrder[]>(ENDPOINT));
   const customers = useLoader<LookupItem[]>(() => getJson<LookupItem[]>('/api/customers'));
   const suppliers = useLoader<LookupItem[]>(() => getJson<LookupItem[]>('/api/suppliers'));
   const packages = useLoader<LookupItem[]>(() => getJson<LookupItem[]>('/api/packages'));
 
-  const { initializing } = useInitializeFunction(
-    [orders.reload, customers.reload, suppliers.reload, packages.reload],
-    [debounced],
-  );
+  const { initializing, error } = useInitializeFunction([
+    orders.reload,
+    customers.reload,
+    suppliers.reload,
+    packages.reload,
+  ]);
 
   const customersItems = useMemo(
     () =>
@@ -279,17 +275,10 @@ export default function SupplyOrdersPage() {
         }
       />
       <div className="px-4 sm:px-6 pb-6 space-y-4">
-        <div className="w-full sm:w-80">
-          <GenericInput
-            name="search"
-            title=""
-            value={search}
-            onChange={setSearch}
-            placeholder="Search by name"
-          />
-        </div>
         {initializing ? (
           <TableSkeleton rows={6} columns={4} />
+        ) : error ? (
+          <LoadFailed what="supply orders" onRetry={orders.reload} />
         ) : Object.keys(tableData).length === 0 ? (
           <EmptyState message="No supply orders found." hint="Create one to get started." />
         ) : (

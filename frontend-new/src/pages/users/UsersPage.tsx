@@ -5,7 +5,7 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { getJson, postJson, putJson, deleteJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
@@ -83,7 +83,7 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
 
   const users = useLoader<User[]>(() => getJson<User[]>('/api/users'));
-  const { initializing } = useInitializeFunction([users.reload]);
+  const { initializing, error } = useInitializeFunction([users.reload]);
 
   const save = async (values: Record<string, unknown>): Promise<boolean> => {
     try {
@@ -205,6 +205,8 @@ export default function UsersPage() {
       <div className="px-4 sm:px-6 pb-6">
         {initializing ? (
           <TableSkeleton rows={6} columns={4} />
+        ) : error ? (
+          <LoadFailed what="users" onRetry={users.reload} />
         ) : (
           <EnhancedTable
             title="Users"

@@ -202,6 +202,16 @@ public class PricingService(AppDbContext db) : IPricingService
         package.AppliedRatePerKg = rateKg;
         package.AppliedRatePerCbm = rateCbm;
         package.Currency = active.Currency;
+
+        // Zero-measure packages: stamp rates/currency (so exports never show the
+        // entity default currency) but don't charge — applying MinimumCharge to
+        // a package with no recorded weight/CBM would bill for nothing.
+        if (package.WeightKg <= 0 && package.Cbm <= 0)
+        {
+            package.ChargeAmount = 0;
+            return;
+        }
+
         // Weight-first pricing: weight is the canonical billing basis. CBM is
         // the fallback only when no weight has been entered (dimensional-weight
         // cases not yet supported).
@@ -336,16 +346,21 @@ public class TwilioWhatsAppSender : IWhatsAppSender
             ? $"[TEST → {phone}]\n{text}"
             : text;
 
-        (bool ok, string? err) result = (true, null);
-        var isFirst = true;
+        // Success if ANY recipient received the message; errors aggregate so a
+        // partially-failed fan-out is still diagnosable from the campaign log.
+        var anyOk = false;
+        var errors = new List<string>();
         foreach (var to in recipients)
         {
             var single = await SendOneAsync(to, body, mediaUrls);
-            if (isFirst) { result = single; isFirst = false; }
-            else if (!single.ok)
-                _logger.LogWarning("Test-mode fan-out to {Phone} failed: {Err}", to, single.err);
+            if (single.ok) anyOk = true;
+            else
+            {
+                errors.Add($"{to}: {single.err}");
+                _logger.LogWarning("WhatsApp send to {Phone} failed: {Err}", to, single.err);
+            }
         }
-        return result;
+        return anyOk ? (true, null) : (false, string.Join(" | ", errors));
     }
 
     private async Task<(bool ok, string? err)> SendOneAsync(string phone, string text, IEnumerable<string>? mediaUrls)

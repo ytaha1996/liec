@@ -6,14 +6,12 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, TableFilterTypes, type EnhanceTableHeaderTypes, type ITableFilterType } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { GenericInput } from '@/components/inputs';
 import { TableSkeleton, EmptyState } from '@/components/feedback';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { getJson, postJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useUserRole, canManageShipments } from '@/helpers/rbac';
 import { PKG_STATUS_CHIPS, BOOL_CHIPS } from '@/constants/statusColors';
@@ -126,12 +124,9 @@ export default function PackagesPage() {
   const canManage = canManageShipments(role);
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const debounced = useDebouncedValue(search, 300);
 
-  const packages = useLoader<PackageRow[]>(() =>
-    getJson<PackageRow[]>(debounced ? `${ENDPOINT}?q=${encodeURIComponent(debounced)}` : ENDPOINT),
-  );
+  // Single search: EnhancedTable's client-side box covers current volumes.
+  const packages = useLoader<PackageRow[]>(() => getJson<PackageRow[]>(ENDPOINT));
   const customers = useLoader<Array<{ id: number; name: string }>>(() =>
     getJson('/api/customers'),
   );
@@ -142,10 +137,12 @@ export default function PackagesPage() {
     getJson('/api/suppliers'),
   );
 
-  const { initializing, error } = useInitializeFunction(
-    [packages.reload, customers.reload, warehouses.reload, suppliers.reload],
-    [debounced],
-  );
+  const { initializing, error } = useInitializeFunction([
+    packages.reload,
+    customers.reload,
+    warehouses.reload,
+    suppliers.reload,
+  ]);
 
   const customersItems = useMemo(
     () =>
@@ -309,15 +306,6 @@ export default function PackagesPage() {
         }
       />
       <div className="px-4 sm:px-6 pb-6 space-y-4">
-        <div className="w-full sm:w-80">
-          <GenericInput
-            name="search"
-            title=""
-            value={search}
-            onChange={setSearch}
-            placeholder="Search by Package ID or Customer"
-          />
-        </div>
         {initializing ? (
           <TableSkeleton rows={6} columns={7} />
         ) : Object.keys(tableData).length === 0 ? (

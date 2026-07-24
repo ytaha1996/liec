@@ -6,14 +6,12 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, TableFilterTypes, type EnhanceTableHeaderTypes, type ITableFilterType } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { GenericInput } from '@/components/inputs';
 import { TableSkeleton, EmptyState } from '@/components/feedback';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { getJson, postJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useUserRole, canManageShipments } from '@/helpers/rbac';
 import { SHIPMENT_STATUS_CHIPS } from '@/constants/statusColors';
@@ -110,19 +108,15 @@ export default function ShipmentsPage() {
   const role = useUserRole();
   const canManage = canManageShipments(role);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const debounced = useDebouncedValue(search, 300);
 
-  const shipments = useLoader<Shipment[]>(() =>
-    getJson<Shipment[]>(debounced ? `${ENDPOINT}?q=${encodeURIComponent(debounced)}` : ENDPOINT),
-  );
+  // Single search: EnhancedTable's built-in client-side box covers current
+  // data volumes (the list endpoint returns everything). The backend `?q=`
+  // stays available for future server-side pagination.
+  const shipments = useLoader<Shipment[]>(() => getJson<Shipment[]>(ENDPOINT));
   const warehouses = useLoader<Array<{ id: number; name: string; code: string }>>(() =>
     getJson('/api/warehouses'),
   );
-  const { initializing, error } = useInitializeFunction(
-    [shipments.reload, warehouses.reload],
-    [debounced],
-  );
+  const { initializing, error } = useInitializeFunction([shipments.reload, warehouses.reload]);
 
   const warehousesItems = useMemo(
     () =>
@@ -222,15 +216,6 @@ export default function ShipmentsPage() {
         action={canManage ? { title: 'Create Shipment', onClick: () => setDialogOpen(true) } : undefined}
       />
       <div className="px-4 sm:px-6 pb-6 space-y-4">
-        <div className="w-full sm:w-80">
-          <GenericInput
-            name="search"
-            title=""
-            value={search}
-            onChange={setSearch}
-            placeholder="Search by Ref Code or TIIU"
-          />
-        </div>
         {initializing ? (
           <TableSkeleton rows={6} columns={5} />
         ) : Object.keys(tableData).length === 0 ? (

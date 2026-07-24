@@ -40,7 +40,7 @@ liec/
 │   │   ├── constants/              # Status colors, labels
 │   │   ├── helpers/                # rbac, formatting, validation, fx-rates, user-token
 │   │   ├── hooks/                  # useLoader, useInitializeFunction, useDebouncedValue, usePageTitle
-│   │   ├── theme/                  # globals.css (Tailwind + brand vars), tokens.ts
+│   │   ├── theme/                  # globals.css (Tailwind + brand vars)
 │   │   ├── application.ts          # Module definitions (ops, master, comms, admin) + RBAC visibility
 │   │   └── App.tsx                 # Routes (RequireAuth + per-module RequireModule guards)
 │   └── vite.config.ts
@@ -70,7 +70,7 @@ liec/
 | **Warehouse** | Code (unique, max 3), Name, City, Country, MaxWeightKg, MaxCbm | 4 seeded: BEI, GAB, CHN, DXB |
 | **GoodType** | NameEn, NameAr, RatePerKg?, RatePerCbm?, CanBreak, CanBurn | Bilingual, nullable rates override config defaults |
 | **PricingConfig** | Name, Currency, DefaultRatePerKg, DefaultRatePerCbm, MinimumCharge, Status | Lifecycle: Draft→Scheduled→Active→Retired |
-| **Shipment** | RefCode (unique), TiiuCode, OriginWarehouseId, DestinationWarehouseId, Status, MaxWeightKg, MaxCbm, TotalWeightKg, TotalCbm, PlannedDepartureDate, PlannedArrivalDate, ActualDepartureAt, ActualArrivalAt, External* tracking fields | 1:many Packages |
+| **Shipment** | RefCode (unique), TiiuCode, OriginWarehouseId, DestinationWarehouseId, Status, MaxWeightKg, MaxCbm, TotalWeightKg, TotalCbm, PlannedDepartureDate, PlannedArrivalDate, ActualDepartureAt, ActualArrivalAt | 1:many Packages |
 | **ShipmentSequence** | OriginWarehouseCode, Year, LastNumber | RefCode format: `{CODE}-{YY}{NN}` |
 | **Package** | ShipmentId, CustomerId, ProvisionMethod, Status, WeightKg, Cbm, Currency, AppliedRatePerKg, AppliedRatePerCbm, ChargeAmount, HasDeparturePhotos, HasArrivalPhotos, HasPricingOverride, SupplyOrderId, Note | 1:many Items/Media/PricingOverrides |
 | **PackageItem** | PackageId, GoodTypeId, Quantity (default 1), Note | No weight/volume (moved to Package) |
@@ -80,7 +80,7 @@ liec/
 | **Media** | PackageId, Stage, BlobKey, PublicUrl, OperatorName, Notes | Stages: Receiving, Departure, Arrival, Other |
 | **WhatsAppCampaign** | Type, ShipmentId, TriggeredByAdminUserId, RecipientCount, Completed | Types: StatusUpdate, DeparturePhotos, ArrivalPhotos |
 | **WhatsAppDeliveryLog** | CampaignId, CustomerId, Phone, Result, FailureReason, SentAt | Results: Pending, Sent, Failed, SkippedNoOptIn |
-| **AuditLog** | EntityType, EntityId, Action, OldValue, NewValue, AdminUserId | Available but not actively populated yet |
+| **AuditLog** | EntityType, EntityId, Action, OldValue, NewValue, AdminUserId | Populated across auth, users, currencies, master data, pricing, shipments/packages/supply-order transitions, media/document uploads, FX overrides |
 
 ### Enums (Models/Enums.cs)
 
@@ -171,8 +171,8 @@ Controllers → Business → Services → Data (AppDbContext)
 - GET [?status=], GET /{id}, POST, PATCH /{id}
 - Transitions: `POST /{id}/schedule`, `/ready-to-depart`, `/depart`, `/arrive`, `/close`, `/cancel`
 - `GET /{id}/ready-to-depart/preview` — shows which packages depart vs get reassigned
-- `POST /{id}/tracking/sync` — external carrier sync
-- `GET /{id}/media`
+- `GET /{id}/media`, `GET /{id}/audit-log`
+- FX snapshots: `GET /{id}/fx-snapshots`, `PUT /{id}/fx-snapshots/{code}`, `DELETE /{id}/fx-snapshots/{code}` (Admin/Manager)
 - `POST /{shipmentId}/packages/bulk-transition` — bulk package action
 
 **Packages** (`/api/packages`)
@@ -209,10 +209,9 @@ Controllers → Business → Services → Data (AppDbContext)
 | **PricingService** | Rate calculation from config + good type |
 | **PhotoComplianceService** | Gate checks for departure/close/handout |
 | **ImageWatermarkService** | SkiaSharp customer name overlay on photos (best-effort) |
-| **TwilioWhatsAppSender** | Twilio API messaging with phone validation, SID logging, media chunking (max 10/msg) |
+| **TwilioWhatsAppSender** | Twilio API messaging (API-key auth preferred), phone validation, SID logging, media chunking (max 10/msg), test-mode redirect via `Twilio:TestPhoneNumbers` |
 | **StubWhatsAppSender** | No-op for dev (used when Twilio:AccountSid is empty) |
-| **ExportService** | ClosedXML Excel generation (BOL, customer invoices), VCF/CSV contacts |
-| **ShipmentTrackingLookupService** | Maersk Line API for external tracking (fail-open) |
+| **ExportService** | ClosedXML Excel generation (BOL, customer invoices, commercial docs), VCF/CSV contacts |
 | **TransitionRuleService** | State machine validation for all 3 lifecycles |
 
 ### Business (Business/)
@@ -267,9 +266,9 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 **Operations (/ops)**
 - `/ops/dashboard` → DashboardPage (stats, pending container alerts)
 - `/ops/shipments` → ShipmentsPage (list + create with capacity columns)
-- `/ops/shipments/:id` → ShipmentDetailPage (info, capacity bars, transitions, packages table, tracking, WhatsApp, exports, bulk actions)
+- `/ops/shipments/:id` → ShipmentDetailPage (info, capacity bars, transitions, packages table + bulk transitions, FX snapshots, WhatsApp, exports)
 - `/ops/packages` → PackagesPage (list + auto-assign)
-- `/ops/packages/:id` → PackageDetailPage (info, pricing, items, photos, overrides, transitions)
+- `/ops/packages/:id` → PackageDetailPage (info, pricing, items + bulk add, photos, documents, overrides, transitions)
 
 **Master Data (/master)**
 - `/master/customers` → CustomersPage (CRUD)
@@ -326,14 +325,13 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 
 ### Twilio WhatsApp
 - Conditional: uses `TwilioWhatsAppSender` if `Twilio:AccountSid` configured, else `StubWhatsAppSender`
+- Auth: API key pair (`ApiKeySid`+`ApiKeySecret`) preferred over `AuthToken`
+- `WhatsAppFrom` must be E.164 (`+…`) — sandbox `+14155238886` or the approved business number
+- Test mode: non-empty `Twilio:TestPhoneNumbers` array redirects ALL sends to those numbers with a `[TEST → +original]` prefix; empty array = production
 - Phone validation: must match `^\+\d{8,15}$`
 - Media: max 10 per message, remaining sent in follow-up messages
 - 200ms throttle between bulk sends
-- Rich message templates with shipment details, customer name, dates
-
-### Maersk Tracking
-- HTTP client to Maersk Line API for external tracking data
-- Fail-open: returns "Unknown" on API failure
+- WhatsApp policy: free text only inside a 24h customer-service window; first outbound to a cold recipient needs a pre-approved Content Template
 
 ---
 
@@ -363,4 +361,4 @@ npx tsc --noEmit -p tsconfig.app.json  # type check only
 - **Inline supply orders:** Packages with ProcuredForCustomer can auto-create supply orders during creation
 - **Bulk transitions:** Validation pass first, all-or-nothing execution
 - **Capacity:** Sum of non-cancelled packages; threshold (default 80%) for UI warnings only
-- **AuditLog table:** Schema exists but not actively populated in current release
+- **AuditLog:** actively populated — auth events, user CRUD, currency CRUD, master data writes, pricing config CRUD + activate/retire, pricing overrides, customer writes/consent, shipment/package/supply-order transitions, media/document uploads, FX overrides. Viewable via `/audit-log` endpoints (Admin/Manager)

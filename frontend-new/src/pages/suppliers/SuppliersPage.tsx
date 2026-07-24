@@ -5,7 +5,7 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { getJson, postJson, putJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
@@ -50,7 +50,7 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
 
   const suppliers = useLoader<Supplier[]>(() => getJson<Supplier[]>('/api/suppliers'));
-  const { initializing } = useInitializeFunction([suppliers.reload]);
+  const { initializing, error } = useInitializeFunction([suppliers.reload]);
 
   const save = async (values: Record<string, unknown>): Promise<boolean> => {
     try {
@@ -123,6 +123,8 @@ export default function SuppliersPage() {
       <div className="px-4 sm:px-6 pb-6">
         {initializing ? (
           <TableSkeleton rows={6} columns={3} />
+        ) : error ? (
+          <LoadFailed what="suppliers" onRetry={suppliers.reload} />
         ) : (
           <EnhancedTable
             title="Suppliers"

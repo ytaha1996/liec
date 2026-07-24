@@ -6,7 +6,7 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, TableFilterTypes, type EnhanceTableHeaderTypes, type ITableFilterType } from '@/components/enhanced-table';
 import { DynamicFormWidget } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getJson, postJson, putJson } from '@/api/client';
@@ -39,7 +39,7 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
 
   const customers = useLoader<Customer[]>(() => getJson<Customer[]>(ENDPOINT));
-  const { initializing } = useInitializeFunction([customers.reload]);
+  const { initializing, error } = useInitializeFunction([customers.reload]);
 
   const save = async (values: Record<string, unknown>): Promise<boolean> => {
     try {
@@ -153,6 +153,8 @@ export default function CustomersPage() {
       <div className="px-4 sm:px-6 pb-6 space-y-6">
         {initializing ? (
           <TableSkeleton rows={6} columns={5} />
+        ) : error ? (
+          <LoadFailed what="customers" onRetry={customers.reload} />
         ) : (
           <EnhancedTable
             title="Customers"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, Search, LogOut, User, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,22 +18,35 @@ import { useAppDispatch, useAppSelector } from '@/redux/hooks';
 import { LogoutUser } from '@/redux/user/userReducer';
 import { buildApplications, currentAppFromPath } from '@/application';
 import { useUserRole } from '@/helpers/rbac';
+import { CommandPalette } from '@/components/misc/CommandPalette';
 import { AppLauncher } from './AppLauncher';
 
 interface HeaderProps {
   appName?: string;
-  onOpenSearch?: () => void;
 }
 
-export function Header({ appName = 'LIEC Shipping', onOpenSearch }: HeaderProps) {
+export function Header({ appName = 'LIEC Shipping' }: HeaderProps) {
   const [navOpen, setNavOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.user);
   const role = useUserRole();
   const initials = user?.user?.username?.charAt(0).toUpperCase() || 'U';
+
+  // Ctrl/Cmd+K opens the global command palette.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const groups = useMemo(() => buildApplications(role), [role]);
   const currentApp = useMemo(
@@ -116,7 +129,7 @@ export function Header({ appName = 'LIEC Shipping', onOpenSearch }: HeaderProps)
           {/* App name */}
           <NavLink
             to="/"
-            className="font-bold tracking-wide text-base sm:text-lg shrink-0 hidden xs:inline-block"
+            className="font-bold tracking-wide text-base sm:text-lg shrink-0 inline-block truncate max-w-[40vw] sm:max-w-none"
           >
             {appName}
           </NavLink>
@@ -153,17 +166,15 @@ export function Header({ appName = 'LIEC Shipping', onOpenSearch }: HeaderProps)
           <div className="flex-1" />
 
           {/* Right cluster */}
-          {onOpenSearch && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onOpenSearch}
-              aria-label="Search (Ctrl+K)"
-              className="text-white hover:bg-white/15 hover:text-white"
-            >
-              <Search className="size-5" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Search (Ctrl+K)"
+            className="text-white hover:bg-white/15 hover:text-white"
+          >
+            <Search className="size-5" />
+          </Button>
           {user.role && (
             <Badge
               variant="outline"
@@ -203,6 +214,7 @@ export function Header({ appName = 'LIEC Shipping', onOpenSearch }: HeaderProps)
       </header>
 
       <AppLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </>
   );
 }

@@ -16,6 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddFluentValidationAutoValidation();
@@ -107,6 +108,27 @@ builder.Services.AddRateLimiter(o =>
 var app = builder.Build();
 if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
 
+// Global exception → JSON error contract. Business/service layers throw
+// KeyNotFoundException for missing aggregates and InvalidOperationException for
+// invalid-state operations; map those to 404/409 with the `{ code, message }`
+// shape the frontend's parseApiError already understands. Everything else is a
+// sanitized 500.
+app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
+{
+    var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+    var (status, code) = ex switch
+    {
+        KeyNotFoundException => (StatusCodes.Status404NotFound, "NOT_FOUND"),
+        InvalidOperationException => (StatusCodes.Status409Conflict, "INVALID_OPERATION"),
+        _ => (StatusCodes.Status500InternalServerError, "SERVER_ERROR"),
+    };
+    ctx.Response.StatusCode = status;
+    var message = status == StatusCodes.Status500InternalServerError
+        ? "An unexpected error occurred."
+        : ex?.Message ?? "Request failed.";
+    await ctx.Response.WriteAsJsonAsync(new { code, message });
+}));
+
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -116,7 +138,10 @@ app.MapControllers().RequireAuthorization();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    // Migrate() is relational-only — the InMemory fallback (empty connection
+    // string) would throw on it. EnsureCreated() covers that path.
+    if (db.Database.IsRelational()) db.Database.Migrate();
+    else db.Database.EnsureCreated();
 
     // ── Admin user ──────────────────────────────────────────────────────────
     var email = app.Configuration["SeedAdmin:Email"] ?? Environment.GetEnvironmentVariable("ADMIN_EMAIL") ?? Environment.GetEnvironmentVariable("SEED_ADMIN_EMAIL") ?? "admin@local";

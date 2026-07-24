@@ -5,7 +5,7 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { getJson, postJson, putJson, deleteJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
@@ -36,7 +36,7 @@ export default function CurrenciesPage() {
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   const currencies = useLoader<Currency[]>(() => getJson<Currency[]>('/api/currencies'));
-  const { initializing } = useInitializeFunction([currencies.reload]);
+  const { initializing, error } = useInitializeFunction([currencies.reload]);
 
   const openCreate = () => {
     setEditing(null);
@@ -163,7 +163,6 @@ export default function CurrenciesPage() {
     },
   ];
 
-  const isBase = !!formValues.isBase;
   const anchorItems = (currencies.data ?? [])
     .filter((c) => !editing || c.code !== editing.code)
     .reduce<Record<string, string>>((acc, c) => {
@@ -206,7 +205,9 @@ export default function CurrenciesPage() {
       type: DynamicField.SELECT,
       name: 'anchorCurrencyCode',
       title: 'Anchor Currency',
-      required: !isBase,
+      // Live rule (re-evaluated against form values), not baked at build time —
+      // unchecking "Is base" must immediately make this required.
+      conditionalRequired: (vals) => !vals.isBase,
       conditionalHidden: (vals) => !!vals.isBase,
       items: anchorItems,
       value: (formValues.anchorCurrencyCode as string) ?? '',
@@ -218,7 +219,7 @@ export default function CurrenciesPage() {
       title: `Rate (1 ${String(formValues.code ?? '?').toUpperCase()} = ? ${String(
         formValues.anchorCurrencyCode ?? '?',
       ).toUpperCase()})`,
-      required: !isBase,
+      conditionalRequired: (vals) => !vals.isBase,
       conditionalHidden: (vals) => !!vals.isBase,
       value: (formValues.rate as number | string) ?? '',
       min: 0,
@@ -242,6 +243,8 @@ export default function CurrenciesPage() {
       <div className="px-4 sm:px-6 pb-6">
         {initializing ? (
           <TableSkeleton rows={6} columns={7} />
+        ) : error ? (
+          <LoadFailed what="currencies" onRetry={currencies.reload} />
         ) : (
           <EnhancedTable
             title="Currencies"

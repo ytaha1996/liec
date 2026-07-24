@@ -42,10 +42,15 @@ interface EnhancedTableProps {
   toolbarActions?: ReactNode;
   pageSize?: number;
   selectionEnabled?: boolean;
+  // Rendered in a bar above the table whenever rows are selected — receives
+  // the selected row ids and a callback to clear the selection (call it after
+  // a bulk action completes).
+  renderBulkActions?: (selected: string[], clearSelection: () => void) => ReactNode;
 }
 
-const PAGE_SIZE_DESKTOP = [10, 25, 50, 100];
-const PAGE_SIZE_MOBILE = [10, 25];
+// Same options on all viewports — the previous window.innerWidth check wasn't
+// reactive to resize/rotation and the dropdown is compact anyway.
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 function CellContent({
   column,
@@ -171,6 +176,7 @@ export function EnhancedTable({
   toolbarActions,
   pageSize: initialPageSize = 10,
   selectionEnabled = false,
+  renderBulkActions,
 }: EnhancedTableProps) {
   const [orderBy, setOrderBy] = useState<string>(defaultOrder ?? header[0]?.id ?? '');
   const [order, setOrder] = useState<Order>(defaultDirection);
@@ -334,6 +340,16 @@ export function EnhancedTable({
         </div>
       )}
 
+      {/* Bulk actions bar — appears when rows are selected */}
+      {selectionEnabled && selected.length > 0 && renderBulkActions && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 sm:px-4 py-2 border-b bg-accent/50">
+          <span className="text-sm font-medium">{selected.length} selected</span>
+          <div className="flex flex-wrap gap-2">
+            {renderBulkActions(selected, () => setSelected([]))}
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto">
         <Table>
@@ -439,7 +455,7 @@ export function EnhancedTable({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(window.innerWidth < 640 ? PAGE_SIZE_MOBILE : PAGE_SIZE_DESKTOP).map((n) => (
+              {PAGE_SIZE_OPTIONS.map((n) => (
                 <SelectItem key={n} value={String(n)}>
                   {n}
                 </SelectItem>

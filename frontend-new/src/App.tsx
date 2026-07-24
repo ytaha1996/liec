@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { toast } from 'sonner';
 import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { RequireAuth } from '@/components/layout/RequireAuth';
@@ -38,6 +39,7 @@ function AuthBridge() {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       dispatch(LogoutUser());
+      toast.error('Session expired — please sign in again.');
       navigate('/login', { replace: true });
     });
   }, [dispatch, navigate]);

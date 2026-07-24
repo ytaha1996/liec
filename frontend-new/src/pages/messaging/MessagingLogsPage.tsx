@@ -3,7 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { MainPageTitle, MainPageSection } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { GenericDialog } from '@/components/dialogs';
-import { TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { getJson } from '@/api/client';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
@@ -37,7 +37,7 @@ export default function MessagingLogsPage() {
         : Promise.resolve([]),
   );
 
-  const { initializing } = useInitializeFunction([campaigns.reload]);
+  const { initializing, error } = useInitializeFunction([campaigns.reload]);
 
   // Reload campaign detail when the selected id changes.
   useEffect(() => {
@@ -116,6 +116,8 @@ export default function MessagingLogsPage() {
         <MainPageSection title="Campaigns">
           {initializing ? (
             <TableSkeleton rows={6} columns={5} />
+          ) : error ? (
+            <LoadFailed what="campaigns" onRetry={campaigns.reload} />
           ) : (
             <EnhancedTable
               title="Campaigns"

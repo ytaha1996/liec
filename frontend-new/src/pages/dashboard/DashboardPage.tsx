@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Camera } from 'lucide-react';
 import { MainPageTitle } from '@/components/layout';
-import { Loader } from '@/components/feedback';
+import { Loader, LoadFailed } from '@/components/feedback';
 import { getJson } from '@/api/client';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
@@ -94,9 +94,16 @@ export default function DashboardPage() {
   usePageTitle('Dashboard');
   const navigate = useNavigate();
   const stats = useLoader<StatsOverview>(() => getJson<StatsOverview>('/api/stats/overview'));
-  const { initialized } = useInitializeFunction([stats.reload]);
+  const { initialized, error } = useInitializeFunction([stats.reload]);
 
   if (!initialized) return <Loader fullScreen />;
+  if (error)
+    return (
+      <>
+        <MainPageTitle title="Dashboard" subtitle="Operations overview" />
+        <LoadFailed what="dashboard stats" onRetry={stats.reload} />
+      </>
+    );
 
   const s = stats.data ?? {};
   const shipmentsByStatus = s.shipmentsByStatus ?? {};

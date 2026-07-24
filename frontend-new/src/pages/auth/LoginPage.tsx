@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { GenericInput } from '@/components/inputs';
@@ -13,17 +13,19 @@ import { BRAND_TEAL } from '@/constants/statusColors';
 
 interface LoginResponse {
   token: string;
+  email: string;
   role: string;
   active: boolean;
-  user: { email: string; active: boolean; username: string; mobileNumber: string };
+  username: string;
 }
 
 export default function LoginPage() {
   usePageTitle('Sign in');
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
-  const [email, setEmail] = useState('admin@local');
-  const [password, setPassword] = useState('Admin123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
@@ -36,11 +38,18 @@ export default function LoginPage() {
           active: r.active ?? true,
           role: r.role ?? '',
           isAuthenticated: true,
-          user: r.user ?? { email, active: true, username: email, mobileNumber: '' },
+          user: {
+            email: r.email ?? email,
+            active: r.active ?? true,
+            username: r.username || email,
+            mobileNumber: '',
+          },
         }),
       );
       toast.success('Logged in');
-      navigate('/');
+      // Return to the page the user tried to open before the auth bounce.
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(from || '/');
     } catch (e) {
       toast.error(parseApiError(e).message);
     } finally {

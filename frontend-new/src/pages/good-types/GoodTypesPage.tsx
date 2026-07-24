@@ -5,7 +5,7 @@ import { MainPageTitle } from '@/components/layout';
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { getJson, postJson, putJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
@@ -70,7 +70,7 @@ export default function GoodTypesPage() {
   const [editing, setEditing] = useState<GoodType | null>(null);
 
   const goodTypes = useLoader<GoodType[]>(() => getJson<GoodType[]>('/api/good-types'));
-  const { initializing } = useInitializeFunction([goodTypes.reload]);
+  const { initializing, error } = useInitializeFunction([goodTypes.reload]);
 
   const save = async (values: Record<string, unknown>): Promise<boolean> => {
     try {
@@ -144,6 +144,8 @@ export default function GoodTypesPage() {
       <div className="px-4 sm:px-6 pb-6">
         {initializing ? (
           <TableSkeleton rows={8} columns={5} />
+        ) : error ? (
+          <LoadFailed what="good types" onRetry={goodTypes.reload} />
         ) : (
           <EnhancedTable
             title="Good Types"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Pencil, Image as ImageIcon, FileDown, AlertCircle } from 'lucide-react';
@@ -19,7 +19,7 @@ import { parseApiError, type GateError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { useUserRole, canManageShipments, canSendWhatsApp, canExport, canViewActivityLog } from '@/helpers/rbac';
+import { useUserRole, canManageShipments, canSendWhatsApp, canExport, canViewActivityLog, canBulkTransitionPackages } from '@/helpers/rbac';
 import { formatAuditEntry } from '@/helpers/audit-utils';
 import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '@/constants/statusColors';
 import { SHIPMENT_STATUS_LABELS, PKG_STATUS_LABELS } from '@/constants/statusLabels';
@@ -29,6 +29,7 @@ import { AddPackageDialog } from './components/AddPackageDialog';
 import { EditShipmentDrawer } from './components/EditShipmentDrawer';
 import { ReadyToDepartPreviewDialog } from './components/ReadyToDepartPreviewDialog';
 import { WhatsAppCampaignCards } from './components/WhatsAppCampaignCards';
+import { FxSnapshotsSection } from './components/FxSnapshotsSection';
 import { EditPackageDialog } from '../packages/components/EditPackageDialog';
 
 const ALLOWED_TRANSITIONS: Record<
@@ -137,6 +138,17 @@ export default function ShipmentDetailPage() {
 
   const { initialized, error } = useInitializeFunction([detail.reload, audit.reload], [id]);
 
+  // Reload photos when the selected package changes. Calling reload() inline in
+  // the action handler would still see the previous closure (same-tick), which
+  // showed an empty gallery on first open and stale photos when switching.
+  useEffect(() => {
+    if (photosPkgId !== null) {
+      photoLoader.setData([]); // avoid flashing the previous package's photos
+      photoLoader.reload();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photosPkgId]);
+
   const data = detail.data?.shipment;
   usePageTitle(data ? `Shipment ${data.refCode}` : `Shipment #${id}`);
 
@@ -172,6 +184,27 @@ export default function ShipmentDetailPage() {
       toast.error(parseApiError(e).message);
     }
   };
+
+  const bulkTransition = async (packageIds: number[], action: string, clear: () => void) => {
+    try {
+      await postJson(`/api/shipments/${id}/packages/bulk-transition`, { packageIds, action });
+      toast.success(`${packageIds.length} package(s) updated`);
+      clear();
+      await detail.reload();
+    } catch (e) {
+      toast.error(parseApiError(e).message);
+    }
+  };
+
+  // Bulk actions — each valid only when every selected package is in the
+  // required source status (mirrors the backend's all-or-nothing validation).
+  const CANCELLABLE = new Set(['Draft', 'Received', 'Packed', 'ReadyToShip']);
+  const BULK_ACTIONS: { key: string; title: string; required?: string; cancellable?: boolean; confirm: string }[] = [
+    { key: 'ready-to-ship', title: 'Mark Ready to Ship', required: 'Packed', confirm: 'Mark {n} package(s) as Ready to Ship?' },
+    { key: 'arrive-destination', title: 'Mark Arrived', required: 'Shipped', confirm: 'Mark {n} package(s) as Arrived at Destination?' },
+    { key: 'ready-for-handout', title: 'Mark Ready for Handout', required: 'ArrivedAtDestination', confirm: 'Mark {n} package(s) as Ready for Handout?' },
+    { key: 'cancel', title: 'Cancel Packages', cancellable: true, confirm: 'Cancel {n} package(s)? This cannot be undone.' },
+  ];
 
   const tableData = useMemo(
     () =>
@@ -231,10 +264,7 @@ export default function ShipmentDetailPage() {
         {
           icon: <ImageIcon className="size-4" />,
           label: 'View Photos',
-          onClick: (rowId) => {
-            setPhotosPkgId(Number(rowId));
-            photoLoader.reload();
-          },
+          onClick: (rowId) => setPhotosPkgId(Number(rowId)),
         },
         {
           icon: <Pencil className="size-4" />,
@@ -436,6 +466,8 @@ export default function ShipmentDetailPage() {
           />
         )}
 
+        <FxSnapshotsSection shipmentId={id} canManage={canManageShipments(role)} />
+
         {canExport(role) && EXPORTABLE_STATUSES.has(data.status) && (
           <MainPageSection title="Shipment Reports">
             <div className="flex flex-wrap gap-2">
@@ -533,6 +565,35 @@ export default function ShipmentDetailPage() {
               data={tableData as never}
               defaultOrder="id"
               defaultDirection="desc"
+              selectionEnabled={canBulkTransitionPackages(role)}
+              renderBulkActions={(selectedIds, clear) =>
+                BULK_ACTIONS.map((a) => {
+                  const eligible = selectedIds.every((sid) => {
+                    const status = (tableData[sid] as ShipmentPackage | undefined)?.status;
+                    return a.cancellable ? CANCELLABLE.has(status ?? '') : status === a.required;
+                  });
+                  return (
+                    <Button
+                      key={a.key}
+                      size="sm"
+                      variant={a.cancellable ? 'destructive' : 'outline'}
+                      disabled={!eligible}
+                      onClick={() =>
+                        dispatch(
+                          OpenConfirmation({
+                            title: a.title,
+                            message: a.confirm.replace('{n}', String(selectedIds.length)),
+                            destructive: a.cancellable,
+                            onSubmit: () => bulkTransition(selectedIds.map(Number), a.key, clear),
+                          }),
+                        )
+                      }
+                    >
+                      {a.title}
+                    </Button>
+                  );
+                })
+              }
             />
           )}
         </MainPageSection>

@@ -9,7 +9,7 @@ import {
 } from '@/components/enhanced-table';
 import { DynamicFormWidget, DynamicField, type FieldMap } from '@/components/dynamic-form';
 import { GenericDialog } from '@/components/dialogs';
-import { Loader, TableSkeleton } from '@/components/feedback';
+import { LoadFailed, TableSkeleton } from '@/components/feedback';
 import { getJson, postJson, putJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
@@ -93,7 +93,7 @@ export default function WarehousesPage() {
   const [editing, setEditing] = useState<Warehouse | null>(null);
 
   const warehouses = useLoader<Warehouse[]>(() => getJson<Warehouse[]>('/api/warehouses'));
-  const { initializing } = useInitializeFunction([warehouses.reload]);
+  const { initializing, error } = useInitializeFunction([warehouses.reload]);
 
   const openCreate = () => {
     setEditing(null);
@@ -160,8 +160,8 @@ export default function WarehousesPage() {
       <div className="px-4 sm:px-6 pb-6">
         {initializing ? (
           <TableSkeleton rows={6} columns={7} />
-        ) : warehouses.loading && !warehouses.data ? (
-          <Loader />
+        ) : error ? (
+          <LoadFailed what="warehouses" onRetry={warehouses.reload} />
         ) : (
           <EnhancedTable
             title="Warehouses"

@@ -134,6 +134,26 @@ public class ExportRequestValidator : AbstractValidator<ExportRequest>
     }
 }
 
+public class UpsertSupplierRequestValidator : AbstractValidator<UpsertSupplierRequest>
+{
+    public UpsertSupplierRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Email!).EmailAddress().MaximumLength(200).When(x => !string.IsNullOrEmpty(x.Email));
+    }
+}
+
+public class UpsertSupplyOrderRequestValidator : AbstractValidator<UpsertSupplyOrderRequest>
+{
+    public UpsertSupplyOrderRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.PurchasePrice).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.CustomerId).GreaterThan(0);
+        RuleFor(x => x.SupplierId).GreaterThan(0);
+    }
+}
+
 public class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
 {
     public CreateUserRequestValidator()

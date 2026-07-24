@@ -67,7 +67,14 @@ export function DynamicFormWidget({
   );
   const schema = useMemo(() => buildZodSchema(fields), [schemaKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const defaultValues = useMemo(() => extractDefaults(fields), [schemaKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reset key deliberately EXCLUDES select `items` — the zod schema doesn't
+  // validate against option sets, and resetting when a lookup loader refreshes
+  // under an open dialog would wipe everything the user has typed.
+  const resetKey = useMemo(
+    () => JSON.stringify(Object.values(fields).map((f) => [f.name, f.type, f.value])),
+    [fields],
+  );
+  const defaultValues = useMemo(() => extractDefaults(fields), [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const form = useForm({
     resolver: zodResolver(schema as never),
@@ -105,13 +112,21 @@ export function DynamicFormWidget({
       field.required ||
       !!field.conditionalRequired?.(watchAll as Record<string, unknown>);
 
-    const spanSm = field.grid?.sm ?? 12;
-    const spanMd = field.grid?.md ?? spanSm;
-    const colSpan = cn(
-      'col-span-12',
-      spanSm <= 6 ? 'sm:col-span-6' : `sm:col-span-${spanSm}`,
-      spanMd <= 4 ? 'md:col-span-4' : spanMd <= 6 ? 'md:col-span-6' : `md:col-span-${spanMd}`,
-    );
+    // Tailwind only emits classes it can see as literals — template-built
+    // names like `sm:col-span-${n}` are silently dropped. Static lookup maps
+    // keep every span the config system supports in the final CSS.
+    const SM_SPAN: Record<number, string> = {
+      3: 'sm:col-span-3', 4: 'sm:col-span-4', 6: 'sm:col-span-6',
+      8: 'sm:col-span-8', 12: 'sm:col-span-12',
+    };
+    const MD_SPAN: Record<number, string> = {
+      3: 'md:col-span-3', 4: 'md:col-span-4', 6: 'md:col-span-6',
+      8: 'md:col-span-8', 12: 'md:col-span-12',
+    };
+    const nearest = (n: number) => (n <= 3 ? 3 : n <= 4 ? 4 : n <= 6 ? 6 : n <= 8 ? 8 : 12);
+    const spanSm = nearest(field.grid?.sm ?? 12);
+    const spanMd = nearest(field.grid?.md ?? spanSm);
+    const colSpan = cn('col-span-12', SM_SPAN[spanSm], MD_SPAN[spanMd]);
 
     return (
       <div key={field.name} className={colSpan}>

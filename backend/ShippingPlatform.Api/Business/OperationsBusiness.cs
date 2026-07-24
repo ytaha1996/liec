@@ -386,12 +386,12 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 await db.SaveChangesAsync();
             }
 
+            // Always recalc so Currency/rates are stamped from the active config
+            // even for zero-measure packages (charge stays 0 in that case).
+            await pricing.RecalculateAsync(package);
+            await db.SaveChangesAsync();
             if (package.WeightKg > 0 || package.Cbm > 0)
-            {
-                await pricing.RecalculateAsync(package);
-                await db.SaveChangesAsync();
                 await capacity.RecalculateAsync(shipmentId);
-            }
 
             // Auto-create supply order for ProcuredForCustomer packages
             if (input.SupplyOrder is not null)
@@ -815,6 +815,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             AdminUserId = adminUserId
         });
         await db.SaveChangesAsync();
+        await audit.LogAsync("Package", id, "PricingOverride",
+            $"{req.OverrideType}={originalValue}",
+            $"{req.OverrideType}={req.NewValue} reason={req.Reason}",
+            adminUserId);
         return (p.ToDto(), null);
     }
 
@@ -890,7 +894,7 @@ public interface ISupplyOrderBusiness
     Task<(SupplyOrderDto? dto, object? error)> TransitionAsync(int id, SupplyOrderTransitionRequest req);
 }
 
-public class SupplyOrderBusiness(AppDbContext db, ITransitionRuleService transitions) : ISupplyOrderBusiness
+public class SupplyOrderBusiness(AppDbContext db, ITransitionRuleService transitions, IAuditService audit) : ISupplyOrderBusiness
 {
     public async Task<List<SupplyOrderDto>> ListAsync(string? q = null, SupplyOrderStatus? status = null, int? customerId = null)
     {
@@ -904,13 +908,18 @@ public class SupplyOrderBusiness(AppDbContext db, ITransitionRuleService transit
     public async Task<SupplyOrderDto> CreateAsync(UpsertSupplyOrderRequest req)
     {
         var e = new SupplyOrder { CustomerId = req.CustomerId, SupplierId = req.SupplierId, PackageId = req.PackageId, Name = req.Name, PurchasePrice = req.PurchasePrice, Details = req.Details, Status = SupplyOrderStatus.Draft };
-        db.SupplyOrders.Add(e); await db.SaveChangesAsync(); return e.ToDto();
+        db.SupplyOrders.Add(e); await db.SaveChangesAsync();
+        await audit.LogAsync("SupplyOrder", e.Id, "Create", null, $"name={e.Name} price={e.PurchasePrice} customer={e.CustomerId} supplier={e.SupplierId}");
+        return e.ToDto();
     }
     public async Task<SupplyOrderDto?> UpdateAsync(int id, UpsertSupplyOrderRequest req)
     {
         var e = await db.SupplyOrders.FindAsync(id); if (e is null) return null;
+        var old = $"name={e.Name} price={e.PurchasePrice} package={e.PackageId}";
         e.CustomerId = req.CustomerId; e.SupplierId = req.SupplierId; e.PackageId = req.PackageId; e.Name = req.Name; e.PurchasePrice = req.PurchasePrice; e.Details = req.Details;
-        await db.SaveChangesAsync(); return e.ToDto();
+        await db.SaveChangesAsync();
+        await audit.LogAsync("SupplyOrder", e.Id, "Update", old, $"name={e.Name} price={e.PurchasePrice} package={e.PackageId}");
+        return e.ToDto();
     }
     public async Task<(SupplyOrderDto? dto, object? error)> TransitionAsync(int id, SupplyOrderTransitionRequest req)
     {
@@ -921,8 +930,10 @@ public class SupplyOrderBusiness(AppDbContext db, ITransitionRuleService transit
         if (req.Status == SupplyOrderStatus.PackedIntoPackage && e.PackageId is null)
             return (null, new { code = "VALIDATION_ERROR", message = "A package must be linked before marking as packed." });
 
+        var oldStatus = e.Status.ToString();
         e.Status = req.Status; e.CancelReason = req.Status == SupplyOrderStatus.Cancelled ? req.CancelReason : null;
         await db.SaveChangesAsync();
+        await audit.LogAsync("SupplyOrder", e.Id, $"Status → {req.Status}", oldStatus, req.Status.ToString());
 
         // Auto-receive the linked package when SO arrives at warehouse
         if (req.Status == SupplyOrderStatus.DeliveredToWarehouse && e.PackageId is not null)

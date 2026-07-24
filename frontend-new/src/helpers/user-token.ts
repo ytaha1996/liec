@@ -35,3 +35,16 @@ export const decodeUserIdFromToken = (token: string): number | null => {
     return null;
   }
 };
+
+// True when the token has an `exp` claim in the past (30s clock-skew grace).
+// Used at store bootstrap so an expired session goes straight to /login
+// instead of rendering the app and bouncing on the first 401.
+export const isTokenExpired = (token: string): boolean => {
+  try {
+    const { exp } = jwtDecode<{ exp?: number }>(token);
+    if (!exp) return false;
+    return exp * 1000 < Date.now() - 30_000;
+  } catch {
+    return true;
+  }
+};

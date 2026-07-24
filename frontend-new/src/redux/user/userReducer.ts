@@ -5,12 +5,19 @@ import {
   clearUserToken,
   decodeRoleFromToken,
   getUserToken,
+  isTokenExpired,
   setUserToken,
 } from '@/helpers/user-token';
 
 // Read the token + role synchronously at module load so a refresh on an
 // authenticated tab doesn't flash the empty state before the role decodes.
-const _initialToken = getUserToken() ?? '';
+// An expired token is treated as logged-out immediately (and cleared) so the
+// app doesn't render, fire loaders, and bounce on the first 401.
+let _initialToken = getUserToken() ?? '';
+if (_initialToken && isTokenExpired(_initialToken)) {
+  clearUserToken();
+  _initialToken = '';
+}
 const _initialRole = _initialToken ? (decodeRoleFromToken(_initialToken) ?? '') : '';
 
 const initialState: IUserStore = {
