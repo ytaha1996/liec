@@ -30,6 +30,14 @@ public class ExportsController(IExportBusiness business) : ControllerBase
     {
         if (req?.RateOverrides is { Count: > 0 })
         {
+            // FX snapshot mutation is an Admin/Manager privilege — the dedicated
+            // PUT /api/shipments/{id}/fx-snapshots/{code} endpoint enforces the
+            // same. Accountants can still run the export; they just can't sneak
+            // rate writes through its body.
+            if (!User.IsInRole("Admin") && !User.IsInRole("Manager"))
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { code = "FORBIDDEN_RATE_OVERRIDE", message = "Only Admin or Manager can override FX rates." });
+
             foreach (var (code, rate) in req.RateOverrides)
             {
                 if (rate <= 0) continue;

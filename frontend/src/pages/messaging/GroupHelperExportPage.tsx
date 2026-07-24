@@ -4,10 +4,13 @@ import { toast } from 'react-toastify';
 import MainPageTitle from '../../components/layout-components/main-layout/MainPageTitle';
 import { postJson, parseApiError } from '../../api/client';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { useUserRole, canExport } from '../../helpers/rbac';
 import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 const GroupHelperExportPage = () => {
   usePageTitle('Group Helper Export');
+  const role = useUserRole();
+  const allowed = canExport(role);
   const exportMut = useMutation({
     mutationFn: (format: 'csv' | 'vcf') =>
       postJson<{ publicUrl: string }>('/api/exports/group-helper', { format }),
@@ -28,14 +31,16 @@ const GroupHelperExportPage = () => {
         <Alert severity="warning" sx={{ mb: 2 }}>
           WhatsApp groups reveal phone numbers to all members. Use this export carefully.
         </Alert>
-        <Stack direction={{ xs: 'column', sm: 'row' }} gap={{ xs: 1, sm: 2 }}>
-          <Button variant="outlined" onClick={() => exportMut.mutate('csv')} disabled={exportMut.isPending}>
-            Export CSV
-          </Button>
-          <Button variant="outlined" onClick={() => exportMut.mutate('vcf')} disabled={exportMut.isPending}>
-            Export VCF
-          </Button>
-        </Stack>
+        {allowed && (
+          <Stack direction={{ xs: 'column', sm: 'row' }} gap={{ xs: 1, sm: 2 }}>
+            <Button variant="outlined" onClick={() => exportMut.mutate('csv')} disabled={exportMut.isPending}>
+              Export CSV
+            </Button>
+            <Button variant="outlined" onClick={() => exportMut.mutate('vcf')} disabled={exportMut.isPending}>
+              Export VCF
+            </Button>
+          </Stack>
+        )}
       </Box>
     </Box>
   );

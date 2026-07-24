@@ -210,11 +210,15 @@ public class UserBusiness(AppDbContext db, IAuditService audit) : IUserBusiness
         if (user.Email != req.Email && await db.AdminUsers.AnyAsync(x => x.Email == req.Email && x.Id != id))
             return (null, new { code = "DUPLICATE_EMAIL", message = "A user with this email already exists." });
 
-        if (user.IsActive && !req.IsActive && user.Role == UserRole.Admin)
+        // Last-admin guard covers BOTH deactivation and role demotion — either
+        // change on the last active admin would leave the system without one.
+        var losesAdmin = user.Role == UserRole.Admin && user.IsActive
+            && (!req.IsActive || req.Role != UserRole.Admin);
+        if (losesAdmin)
         {
             var activeAdminCount = await db.AdminUsers.CountAsync(x => x.Role == UserRole.Admin && x.IsActive && x.Id != id);
             if (activeAdminCount == 0)
-                return (null, new { code = "LAST_ADMIN", message = "Cannot deactivate the last active admin." });
+                return (null, new { code = "LAST_ADMIN", message = "Cannot demote or deactivate the last active admin." });
         }
 
         var oldSnapshot = $"email={user.Email} role={user.Role} active={user.IsActive}";

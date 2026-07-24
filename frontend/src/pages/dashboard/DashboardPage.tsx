@@ -123,9 +123,12 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={6} sm={3}>
             <StatCard title="Packages" value={totalPackages} color={BRAND_PURPLE} />
           </Grid>
-          <Grid item xs={6} sm={3}>
-            <StatCard title="Pending Charges" value={`${(s.totalPendingCharges ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color="#ed6c02" subtitle="active packages" />
-          </Grid>
+          {/* Backend omits the financial total for Field users — hide the card. */}
+          {s.totalPendingCharges != null && (
+            <Grid item xs={6} sm={3}>
+              <StatCard title="Pending Charges" value={`${Number(s.totalPendingCharges).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color="#ed6c02" subtitle="active packages" />
+            </Grid>
+          )}
         </Grid>
 
         <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mb: { xs: 2, sm: 3 } }}>

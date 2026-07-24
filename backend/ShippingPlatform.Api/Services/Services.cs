@@ -248,12 +248,69 @@ public class TwilioWhatsAppSender : IWhatsAppSender
 {
     private readonly string _from;
     private readonly ILogger<TwilioWhatsAppSender> _logger;
+    // When non-empty, every SendAsync redirects to these numbers instead of the
+    // real recipient. The intended recipient is prepended to the body so the
+    // tester can tell who the message was originally meant for. Configured via
+    // `Twilio:TestPhoneNumbers` in appsettings — empty array = production mode.
+    private readonly IReadOnlyList<string> _testPhoneNumbers;
 
     public TwilioWhatsAppSender(IConfiguration cfg, ILogger<TwilioWhatsAppSender> logger)
     {
         _logger = logger;
-        _from = cfg["Twilio:WhatsAppFrom"]!;
-        Twilio.TwilioClient.Init(cfg["Twilio:AccountSid"], cfg["Twilio:AuthToken"]);
+        _from = cfg["Twilio:WhatsAppFrom"] ?? string.Empty;
+
+        // Prefer API-Key auth over the legacy AuthToken pair. API keys can be
+        // rotated without churning the AccountSid, and Twilio recommends them
+        // for server-to-server integrations.
+        var accountSid = cfg["Twilio:AccountSid"];
+        var apiKeySid = cfg["Twilio:ApiKeySid"];
+        var apiKeySecret = cfg["Twilio:ApiKeySecret"];
+        var authToken = cfg["Twilio:AuthToken"];
+        if (!string.IsNullOrWhiteSpace(apiKeySid) && !string.IsNullOrWhiteSpace(apiKeySecret))
+        {
+            Twilio.TwilioClient.Init(apiKeySid, apiKeySecret, accountSid);
+            _logger.LogInformation("Twilio initialised via API key ({KeySid}) for account {Account}", apiKeySid, accountSid);
+        }
+        else if (!string.IsNullOrWhiteSpace(authToken))
+        {
+            Twilio.TwilioClient.Init(accountSid, authToken);
+            _logger.LogInformation("Twilio initialised via AuthToken for account {Account}", accountSid);
+        }
+        else
+        {
+            _logger.LogError("Twilio credentials missing — neither ApiKey pair nor AuthToken configured. Sends will fail.");
+        }
+
+        // Loud startup warning: WhatsApp requires the From to be an E.164 phone
+        // number (`+` + 8-15 digits). Alphanumeric sender IDs work for some
+        // SMS destinations but NEVER for WhatsApp — Twilio would return 21606
+        // ("The From phone number ... is not a valid…").
+        var whatsAppE164 = new System.Text.RegularExpressions.Regex(@"^\+\d{8,15}$");
+        if (string.IsNullOrWhiteSpace(_from))
+        {
+            _logger.LogError(
+                "Twilio:WhatsAppFrom is EMPTY. All outgoing WhatsApp sends will fail. " +
+                "Set to your approved WhatsApp Business number, or '+14155238886' for the Twilio sandbox " +
+                "(recipients must first message the sandbox with 'join <two-words>').");
+        }
+        else if (!whatsAppE164.IsMatch(_from))
+        {
+            _logger.LogError(
+                "Twilio:WhatsAppFrom = '{From}' is not a valid E.164 phone number. " +
+                "WhatsApp requires the sender to be a phone number like '+14155238886' (Twilio sandbox) " +
+                "or your approved WhatsApp Business number. Alphanumeric sender IDs are NOT supported by WhatsApp.",
+                _from);
+        }
+
+        _testPhoneNumbers = cfg.GetSection("Twilio:TestPhoneNumbers")
+            .Get<string[]>()?
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToList()
+            ?? new List<string>();
+        if (_testPhoneNumbers.Count > 0)
+            _logger.LogWarning(
+                "TwilioWhatsAppSender in TEST mode — all outgoing messages redirected to: {Numbers}",
+                string.Join(", ", _testPhoneNumbers));
     }
 
     public async Task<(bool ok, string? err)> SendAsync(string phone, string text, IEnumerable<string>? mediaUrls = null)
@@ -261,6 +318,38 @@ public class TwilioWhatsAppSender : IWhatsAppSender
         if (string.IsNullOrWhiteSpace(phone) || !System.Text.RegularExpressions.Regex.IsMatch(phone, @"^\+\d{8,15}$"))
             return (false, $"Invalid phone number: {phone}");
 
+        // Short-circuit with a clear error rather than letting Twilio return a
+        // cryptic 400 — these are the two most common misconfigs in practice.
+        if (string.IsNullOrWhiteSpace(_from))
+            return (false, "Twilio:WhatsAppFrom is not configured. Set your WhatsApp Business number (or '+14155238886' for the Twilio sandbox) in appsettings.");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(_from, @"^\+\d{8,15}$"))
+            return (false, $"Twilio:WhatsAppFrom = '{_from}' is not a valid E.164 phone number. WhatsApp requires a phone number sender like '+14155238886', not an alphanumeric name.");
+
+        // In test mode: keep looping over the tester numbers so every listed
+        // tester receives a copy. First result determines the return value —
+        // the send succeeds if any tester receives it. Non-test paths run the
+        // send exactly once against the real recipient.
+        var recipients = _testPhoneNumbers.Count > 0
+            ? _testPhoneNumbers
+            : new[] { phone };
+        var body = _testPhoneNumbers.Count > 0
+            ? $"[TEST → {phone}]\n{text}"
+            : text;
+
+        (bool ok, string? err) result = (true, null);
+        var isFirst = true;
+        foreach (var to in recipients)
+        {
+            var single = await SendOneAsync(to, body, mediaUrls);
+            if (isFirst) { result = single; isFirst = false; }
+            else if (!single.ok)
+                _logger.LogWarning("Test-mode fan-out to {Phone} failed: {Err}", to, single.err);
+        }
+        return result;
+    }
+
+    private async Task<(bool ok, string? err)> SendOneAsync(string phone, string text, IEnumerable<string>? mediaUrls)
+    {
         try
         {
             var urls = mediaUrls?.ToList() ?? [];
@@ -278,16 +367,30 @@ public class TwilioWhatsAppSender : IWhatsAppSender
 
             var msg = await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(options);
 
+            // ErrorCode is populated for validation failures returned by the
+            // Create call itself. Delivery failures surface later on the
+            // message resource — Status will move from `queued` → `sent` →
+            // `delivered` (good) OR `failed`/`undelivered` (bad). We log the
+            // initial status so a "nothing arrived" report is easy to diagnose.
+            _logger.LogInformation(
+                "WhatsApp create: phone={Phone} from={From} sid={Sid} status={Status} errorCode={ErrorCode} errorMessage={ErrorMessage}",
+                phone, _from, msg.Sid, msg.Status, msg.ErrorCode, msg.ErrorMessage);
+
             if (msg.ErrorCode != null)
             {
                 var errMsg = $"Twilio error {msg.ErrorCode}: {msg.ErrorMessage}";
                 _logger.LogWarning(errMsg);
                 return (false, errMsg);
             }
+            if (msg.Status == Twilio.Rest.Api.V2010.Account.MessageResource.StatusEnum.Failed
+                || msg.Status == Twilio.Rest.Api.V2010.Account.MessageResource.StatusEnum.Undelivered)
+            {
+                var errMsg = $"Twilio returned status {msg.Status} for {phone} (sid {msg.Sid}): {msg.ErrorMessage}";
+                _logger.LogWarning(errMsg);
+                return (false, errMsg);
+            }
 
-            _logger.LogInformation("WhatsApp sent to {Phone}, SID: {Sid}", phone, msg.Sid);
-
-            // Send remaining media in chunks of 10 if more than 10 photos
+            // Send remaining media in chunks of 10 if more than 10 photos.
             for (var i = 10; i < urls.Count; i += 10)
             {
                 var chunk = urls.Skip(i).Take(10).Select(u => new Uri(u)).ToList();

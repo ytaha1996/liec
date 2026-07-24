@@ -19,6 +19,7 @@ import { PRICING_CONFIG_STATUS_CHIPS } from '../../constants/statusColors';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import { usePageTitle } from '../../helpers/usePageTitle';
+import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
 import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
 const ENDPOINT = '/api/pricing-configs';
@@ -89,6 +90,8 @@ const buildFields = (
 const PricingConfigsPage = () => {
   usePageTitle('Pricing Configs');
   const qc = useQueryClient();
+  const role = useUserRole();
+  const writable = canWriteMasterData(role);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
@@ -164,6 +167,7 @@ const PricingConfigsPage = () => {
       type: EnhancedTableColumnType.Action,
       numeric: false,
       disablePadding: false,
+      // Pricing writes are Admin/Manager only (matches backend [Authorize]).
       actions: [
         {
           icon: <EditIcon fontSize="small" />,
@@ -172,19 +176,19 @@ const PricingConfigsPage = () => {
             const row = tableData[id];
             if (row) { setEditing(row); setDialogOpen(true); }
           },
-          hidden: () => false,
+          hidden: () => !writable,
         },
         {
           icon: <CheckCircleIcon fontSize="small" />,
           label: 'Activate',
           onClick: (id: string) => activate.mutate(id),
-          hidden: (row: Record<string, any>) => row.status === 'Active',
+          hidden: (row: Record<string, any>) => !writable || row.status === 'Active',
         },
         {
           icon: <ArchiveIcon fontSize="small" />,
           label: 'Retire',
           onClick: (id: string) => retire.mutate(id),
-          hidden: (row: Record<string, any>) => row.status === 'Retired',
+          hidden: (row: Record<string, any>) => !writable || row.status === 'Retired',
         },
       ],
     },
@@ -206,10 +210,10 @@ const PricingConfigsPage = () => {
     <Box>
       <MainPageTitle
         title="Pricing Configs"
-        action={{
+        action={writable ? {
           title: 'Create Config',
           onClick: () => { setEditing(null); setDialogOpen(true); },
-        }}
+        } : undefined}
       />
 
       <Box sx={{ px: PAGE_PADDING_X, pb: PAGE_PADDING_Y }}>

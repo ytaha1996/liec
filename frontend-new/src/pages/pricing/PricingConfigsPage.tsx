@@ -12,6 +12,7 @@ import { parseApiError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { useUserRole, canWriteMasterData } from '@/helpers/rbac';
 import { PRICING_CONFIG_STATUS_LABELS } from '@/constants/statusLabels';
 import { PRICING_CONFIG_STATUS_CHIPS } from '@/constants/statusColors';
 
@@ -98,6 +99,8 @@ const buildFields = (currencyItems: Record<string, string>, initial?: Partial<Pr
 
 export default function PricingConfigsPage() {
   usePageTitle('Pricing Configs');
+  const role = useUserRole();
+  const writable = canWriteMasterData(role);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PricingConfig | null>(null);
 
@@ -168,28 +171,31 @@ export default function PricingConfigsPage() {
       id: 'actions',
       label: 'Actions',
       type: EnhancedTableColumnType.Action,
-      actions: [
-        {
-          icon: <Pencil className="size-4" />,
-          label: 'Edit',
-          onClick: (_id, row) => {
-            setEditing(row as unknown as PricingConfig);
-            setDialogOpen(true);
-          },
-        },
-        {
-          icon: <CheckCircle2 className="size-4" />,
-          label: 'Activate',
-          onClick: (id) => activate(id),
-          hidden: (row) => row.status === 'Active',
-        },
-        {
-          icon: <Archive className="size-4" />,
-          label: 'Retire',
-          onClick: (id) => retire(id),
-          hidden: (row) => row.status === 'Retired',
-        },
-      ],
+      // Pricing writes are Admin/Manager only (matches backend [Authorize]).
+      actions: writable
+        ? [
+            {
+              icon: <Pencil className="size-4" />,
+              label: 'Edit',
+              onClick: (_id, row) => {
+                setEditing(row as unknown as PricingConfig);
+                setDialogOpen(true);
+              },
+            },
+            {
+              icon: <CheckCircle2 className="size-4" />,
+              label: 'Activate',
+              onClick: (id) => activate(id),
+              hidden: (row) => row.status === 'Active',
+            },
+            {
+              icon: <Archive className="size-4" />,
+              label: 'Retire',
+              onClick: (id) => retire(id),
+              hidden: (row) => row.status === 'Retired',
+            },
+          ]
+        : [],
     },
   ];
 
@@ -206,13 +212,17 @@ export default function PricingConfigsPage() {
     <>
       <MainPageTitle
         title="Pricing Configs"
-        action={{
-          title: 'Create Config',
-          onClick: () => {
-            setEditing(null);
-            setDialogOpen(true);
-          },
-        }}
+        action={
+          writable
+            ? {
+                title: 'Create Config',
+                onClick: () => {
+                  setEditing(null);
+                  setDialogOpen(true);
+                },
+              }
+            : undefined
+        }
       />
       <div className="px-4 sm:px-6 pb-6">
         {initializing ? (

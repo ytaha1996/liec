@@ -7,9 +7,12 @@ import { MainPageTitle } from '@/components/layout';
 import { postJson } from '@/api/client';
 import { parseApiError } from '@/api/parseApiError';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { useUserRole, canExport } from '@/helpers/rbac';
 
 export default function GroupHelperExportPage() {
   usePageTitle('Group Helper Export');
+  const role = useUserRole();
+  const allowed = canExport(role);
   const [pending, setPending] = useState(false);
 
   const exportFormat = async (format: 'csv' | 'vcf') => {
@@ -37,14 +40,16 @@ export default function GroupHelperExportPage() {
             WhatsApp groups reveal phone numbers to all members. Use this export carefully.
           </AlertDescription>
         </Alert>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button variant="outline" disabled={pending} onClick={() => exportFormat('csv')}>
-            <FileDown className="mr-2 size-4" /> Export CSV
-          </Button>
-          <Button variant="outline" disabled={pending} onClick={() => exportFormat('vcf')}>
-            <FileDown className="mr-2 size-4" /> Export VCF
-          </Button>
-        </div>
+        {allowed && (
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" disabled={pending} onClick={() => exportFormat('csv')}>
+              <FileDown className="mr-2 size-4" /> Export CSV
+            </Button>
+            <Button variant="outline" disabled={pending} onClick={() => exportFormat('vcf')}>
+              <FileDown className="mr-2 size-4" /> Export VCF
+            </Button>
+          </div>
+        )}
       </div>
     </>
   );

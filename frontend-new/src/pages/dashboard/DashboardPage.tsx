@@ -150,15 +150,18 @@ export default function DashboardPage() {
             subtitle={`${s.shipmentsThisMonth ?? 0} this month`}
           />
           <StatCard title="Packages" value={totalPackages} color={BRAND_PURPLE} />
-          <StatCard
-            title="Pending Charges"
-            value={(s.totalPendingCharges ?? 0).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-            color="#ed6c02"
-            subtitle="active packages"
-          />
+          {/* Backend omits the financial total for Field users — hide the card. */}
+          {s.totalPendingCharges != null && (
+            <StatCard
+              title="Pending Charges"
+              value={Number(s.totalPendingCharges).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+              color="#ed6c02"
+              subtitle="active packages"
+            />
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">

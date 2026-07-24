@@ -32,10 +32,16 @@ public class StatsController(AppDbContext db) : ControllerBase
         var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var shipmentsThisMonth = shipments.Count(x => x.CreatedAt >= monthStart);
 
-        var activeStatuses = new[] { PackageStatus.Draft, PackageStatus.Received, PackageStatus.Packed, PackageStatus.ReadyToShip, PackageStatus.Shipped, PackageStatus.ArrivedAtDestination, PackageStatus.ReadyForHandout };
-        var totalPendingCharges = packages
-            .Where(x => activeStatuses.Contains(x.Status))
-            .Sum(x => x.ChargeAmount);
+        // Financial aggregate is not for warehouse staff — Field gets the
+        // operational stats but no company-wide charge totals.
+        decimal? totalPendingCharges = null;
+        if (!User.IsInRole("Field"))
+        {
+            var activeStatuses = new[] { PackageStatus.Draft, PackageStatus.Received, PackageStatus.Packed, PackageStatus.ReadyToShip, PackageStatus.Shipped, PackageStatus.ArrivedAtDestination, PackageStatus.ReadyForHandout };
+            totalPendingCharges = packages
+                .Where(x => activeStatuses.Contains(x.Status))
+                .Sum(x => x.ChargeAmount);
+        }
 
         var totalCustomers = await db.Customers.CountAsync(x => x.IsActive);
 

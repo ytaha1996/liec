@@ -142,7 +142,9 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     [HttpPost("api/packages/{id:int}/pricing-override")]
     public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)
     {
-        var adminId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : 1;
+        // Reject malformed tokens rather than mis-attributing the override to user #1.
+        if (!int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var adminId))
+            return Unauthorized();
         var (dto, err) = await business.ApplyPricingOverrideAsync(id, req, adminId);
         if (dto is null && err is null) return NotFound();
         return err is null ? Ok(dto) : Conflict(err);

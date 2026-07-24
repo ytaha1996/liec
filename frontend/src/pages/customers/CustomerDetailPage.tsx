@@ -25,7 +25,7 @@ import EmptyState from '../../components/EmptyState';
 import { EnhanceTableHeaderTypes, EnhancedTableColumnType } from '../../components/enhanced-table';
 import { PKG_STATUS_CHIPS } from '../../constants/statusColors';
 import { PKG_STATUS_LABELS } from '../../constants/statusLabels';
-import { useUserRole, canWriteMasterData } from '../../helpers/rbac';
+import { useUserRole, canWriteMasterData, canSendWhatsApp } from '../../helpers/rbac';
 import { usePageTitle } from '../../helpers/usePageTitle';
 import { PAGE_PADDING_X, PAGE_PADDING_Y } from '../../theme/tokens';
 
@@ -266,38 +266,40 @@ const CustomerDetailPage = ({ id }: Props) => {
           />
         </MainPageSection>
 
-        <MainPageSection title="Individual WhatsApp">
-          <Stack direction="row" gap={2} alignItems="center" flexWrap="wrap">
-            <TextField
-              label="Shipment ID"
-              size="small"
-              value={shipmentId}
-              onChange={(e) => setShipmentId(e.target.value)}
-              sx={{ minWidth: 160 }}
-            />
-            <Button
-              variant="outlined"
-              onClick={() => sendWhatsApp.mutate('status')}
-              disabled={sendWhatsApp.isPending}
-            >
-              Status
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={() => sendWhatsApp.mutate('departure')}
-              disabled={sendWhatsApp.isPending}
-            >
-              Departure Photos
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={() => sendWhatsApp.mutate('arrival')}
-              disabled={sendWhatsApp.isPending}
-            >
-              Arrival Photos
-            </Button>
-          </Stack>
-        </MainPageSection>
+        {canSendWhatsApp(role) && (
+          <MainPageSection title="Individual WhatsApp">
+            <Stack direction="row" gap={2} alignItems="center" flexWrap="wrap">
+              <TextField
+                label="Shipment ID"
+                size="small"
+                value={shipmentId}
+                onChange={(e) => setShipmentId(e.target.value)}
+                sx={{ minWidth: 160 }}
+              />
+              <Button
+                variant="outlined"
+                onClick={() => sendWhatsApp.mutate('status')}
+                disabled={sendWhatsApp.isPending}
+              >
+                Status
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => sendWhatsApp.mutate('departure')}
+                disabled={sendWhatsApp.isPending}
+              >
+                Departure Photos
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => sendWhatsApp.mutate('arrival')}
+                disabled={sendWhatsApp.isPending}
+              >
+                Arrival Photos
+              </Button>
+            </Stack>
+          </MainPageSection>
+        )}
 
         <MainPageSection title="Packages">
           {Object.keys(packagesTableData).length === 0 ? (

@@ -39,7 +39,16 @@ else
         .UseInMemoryDatabase("shipping")
         .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning)));
 
-var secret = builder.Configuration["Auth:Secret"] ?? "dev-secret-super-long";
+// Fail fast outside Development: a missing/short secret would silently fall
+// back to a publicly-known literal, making admin tokens forgeable.
+var secret = builder.Configuration["Auth:Secret"];
+if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
+{
+    if (!builder.Environment.IsDevelopment())
+        throw new InvalidOperationException(
+            "Auth:Secret is missing or shorter than 32 characters. Set a strong secret in configuration before starting in non-Development environments.");
+    secret ??= "dev-secret-super-long";
+}
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

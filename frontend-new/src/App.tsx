@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { RequireAuth } from '@/components/layout/RequireAuth';
+import { RequireModule } from '@/components/layout/RequireModule';
 import { ConfirmationBox } from '@/components/dialogs';
 import { ErrorBoundary } from '@/components/feedback';
 import { setUnauthorizedHandler } from '@/api/client';
@@ -70,22 +71,22 @@ export default function App() {
           <Route path="/ops/packages" element={<PackagesPage />} />
           <Route path="/ops/packages/:id" element={<PackageDetailPage />} />
 
-          {/* Master Data */}
-          <Route path="/master/customers" element={<CustomersPage />} />
-          <Route path="/master/customers/:id" element={<CustomerDetailPage />} />
-          <Route path="/master/warehouses" element={<WarehousesPage />} />
-          <Route path="/master/good-types" element={<GoodTypesPage />} />
-          <Route path="/master/pricing-configs" element={<PricingConfigsPage />} />
-          <Route path="/master/suppliers" element={<SuppliersPage />} />
-          <Route path="/master/supply-orders" element={<SupplyOrdersPage />} />
-          <Route path="/master/currencies" element={<CurrenciesPage />} />
+          {/* Master Data — module-gated per MODULE_ACCESS */}
+          <Route path="/master/customers" element={<RequireModule module="customers"><CustomersPage /></RequireModule>} />
+          <Route path="/master/customers/:id" element={<RequireModule module="customers"><CustomerDetailPage /></RequireModule>} />
+          <Route path="/master/warehouses" element={<RequireModule module="warehouses"><WarehousesPage /></RequireModule>} />
+          <Route path="/master/good-types" element={<RequireModule module="goodTypes"><GoodTypesPage /></RequireModule>} />
+          <Route path="/master/pricing-configs" element={<RequireModule module="pricing"><PricingConfigsPage /></RequireModule>} />
+          <Route path="/master/suppliers" element={<RequireModule module="suppliers"><SuppliersPage /></RequireModule>} />
+          <Route path="/master/supply-orders" element={<RequireModule module="supplyOrders"><SupplyOrdersPage /></RequireModule>} />
+          <Route path="/master/currencies" element={<RequireModule module="currencies"><CurrenciesPage /></RequireModule>} />
 
           {/* Communications */}
-          <Route path="/comms/messaging-logs" element={<MessagingLogsPage />} />
-          <Route path="/comms/group-helper-export" element={<GroupHelperExportPage />} />
+          <Route path="/comms/messaging-logs" element={<RequireModule module="messaging"><MessagingLogsPage /></RequireModule>} />
+          <Route path="/comms/group-helper-export" element={<RequireModule module="groupHelper"><GroupHelperExportPage /></RequireModule>} />
 
           {/* Admin */}
-          <Route path="/admin/users" element={<UsersPage />} />
+          <Route path="/admin/users" element={<RequireModule module="users"><UsersPage /></RequireModule>} />
 
           {/* Profile */}
           <Route path="/profile" element={<ProfilePage />} />
