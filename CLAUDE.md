@@ -4,7 +4,7 @@
 
 Internal shipping/logistics management system for tracking customer packages transported between international warehouses (Lebanon, Gabon, China, Dubai) using shared shipment containers. Used exclusively by company employees.
 
-**Stack:** .NET 8 API + React 18 (Vite + TypeScript + MUI)
+**Stack:** .NET 8 API + React 19 (Vite + TypeScript + shadcn/ui + Tailwind v4) in `frontend-new/`
 
 ---
 
@@ -24,21 +24,32 @@ liec/
 │   ├── Validators/                 # FluentValidation request validators
 │   ├── Migrations/                 # EF Core migrations
 │   └── Program.cs                  # DI, auth, seed data, startup
-├── frontend/                       # React + Vite + MUI
+├── frontend-new/                   # React 19 + Vite + shadcn/ui + Tailwind v4 (the only frontend)
 │   ├── src/
-│   │   ├── api/client.ts           # Axios instance + helpers (getJson, postJson, putJson, patchJson, uploadMultipart)
+│   │   ├── api/                    # DataService (fetch wrapper) + client.ts helpers (getJson, postJson, …) + parseApiError
 │   │   ├── pages/                  # Page components by domain
-│   │   ├── components/             # ~45 reusable components
+│   │   ├── components/
+│   │   │   ├── ui/                 # shadcn primitives (CLI-managed — don't hand-edit)
+│   │   │   ├── inputs/             # Generic* form inputs
+│   │   │   ├── dynamic-form/       # Config-driven DynamicFormWidget (react-hook-form + zod)
+│   │   │   ├── enhanced-table/     # Sortable/filterable/paginated table
+│   │   │   ├── layout/             # Header, AppShell, AppLauncher, RequireAuth, RequireModule, MainPage*
+│   │   │   ├── dialogs/            # GenericDialog, GenericDrawer, ConfirmationBox
+│   │   │   └── media/, feedback/, misc/, information-widget/
 │   │   ├── redux/                  # Store (user + confirmation slices)
 │   │   ├── constants/              # Status colors, labels
-│   │   ├── helpers/                # Formatting, validation, token utils
-│   │   ├── theme/                  # MUI theme (brand teal #00A6A6, navy #243043)
-│   │   ├── Portal.tsx              # Auth gate
-│   │   ├── Protected.tsx           # Route definitions
-│   │   └── application.ts          # Module definitions (ops, master, comms)
+│   │   ├── helpers/                # rbac, formatting, validation, fx-rates, user-token
+│   │   ├── hooks/                  # useLoader, useInitializeFunction, useDebouncedValue, usePageTitle
+│   │   ├── theme/                  # globals.css (Tailwind + brand vars), tokens.ts
+│   │   ├── application.ts          # Module definitions (ops, master, comms, admin) + RBAC visibility
+│   │   └── App.tsx                 # Routes (RequireAuth + per-module RequireModule guards)
 │   └── vite.config.ts
+├── docs/ROLES_AND_PERMISSIONS.md   # RBAC audit + permission matrix
 └── plan.mdf                        # Original project proposal
 ```
+
+> The legacy MUI app (`frontend/`) was removed 2026-07-24; `frontend-new/` is the sole frontend.
+> Its README documents the per-page loader pattern and MUI→shadcn mapping.
 
 ---
 
@@ -226,22 +237,32 @@ AzureBlob:{ConnectionString,MediaContainer,ExportsContainer,PublicBaseUrl}
 
 ---
 
-## Frontend Architecture
+## Frontend Architecture (`frontend-new/`)
 
 ### Tech Stack
-React 18, Vite 5, TypeScript 5, MUI 6, React Query 5, Redux Toolkit 2, Axios, React Router 6, React Toastify, date-fns, dayjs, numeral
+React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-react/MUI), Redux Toolkit 2, React Router 7, react-hook-form + zod, sonner (toasts), date-fns, lucide-react, libphonenumber-js
 
-### API Client (src/api/client.ts)
-- Base URL: `VITE_API_BASE_URL` env var (default `http://localhost:53095`)
-- Request interceptor: adds Bearer token from localStorage
-- Response interceptor: 401 → redirect to /login
-- Helpers: `getJson`, `postJson`, `putJson`, `patchJson`, `uploadMultipart`, `parseApiError`
+### API Client (src/api/)
+- `DataService` — static fetch wrapper (get/post/put/patch/delete/postForm), Bearer token from localStorage
+- `client.ts` — `unwrap<T>()` + helpers `getJson`, `postJson`, `putJson`, `patchJson`, `deleteJson`, `uploadMultipart`; 401 → dispatch LogoutUser + redirect /login (handler installed by App's AuthBridge)
+- `parseApiError.ts` — typed `ApiError` + humanized messages; `GateError` for photo-gate failures
+- Base URL set in `main.tsx` from `VITE_API_BASE_URL`
+
+### Data Fetching Pattern (NO React Query)
+- `useLoader<T>(fetcher)` per resource → `{ data, loading, error, reload }` — each independently reloadable
+- `useInitializeFunction([loaders], deps?)` — Promise.allSettled for first paint
+- Mutations: plain async fns calling `postJson` etc. → `toast` → `loader.reload()`
 
 ### Redux State
-- **user** slice: token, isAuthenticated, user info (LoginUser, LoadUserSuccess, LogoutUser)
-- **confirmation** slice: global confirmation dialog (OpenConfirmation, CloseConfirmation)
+- **user** slice: token, isAuthenticated, role, user info (LoginUser, LoadUserSuccess, LogoutUser)
+- **confirmation** slice: global confirmation dialog (OpenConfirmation with destructive/confirmText, CloseConfirmation)
 
-### Routes (src/Protected.tsx)
+### RBAC (src/helpers/rbac.ts + docs/ROLES_AND_PERMISSIONS.md)
+- 4 roles: Admin, Manager, Accountant, Field — JWT role claim
+- `MODULE_ACCESS` matrix + 13 `can*` helpers gate UI actions
+- Route enforcement: `RequireAuth` (login) + `RequireModule` (per-module) in App.tsx
+
+### Routes (src/App.tsx)
 
 **Operations (/ops)**
 - `/ops/dashboard` → DashboardPage (stats, pending container alerts)
@@ -267,22 +288,22 @@ React 18, Vite 5, TypeScript 5, MUI 6, React Query 5, Redux Toolkit 2, Axios, Re
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| **EnhancedTable** | `components/enhanced-table/` | Sortable, filterable, paginated table with column types: TEXT, NUMBER, DATE, COLORED_CHIP, Clickable, Action |
-| **DynamicFormWidget** | `components/dynamic-widget/` | Renders form from field config. Types: TEXT, NUMBER, SELECT, DATE, CHECKBOX, TEXTAREA, PHONE, EMAIL, FILE, IMAGE |
-| **InformationWidget** | `components/information-widget/` | Read-only field grid display. Types: Text, Currency, Date, Datetime, Boolean, MobileNumber |
-| **GenericDialog** | `components/GenericDialog/` | Modal dialog wrapper |
-| **MainPageSection** | `components/layout-components/` | Teal-header Paper section |
-| **DetailPageLayout** | `components/layout-components/` | Detail page template (title, chips, actions, content) |
-| **PageActionsSection** | `components/layout-components/` | Status-filtered action buttons |
-| **PhotoGallery/MediaStageCards** | `components/media/` | Photo display by stage with gallery modal |
-| **PricingOverrideHistory** | `components/pricing/` | Override audit trail table |
-| **WhatsAppCampaignCards** | `pages/shipments/components/` | Campaign cards per type (status, departure, arrival) |
+| **EnhancedTable** | `components/enhanced-table/` | Sortable, filterable, paginated table. Column types: TEXT, NUMBER, DATE, DATETIME, COLORED_CHIP, LINK, Clickable, CURRENCY, PhoneNumber, Action, CUSTOM |
+| **DynamicFormWidget** | `components/dynamic-form/` | Config-driven form on react-hook-form + zod. Field types: TEXT, TEXTAREA, NUMBER, CURRENCY, PHONENUMBER, EMAIL, SELECT, MULTISELECT, CHECKBOX, CHECKBOXLIST, FILE, DATE, IMAGE, IMAGELIST, TAGS. `grid` hints, `conditionalHidden/Required/Disable`, `customValidator` |
+| **InformationWidget** | `components/information-widget/` | Read-only field grid. Types: Text, Currency, Date, Datetime, Boolean, MobileNumber, Custom; per-field inline `action` |
+| **GenericDialog / GenericDrawer** | `components/dialogs/` | Modal (full-screen on phones, sm/md/lg/full) / right Sheet |
+| **ConfirmationBox** | `components/dialogs/` | Global redux-driven confirm (destructive variant) — mounted once in App |
+| **Header + AppLauncher** | `components/layout/` | Current-app nav + grid launcher (search, role-filtered) |
+| **MainPageTitle / MainPageSection / DetailPageLayout** | `components/layout/` | Page chrome (teal headers, action stacks) |
+| **MediaStageCards / PhotoGalleryModal** | `components/media/` | Photo upload/display by stage + lightbox |
+| **StatusBadge / Breadcrumbs / EmptyState / TableSkeleton / LoadingButton** | `components/misc/`, `components/feedback/` | Atoms |
 
 ### Frontend Patterns
-- **List pages:** React Query GET → EnhancedTable → Create/Edit via GenericDialog + DynamicFormWidget
-- **Detail pages:** React Query GET by ID → InformationWidget + sub-tables + action buttons → mutations for transitions
-- **State transitions:** ALLOWED_TRANSITIONS map per status → PageActionsSection renders available actions → confirmation dialog → POST mutation
-- **Photo gates:** GateError response rendered as alert with missing items table
+- **List pages:** `useLoader` GET → EnhancedTable → Create/Edit via GenericDialog + DynamicFormWidget → `loader.reload()` after save
+- **Detail pages:** `useLoader` per resource + `useInitializeFunction` → InformationWidget + sub-tables → transition buttons via `OpenConfirmation`
+- **State transitions:** ALLOWED_TRANSITIONS map per status → MainPageTitle actions → confirmation → POST → reload
+- **Photo gates:** GateError response rendered as alert with missing-items table
+- **RBAC gating:** wrap actions in `can*()` checks; routes in `RequireModule`
 
 ---
 
@@ -325,18 +346,18 @@ dotnet build
 dotnet run   # runs on configured port, auto-migrates DB
 
 # Frontend
-cd frontend
+cd frontend-new
 npm install
 npm run dev  # Vite dev server on :5173
-npm run build
-npx tsc --noEmit  # type check
+npm run build  # tsc -b && vite build
+npx tsc --noEmit -p tsconfig.app.json  # type check only
 ```
 
 ---
 
 ## Key Implementation Notes
 
-- **1 admin role only** — no RBAC yet (deferred)
+- **RBAC:** 4 roles (Admin, Manager, Accountant, Field) enforced via `[Authorize(Roles=...)]` + frontend `can*` helpers + `RequireModule` route guards — full matrix in `docs/ROLES_AND_PERMISSIONS.md`
 - **Seed data:** 1 admin user, 4 warehouses, 12 good types, 20 customers with consents, 1 pricing config
 - **Auto-assign:** Creates Draft shipment for route if none exists
 - **Inline supply orders:** Packages with ProcuredForCustomer can auto-create supply orders during creation

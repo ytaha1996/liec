@@ -1,7 +1,9 @@
 # Roles & Permissions — Current State + Gap Analysis
 
 > Audited 2026-07-24 against `backend/ShippingPlatform.Api` (controllers + business layer),
-> `frontend/` (MUI, primary) and `frontend-new/` (shadcn rewrite).
+> `frontend/` (MUI, primary at audit time) and `frontend-new/` (shadcn rewrite).
+> **Update:** the legacy `frontend/` was removed later the same day — `frontend-new/` is now the
+> only frontend; references to the MUI app below are historical.
 
 ## The four roles
 
