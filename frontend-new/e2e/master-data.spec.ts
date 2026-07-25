@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { expectToast, fillField, pickSelect, submitForm } from './helpers';
+import { confirmDialog, expectToast, fillField, pickSelect, submitForm } from './helpers';
 
 // Unique per run — a shared InMemory backend persists across retries, so
 // created entities must not collide on unique fields (names, phone numbers).
@@ -68,6 +68,13 @@ test.describe('master data CRUD', () => {
     await submitForm(page);
     await expectToast(page, /saved/i);
     await expect(page.getByText(`E2E Pound ${STAMP}`)).toBeVisible();
+
+    // Delete it again (destructive confirm)
+    const row = page.getByRole('row').filter({ hasText: `E2E Pound ${STAMP}` });
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await confirmDialog(page, 'Delete');
+    await expectToast(page, /deleted/i);
+    await expect(page.getByText(`E2E Pound ${STAMP}`)).toHaveCount(0);
   });
 
   test('customer create → detail → consent update', async ({ page }) => {

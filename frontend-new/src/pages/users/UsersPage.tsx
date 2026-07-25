@@ -68,7 +68,11 @@ const buildFields = (initial: Partial<User> | null, isEditing: boolean): FieldMa
     type: DynamicField.CHECKBOX,
     name: 'isActive',
     title: 'Active',
-    value: initial?.isActive ?? true,
+    // The table stringifies isActive for the chip column, and `editing` holds
+    // that row — normalize back to a real boolean or zod rejects "true"/"false"
+    // strings and silently blocks the submit.
+    value:
+      initial?.isActive === false || (initial?.isActive as unknown) === 'false' ? false : true,
     grid: { sm: 6, md: 6 },
   },
 });

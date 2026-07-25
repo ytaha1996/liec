@@ -103,7 +103,9 @@ export function buildZodSchema(fields: FieldMap): z.ZodType {
       }
 
       if (field.type === DynamicField.EMAIL && typeof value === 'string') {
-        const re = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+        // Permissive on purpose — matches the backend's .EmailAddress() which
+        // accepts dotless intranet domains (e.g. the seed admin "admin@local").
+        const re = /^[^\s@]+@[^\s@]+$/;
         if (!re.test(value)) {
           ctx.addIssue({ code: 'custom', path: [field.name], message: 'Invalid email' });
         }

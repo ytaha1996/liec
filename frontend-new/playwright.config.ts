@@ -31,6 +31,17 @@ export default defineConfig({
         storageState: 'e2e/.auth/admin.json',
       },
       dependencies: ['setup'],
+      grepInvert: process.env.E2E_EXTERNAL ? /@mobile/ : /@external|@mobile/,
+    },
+    {
+      // Phone-viewport smoke pass — only tests tagged @mobile.
+      name: 'mobile',
+      use: {
+        ...devices['Pixel 7'],
+        storageState: 'e2e/.auth/admin.json',
+      },
+      dependencies: ['setup'],
+      grep: /@mobile/,
     },
   ],
 

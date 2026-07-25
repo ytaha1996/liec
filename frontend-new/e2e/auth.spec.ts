@@ -33,6 +33,14 @@ test.describe('authentication', () => {
     await expect(page.getByRole('heading', { name: 'Customers', level: 1 })).toBeVisible();
   });
 
+  test('malformed token is cleared at boot and redirects to login', async ({ page }) => {
+    // Simulates a corrupted/expired session: the store bootstrap must treat an
+    // undecodable token as logged-out instead of rendering the app and bouncing.
+    await page.addInitScript(() => localStorage.setItem('token', 'not.a.valid-jwt'));
+    await page.goto('/ops/dashboard');
+    await expect(page).toHaveURL(/\/login/);
+  });
+
   test('logout returns to login', async ({ page }) => {
     await page.goto('/login');
     await page.getByLabel('Email').fill(ADMIN_EMAIL);

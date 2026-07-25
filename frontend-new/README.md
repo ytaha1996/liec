@@ -41,10 +41,24 @@ npm run test:e2e:headed   # watch the browser
   Azure MySQL involvement. The Vite dev server is started automatically too.
 - **Auth**: a `setup` project logs in once (admin) and provisions a Field user via API; all tests
   reuse saved `storageState` (`e2e/.auth/`, gitignored) — avoids the 10/min login rate limit.
-- **Serial** (`workers: 1`): one shared backend instance holds state; specs run in order.
+- **Serial** (`workers: 1`): one shared backend instance holds state; specs run in order
+  (alphabetical), and some specs rely on data created by earlier ones.
+- **Projects**: `chromium` (desktop, everything) + `mobile` (Pixel 7, `@mobile`-tagged smoke:
+  overflow checks, hamburger nav, full-screen dialogs).
 - **`@external` tag**: tests touching Azure Blob / Twilio are excluded by default. Run them with
   `E2E_EXTERNAL=1 npx playwright test --grep @external`.
+- **Photo-gated flows**: ready-to-ship/depart/handout require photos (Azure Blob), so the E2E
+  suite asserts the *gates block* (receiving-photo error, ready-to-depart preview rejection)
+  rather than the post-photo happy path.
 - Backend must be **built** first (`dotnet build`) — the webServer uses `--no-build` for speed.
+
+Coverage (60 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
+palette, nav scoping) · RBAC (Field redirects + hidden UI, admin surfaces) · master data CRUD
+(warehouses, good types, suppliers, currencies incl. delete + conditional validation, customers +
+consent) · pricing create/activate cascade · shipments create→schedule→packages→bulk ops→gates→
+cancel · packages auto-assign→items→bulk add→transitions→pricing override · supply orders full
+lifecycle + cancel-with-reason + pack-requires-link · users CRUD + self-role & last-admin guards ·
+profile password change · communications pages · table search/sort/filter/pagination · mobile smoke.
 
 ## Folder map
 
