@@ -30,7 +30,9 @@ public class AuthController(IAuthBusiness auth, IAuditService audit) : Controlle
                 return StatusCode(423, new { code = "ACCOUNT_LOCKED", message = "Account is temporarily locked due to too many failed login attempts.", lockedUntil });
             default:
                 await audit.LogAsync("AdminUser", 0, "LoginFailed", null, $"{request.Email} from {ip}");
-                return Unauthorized();
+                // Body matters: the frontend surfaces `message` in the error
+                // toast — a bare 401 would render as an unhelpful "Unauthorized".
+                return Unauthorized(new { code = "BAD_CREDENTIALS", message = "Invalid email or password." });
         }
     }
 

@@ -349,6 +349,10 @@ npm install
 npm run dev  # Vite dev server on :5173
 npm run build  # tsc -b && vite build
 npx tsc --noEmit -p tsconfig.app.json  # type check only
+
+# E2E (Playwright — boots backend on InMemory provider + vite automatically)
+cd frontend-new
+npm run test:e2e   # requires backend `dotnet build` first (webServer uses --no-build)
 ```
 
 ---

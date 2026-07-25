@@ -262,7 +262,9 @@ export function DynamicFormWidget({
   };
 
   const body = (
-    <form onSubmit={handleSubmit} className="flex flex-col">
+    // noValidate: zod owns validation — native browser validation would
+    // double-validate and can block submission with confusing bubbles.
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col">
       <div className="grid grid-cols-12 gap-3 sm:gap-4">
         {Object.values(fields).map(renderField)}
       </div>

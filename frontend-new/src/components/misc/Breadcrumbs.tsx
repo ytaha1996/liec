@@ -24,18 +24,21 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
         {items.map((c, i) => {
           const last = i === items.length - 1;
           return (
-            <BreadcrumbItem key={`${c.label}-${i}`}>
-              {last || !c.href ? (
-                <BreadcrumbPage>{c.label}</BreadcrumbPage>
-              ) : (
-                <>
+            // Separator must be a SIBLING of the item — BreadcrumbSeparator
+            // renders an <li> and nesting it inside BreadcrumbItem (also <li>)
+            // is invalid DOM.
+            <span key={`${c.label}-${i}`} className="contents">
+              <BreadcrumbItem>
+                {last || !c.href ? (
+                  <BreadcrumbPage>{c.label}</BreadcrumbPage>
+                ) : (
                   <BreadcrumbLink asChild>
                     <Link to={c.href}>{c.label}</Link>
                   </BreadcrumbLink>
-                  <BreadcrumbSeparator />
-                </>
-              )}
-            </BreadcrumbItem>
+                )}
+              </BreadcrumbItem>
+              {!last && <BreadcrumbSeparator />}
+            </span>
           );
         })}
       </BreadcrumbList>

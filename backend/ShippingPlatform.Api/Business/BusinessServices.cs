@@ -150,8 +150,19 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
 
     public async Task<List<PricingConfigDto>> ListPricingConfigsAsync() => (await db.PricingConfigs.ToListAsync()).Select(x => x.ToDto()).ToList();
     public async Task<PricingConfigDto?> GetPricingConfigAsync(int id) => (await db.PricingConfigs.FindAsync(id))?.ToDto();
+    // Moved out of the FluentValidation validator: async rules break ASP.NET's
+    // synchronous auto-validation pipeline. InvalidOperationException maps to a
+    // 409 with this message via the global exception handler.
+    private async Task EnsureActiveCurrencyAsync(string code)
+    {
+        var upper = code.ToUpperInvariant();
+        if (!await db.Currencies.AnyAsync(c => c.Code == upper && c.IsActive))
+            throw new InvalidOperationException($"Currency '{upper}' does not exist or is inactive.");
+    }
+
     public async Task<PricingConfigDto> CreatePricingConfigAsync(UpsertPricingConfigRequest req)
     {
+        await EnsureActiveCurrencyAsync(req.Currency);
         var e = new PricingConfig { Name = req.Name, Currency = req.Currency.ToUpperInvariant(), EffectiveFrom = req.EffectiveFrom, EffectiveTo = req.EffectiveTo, DefaultRatePerKg = req.DefaultRatePerKg, DefaultRatePerCbm = req.DefaultRatePerCbm, MinimumCharge = req.MinimumCharge, Status = req.Status };
         db.PricingConfigs.Add(e); await db.SaveChangesAsync();
         await audit.LogAsync("PricingConfig", e.Id, "Create", null, $"name={e.Name} ccy={e.Currency} kg={e.DefaultRatePerKg} cbm={e.DefaultRatePerCbm} min={e.MinimumCharge} status={e.Status}");
@@ -160,6 +171,7 @@ public class MasterDataBusiness(AppDbContext db, IAuditService audit) : IMasterD
     public async Task<PricingConfigDto?> UpdatePricingConfigAsync(int id, UpsertPricingConfigRequest req)
     {
         var e = await db.PricingConfigs.FindAsync(id); if (e is null) return null;
+        await EnsureActiveCurrencyAsync(req.Currency);
         var old = $"name={e.Name} ccy={e.Currency} kg={e.DefaultRatePerKg} cbm={e.DefaultRatePerCbm} min={e.MinimumCharge} status={e.Status}";
         e.Name = req.Name; e.Currency = req.Currency.ToUpperInvariant(); e.EffectiveFrom = req.EffectiveFrom; e.EffectiveTo = req.EffectiveTo; e.DefaultRatePerKg = req.DefaultRatePerKg; e.DefaultRatePerCbm = req.DefaultRatePerCbm; e.MinimumCharge = req.MinimumCharge; e.Status = req.Status;
         await db.SaveChangesAsync();

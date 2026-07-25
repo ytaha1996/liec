@@ -28,6 +28,24 @@ npm run build      # production build (typecheck + vite build)
 
 Set `VITE_API_BASE_URL` if not using the Azure default baked into `main.tsx`.
 
+## E2E tests (Playwright)
+
+```bash
+npm run test:e2e          # full suite, headless
+npm run test:e2e:ui       # Playwright UI mode
+npm run test:e2e:headed   # watch the browser
+```
+
+- **Fully isolated stack**: the config boots the backend with an empty MySql connection string,
+  which flips it to the EF **InMemory** provider — fresh deterministic seed every run, zero
+  Azure MySQL involvement. The Vite dev server is started automatically too.
+- **Auth**: a `setup` project logs in once (admin) and provisions a Field user via API; all tests
+  reuse saved `storageState` (`e2e/.auth/`, gitignored) — avoids the 10/min login rate limit.
+- **Serial** (`workers: 1`): one shared backend instance holds state; specs run in order.
+- **`@external` tag**: tests touching Azure Blob / Twilio are excluded by default. Run them with
+  `E2E_EXTERNAL=1 npx playwright test --grep @external`.
+- Backend must be **built** first (`dotnet build`) — the webServer uses `--no-build` for speed.
+
 ## Folder map
 
 ```

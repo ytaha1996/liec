@@ -1,4 +1,5 @@
 import { DataService } from './DataService';
+import { getUserToken } from '@/helpers/user-token';
 import { ApiError, type ApiErrorPayload } from './parseApiError';
 
 // Installed by App.tsx at mount so `unwrap` can dispatch a logout +
@@ -24,7 +25,10 @@ export async function unwrap<T>(res: Response): Promise<T> {
     }
   }
 
-  if (res.status === 401) {
+  // Only treat 401 as session expiry when the caller HAD a token — an
+  // anonymous 401 (failed login attempt) must not trigger the
+  // "session expired" logout/redirect flow.
+  if (res.status === 401 && getUserToken()) {
     onUnauthorized?.();
   }
 

@@ -38,7 +38,14 @@ if (!string.IsNullOrWhiteSpace(conn))
 else
     builder.Services.AddDbContext<AppDbContext>(o => o
         .UseInMemoryDatabase("shipping")
-        .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning)));
+        .ConfigureWarnings(w =>
+        {
+            w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.MultipleCollectionIncludeWarning);
+            // Business code uses transactions (e.g. package auto-assign); the
+            // InMemory provider can't honor them — ignore instead of throwing
+            // so the isolated E2E/dev stack behaves like the relational one.
+            w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning);
+        }));
 
 // Fail fast outside Development: a missing/short secret would silently fall
 // back to a publicly-known literal, making admin tokens forgeable.

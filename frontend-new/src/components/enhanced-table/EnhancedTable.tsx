@@ -149,6 +149,7 @@ function CellContent({
                     variant="ghost"
                     onClick={() => a.onClick(rowId, row)}
                     className="size-9 sm:size-8"
+                    aria-label={a.label}
                   >
                     {a.icon}
                   </Button>
