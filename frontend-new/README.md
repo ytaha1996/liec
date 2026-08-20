@@ -52,13 +52,18 @@ npm run test:e2e:headed   # watch the browser
   rather than the post-photo happy path.
 - Backend must be **built** first (`dotnet build`) — the webServer uses `--no-build` for speed.
 
-Coverage (60 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
+Coverage (68 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
 palette, nav scoping) · RBAC (Field redirects + hidden UI, admin surfaces) · master data CRUD
 (warehouses, good types, suppliers, currencies incl. delete + conditional validation, customers +
 consent) · pricing create/activate cascade · shipments create→schedule→packages→bulk ops→gates→
 cancel · packages auto-assign→items→bulk add→transitions→pricing override · supply orders full
 lifecycle + cancel-with-reason + pack-requires-link · users CRUD + self-role & last-admin guards ·
-profile password change · communications pages · table search/sort/filter/pagination · mobile smoke.
+profile password change · communications pages · table search/sort/filter/pagination · mobile smoke ·
+**real-shipment replay** (`zz-real-shipment-925.spec.ts`): re-enacts an actual Beirut→Gabon
+container (28 clients, real phones/CBM/weights/item manifests from the 925 BOL) — tariff setup,
+find-or-create customers, packages via UI + API, rate/total-charge overrides, and asserts every
+package charge and the 19,475,000 CFA grand total match the real BOL to the franc. Runs last
+(`zz-`) because it seeds customers and activates its own pricing config.
 
 ## Folder map
 

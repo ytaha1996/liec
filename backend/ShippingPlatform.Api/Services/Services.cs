@@ -212,12 +212,10 @@ public class PricingService(AppDbContext db) : IPricingService
             return;
         }
 
-        // Weight-first pricing: weight is the canonical billing basis. CBM is
-        // the fallback only when no weight has been entered (dimensional-weight
-        // cases not yet supported).
-        var calculated = package.WeightKg > 0
-            ? package.WeightKg * rateKg
-            : package.Cbm * rateCbm;
+        // Freight is billed on whichever basis yields more — weight or volume —
+        // matching the override recompute path and the operational tariff
+        // (e.g. 285 kg / 2 m³ bills the CBM side; 625 kg / 0.75 m³ the weight side).
+        var calculated = Math.Max(package.WeightKg * rateKg, package.Cbm * rateCbm);
         package.ChargeAmount = active.MinimumCharge > 0 ? Math.Max(calculated, active.MinimumCharge) : calculated;
     }
 }
@@ -452,6 +450,36 @@ public class ExportService(
     ShippingPlatform.Api.Services.Exports.InvoiceTemplateConstants invoiceTpl,
     ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fxSnap) : IExportService
 {
+    // Browsers name a download from the blob key's last segment: the stored
+    // Content-Disposition is invisible to them because anonymous blob reads are
+    // served under the storage account's default service version (2009-09-19),
+    // which predates that header. So the key itself has to be readable —
+    // "bol-report-BEI-2601-20260820-143210.xlsx", not a GUID. The timestamp keeps
+    // repeat exports of one shipment from overwriting each other.
+    private static string BuildExportFileName(string report, string? scope, string extension)
+    {
+        var parts = new[] { Slugify(report), Slugify(scope), DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") }
+            .Where(p => p.Length > 0);
+        return string.Join("-", parts) + "." + extension;
+    }
+
+    private static string ExportBlobKey(string fileName)
+        => $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{fileName}";
+
+    // Keep letters/digits, collapse everything else to single dashes, so the
+    // name stays a safe URL segment (ref codes keep their case: BEI-2601).
+    private static string Slugify(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value.Trim())
+        {
+            if (char.IsLetterOrDigit(ch)) sb.Append(ch);
+            else if (sb.Length > 0 && sb[^1] != '-') sb.Append('-');
+        }
+        return sb.ToString().Trim('-');
+    }
+
     public async Task<string> GenerateGroupHelperAsync(string format, CancellationToken ct = default)
     {
         var customers = await db.Customers.Include(x => x.WhatsAppConsent)
@@ -464,9 +492,10 @@ public class ExportService(
 
         await using var ms = new MemoryStream(Encoding.UTF8.GetBytes(text));
         var ext = format.ToLower() == "vcf" ? "vcf" : "csv";
-        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}." + ext;
+        var fileName = BuildExportFileName("group-helper", null, ext);
+        var key = ExportBlobKey(fileName);
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
-        var (_, url) = await blob.UploadAsync(container, $"group-helper.{ext}", ms, "text/plain", key, ct);
+        var (_, url) = await blob.UploadAsync(container, fileName, ms, "text/plain", key, ct);
         return url;
     }
 
@@ -510,8 +539,8 @@ public class ExportService(
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
-        var fileName = $"Customers - {DateTime.UtcNow:yyyy-MM-dd}.xlsx";
-        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var fileName = BuildExportFileName("customers", null, "xlsx");
+        var key = ExportBlobKey(fileName);
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
         return url;
@@ -635,8 +664,8 @@ public class ExportService(
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
-        var fileName = $"BOL Report - {shipment.RefCode}.xlsx";
-        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var fileName = BuildExportFileName("bol-report", shipment.RefCode, "xlsx");
+        var key = ExportBlobKey(fileName);
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
         return url;
@@ -673,8 +702,8 @@ public class ExportService(
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
-        var fileName = $"Customer Invoices - {shipment.RefCode}.xlsx";
-        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var fileName = BuildExportFileName("customer-invoices", shipment.RefCode, "xlsx");
+        var key = ExportBlobKey(fileName);
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
         return url;
@@ -849,8 +878,8 @@ public class ExportService(
         workbook.SaveAs(ms);
         ms.Position = 0;
         var destCountry = ShippingPlatform.Api.Services.Exports.CountryCodeHelper.FromWarehouseCountry(shipment.DestinationWarehouse?.Country);
-        var fileName = $"Commercial Invoice ({destCountry}) - {shipment.RefCode}.xlsx";
-        var key = $"exports/reports/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}.xlsx";
+        var fileName = BuildExportFileName("commercial-invoice-packing-list", $"{destCountry}-{shipment.RefCode}", "xlsx");
+        var key = ExportBlobKey(fileName);
         var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
         var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
         return url;

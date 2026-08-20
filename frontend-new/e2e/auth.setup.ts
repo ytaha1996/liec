@@ -18,6 +18,11 @@ setup('authenticate admin + provision field user', async ({ page }) => {
   await expect(page).toHaveURL(/\/ops\/dashboard/);
   await page.context().storageState({ path: path.join(authDir, 'admin.json') });
 
+  // Against the REAL database (local backend on Azure MySQL, or a deployed
+  // API), stop here — don't provision the Field test user (a known-password
+  // account) outside the throwaway InMemory stack.
+  if (process.env.E2E_REAL || process.env.E2E_API) return;
+
   // ── Field user: create via API (idempotent), login via API, synthesize
   //    a storageState with the token in localStorage ───────────────────────
   const api = await request.newContext({ baseURL: API });

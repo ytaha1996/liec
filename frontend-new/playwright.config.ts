@@ -46,26 +46,35 @@ export default defineConfig({
   ],
 
   webServer: [
-    {
-      command:
-        'dotnet run --no-build --project ../backend/ShippingPlatform.Api',
-      url: 'http://localhost:53095/swagger/index.html',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-      env: {
-        // Empty connection string → InMemory provider + EnsureCreated + seed.
-        ConnectionStrings__MySql: '',
-        ASPNETCORE_ENVIRONMENT: 'Development',
-        ASPNETCORE_URLS: 'http://localhost:53095',
-      },
-    },
+    // E2E_API=<url> targets a DEPLOYED backend (no local backend is booted and
+    // mutations persist!) — meant for running individual specs like
+    // zz-real-shipment-925 against production, not the full suite.
+    ...(process.env.E2E_API
+      ? []
+      : [
+          {
+            command:
+              'dotnet run --no-build --project ../backend/ShippingPlatform.Api',
+            url: 'http://localhost:53095/swagger/index.html',
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+            env: {
+              // Empty connection string → InMemory provider + EnsureCreated + seed.
+              // E2E_REAL=1 keeps the appsettings connection string, so the local
+              // backend runs against the REAL Azure MySQL database instead.
+              ...(process.env.E2E_REAL ? {} : { ConnectionStrings__MySql: '' }),
+              ASPNETCORE_ENVIRONMENT: 'Development',
+              ASPNETCORE_URLS: 'http://localhost:53095',
+            },
+          },
+        ]),
     {
       command: 'npm run dev',
       url: 'http://localhost:5173/login',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
-        VITE_API_BASE_URL: 'http://localhost:53095',
+        VITE_API_BASE_URL: process.env.E2E_API ?? 'http://localhost:53095',
       },
     },
   ],

@@ -4,7 +4,9 @@ export const ADMIN_EMAIL = 'admin@local';
 export const ADMIN_PASSWORD = 'Admin123!';
 export const FIELD_EMAIL = 'field@e2e.local';
 export const FIELD_PASSWORD = 'Field123!e2e';
-export const API = 'http://localhost:53095';
+// E2E_API points the whole suite (vite proxy target + direct API calls) at a
+// deployed backend instead of the locally-booted one.
+export const API = process.env.E2E_API ?? 'http://localhost:53095';
 
 // Sonner renders toasts into [data-sonner-toast] nodes. StrictMode in dev can
 // double-fire effects, so always match the first occurrence.
@@ -13,9 +15,26 @@ export async function expectToast(page: Page, text: string | RegExp) {
 }
 
 // Radix Select: trigger is a combobox button; options render in a portal.
+// Long lists scroll inside the popper content (overflow-y-auto). A plain
+// scrollIntoView also scrolls page ancestors, which makes the popper chase the
+// trigger and the option never settles inside the window — so scroll ONLY the
+// dropdown's internal scroller, then click.
+export async function scrollOptionIntoView(opt: import('@playwright/test').Locator) {
+  await opt.evaluate((el) => {
+    let p: HTMLElement | null = el.parentElement;
+    while (p && p.scrollHeight <= p.clientHeight + 1) p = p.parentElement;
+    if (!p) return;
+    const pr = p.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    p.scrollTop += er.top - pr.top - p.clientHeight / 2 + er.height / 2;
+  });
+}
+
 export async function pickSelect(page: Page, label: string | RegExp, option: string | RegExp) {
   await page.getByRole('combobox', { name: label }).click();
-  await page.getByRole('option', { name: option }).first().click();
+  const opt = page.getByRole('option', { name: option }).first();
+  await scrollOptionIntoView(opt);
+  await opt.click();
 }
 
 // GenericDatePicker: labelled trigger button opens a Radix popover (NOT a

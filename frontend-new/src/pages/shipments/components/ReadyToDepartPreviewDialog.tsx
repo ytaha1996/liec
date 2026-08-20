@@ -1,6 +1,9 @@
 import { GenericDialog } from '@/components/dialogs';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { StatusBadge } from '@/components/misc/StatusBadge';
+import { PKG_STATUS_CHIPS } from '@/constants/statusColors';
+import { PKG_STATUS_LABELS } from '@/constants/statusLabels';
 
 interface PreviewPackage {
   id: number;
@@ -36,7 +39,13 @@ function PreviewTable({ packages }: { packages: PreviewPackage[] }) {
           <TableRow key={p.id}>
             <TableCell>#{p.id}</TableCell>
             <TableCell>{p.customerName}</TableCell>
-            <TableCell>{p.status}</TableCell>
+            <TableCell>
+              <StatusBadge
+                value={p.status}
+                labels={PKG_STATUS_LABELS}
+                colors={PKG_STATUS_CHIPS}
+              />
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
