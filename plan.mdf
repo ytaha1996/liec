@@ -1,0 +1,593 @@
+**PROJECT PROPOSAL**
+
+Internal Ship-Package Tracking & Logistics Management System
+
+*Version 2.0*
+
+# 1. Executive Summary
+
+The company proposes the development of an internal Ship-Package Tracking & Logistics Management System to manage the full operational lifecycle of customer packages transported between international warehouses (Lebanon and Gabon) using shared shipment containers.
+
+The system will be used exclusively by company employees and will centralize logistics operations currently handled through manual processes, spreadsheets, and messaging applications. The solution will provide full traceability, pricing control, documentation compliance, and operational efficiency across all warehouses and shipment cycles.
+
+# 2. Project Objectives
+
+The primary objectives of this project are to:
+
+1. Track customer packages from origin warehouse to destination warehouse
+
+1. Consolidate packages from multiple customers into shared shipment containers
+
+1. Enforce structured package classification, documentation, and pricing rules
+
+1. Ensure accurate photo evidence at every warehouse stage with customer identification
+
+1. Automate container sequencing and package allocation
+
+1. Enforce container capacity control (weight & m²) with configurable warnings
+
+1. Generate invoices, packing lists, and Excel reports per customer
+
+1. Support bilingual product catalog (Arabic/English) with stored pricing
+
+1. Track vessel movement and provide estimated arrival dates
+
+1. Handle additional fees (port charges, internal transport)
+
+1. Improve coordination between warehouses in different countries
+
+1. Reduce operational risk, errors, and disputes
+
+1. Enable scalable, repeatable shipment operations year over year
+
+# 3. System Scope
+
+## 3.1 In Scope
+
+-   Internal logistics operations
+
+-   Multi-warehouse management (Lebanon, Gabon)
+
+-   Package, goods, and container tracking
+
+-   Container capacity monitoring (weight & m²)
+
+-   Pricing calculation, overrides, and stored discounted prices
+
+-   Invoicing, packing list, and Excel generation
+
+-   Supplier-based indirect shipments
+
+-   Photo and document management with customer name overlay
+
+-   Bilingual product catalog (Arabic ↔ English)
+
+-   Vessel tracking and arrival date management
+
+-   Additional fees management (port, transport)
+
+-   Shipment status tracking
+
+-   Full audit and change logging
+
+## 3.2 Out of Scope (Initial Phase)
+
+-   Customer self-service portals
+
+-   Online payments
+
+-   Third-party carrier integrations
+
+-   Automated WhatsApp notifications (planned for Phase 2)
+
+# 4. Users & Access Model
+
+## 4.1 Internal Users
+
+-   System Administrators
+
+-   Operations Staff (Origin Warehouse - Lebanon)
+
+-   Operations Staff (Destination Warehouse - Gabon)
+
+-   Logistics Management
+
+-   Finance Team
+
+## 4.2 External Warehouse Access (Optional)
+
+The system may be extended to external warehouse partners with limited permissions if they have the capability to enter information directly. Otherwise, coordination continues through existing communication channels with manual data entry by internal staff.
+
+Customers and suppliers do not access the system directly.
+
+# 5. Operational Workflow
+
+## 5.1 Customer Registration & Initial Booking
+
+1. Customer calls to book shipment
+
+1. Staff enters preliminary (approximate) information into the system
+
+1. System automatically assigns a permanent unique customer ID
+
+1. Customer name and phone number are recorded
+
+1. Staff can print or share price list with customer manually
+
+## 5.2 Goods Receipt at Origin Warehouse
+
+1. When goods arrive at the warehouse, staff enters accurate/final information
+
+1. Photos of the goods are taken and attached to the record
+
+1. Customer name is automatically overlaid on photos for identification
+
+1. Goods type is selected from bilingual catalog (Arabic name auto-translates to English)
+
+1. System suggests default pricing based on goods type (with stored discounted prices if applicable)
+
+1. Weight and m² measurements are recorded
+
+1. Compliance documents are auto-generated based on goods type
+
+1. Documents are printed for customer signature (responsibility declaration, drug-free certification)
+
+1. Signed documents are scanned/photographed and uploaded to the system
+
+## 5.3 Container Assignment & Loading
+
+1. Confirmed packages are assigned to the oldest Pending container
+
+1. Draft packages are assigned to the next available Pending container
+
+1. System continuously tracks total weight and m² against container limits
+
+1. Visual warnings displayed when approaching capacity threshold (configurable: 80-90%)
+
+1. Container status changes to 'Nearly Full' when threshold is reached
+
+1. Assignment prevented if it would exceed container limits
+
+1. All assignments and reassignments are logged
+
+## 5.4 Pre-Shipment Documentation
+
+Once goods are ready for loading, the system generates per customer:
+
+-   Photo album with all goods photos (each photo labeled with customer name)
+
+-   Signed compliance documents
+
+-   Goods type and classification
+
+-   Shipping price breakdown
+
+-   Agreement document ready for customer
+
+## 5.5 Vessel Tracking & Updates
+
+-   Staff enters vessel name and tracking information
+
+-   Estimated departure and arrival dates are recorded
+
+-   Staff can add weekly updates on vessel location/status
+
+-   Updates are logged with timestamps
+
+-   Staff can manually notify customers of updates via their preferred channel
+
+## 5.6 Document Generation
+
+The system generates:
+
+-   Packing List - complete inventory of container contents
+
+-   Commercial Invoice - with reduced/declared prices for customs (entered once per product, then stored for future use)
+
+-   Customer Invoice - actual shipping charges with any additional fees
+
+## 5.7 Destination Warehouse Operations (Gabon)
+
+1. Staff has full access to shipment data, customer information, and all photos
+
+1. Photos are labeled with customer names for easy identification during unloading
+
+1. Staff can view signed documents and goods classifications
+
+1. Upon customer pickup, delivery confirmation photo is taken
+
+1. Photo of signed receipt is uploaded to the system
+
+1. Package marked as delivered
+
+## 5.8 Container Closure
+
+-   Container closed when all packages are delivered
+
+-   Complete file archived with all details, photos, documents, and receipts
+
+-   Financial records locked after approval
+
+# 6. Core Business Entities
+
+## 6.1 Warehouses
+
+-   Supports multiple warehouses (Lebanon origin, Gabon destination)
+
+-   Each shipment and package is linked to a warehouse at every stage
+
+-   Optional: External warehouse partner access with limited permissions
+
+## 6.2 Customers
+
+-   Permanent unique customer ID (never changes)
+
+-   Auto-populated customer name when ID is selected
+
+-   Phone number stored for contact purposes
+
+-   Shipment and financial history preserved
+
+-   Stored discounted prices per customer (if applicable)
+
+## 6.3 Suppliers & Supplier Orders
+
+-   Used for indirect shipments
+
+-   Supplier orders generate packages upon receipt
+
+## 6.4 ShipmentPackage
+
+-   Represents a customer package
+
+-   Contains multiple goods
+
+-   Tracked across warehouses
+
+-   Mandatory photo documentation at origin and destination
+
+-   All photos include customer name overlay
+
+## 6.5 Goods & GoodTypes (Bilingual Catalog)
+
+-   Goods classified by GoodType
+
+-   Bilingual support: Arabic name automatically maps to English equivalent
+
+-   GoodType defines: Risk attributes (flammable, fragile), Default pricing, Required compliance documents
+
+-   New product types can be added and saved for future use
+
+-   Stored reduced/declared prices for customs invoices
+
+## 6.6 Units
+
+Goods consist of units:
+
+-   Box, Piece, CRT, Bag, Pallet
+
+-   Each unit tracks quantity, weight, and m² (if applicable)
+
+## 6.7 ShipmentContainer
+
+-   Groups packages from multiple customers
+
+-   Moves between warehouses
+
+-   Has enforced capacity limits (weight & m²)
+
+-   Auto-generated reference: YYYY-XX (e.g., 2026-01, 2026-02)
+
+-   Counter resets annually
+
+# 7. ShipmentContainer Sequencing & Capacity Control
+
+## 7.1 Container Capacity Limits
+
+Each ShipmentContainer must define:
+
+-   Maximum Weight (kg)
+
+-   Maximum Area (m²)
+
+The system must:
+
+-   Continuously calculate total assigned weight and m²
+
+-   Display running totals to operators
+
+-   Prevent assignments that exceed limits
+
+## 7.2 Capacity Warning Thresholds
+
+-   Visual and system warnings when weight or m² reaches configurable threshold (default: 80-90%)
+
+-   Container status automatically changes to 'Nearly Full' when threshold is reached
+
+-   Alerts displayed on dashboard for logistics management
+
+**Business Value:** Prevents overloading and allows proactive shipment planning.
+
+## 7.3 Container Status Lifecycle
+
+|             |                                         |
+|-------------|-----------------------------------------|
+| **Status**  | **Description**                         |
+| Draft       | Initial creation, not yet active        |
+| Pending     | Open for package assignment             |
+| Nearly Full | Approaching capacity threshold          |
+| Loaded      | All packages loaded, ready for shipment |
+| Shipped     | In transit                              |
+| Arrived     | Arrived at destination warehouse        |
+| Completed   | All packages delivered                  |
+| Closed      | Archived with all documentation         |
+
+## 7.4 Minimum Active Containers Rule
+
+-   At least two (2) Pending ShipmentContainers must always exist
+
+-   System alerts when minimum threshold is not met
+
+-   New containers can be quickly created from the interface
+
+# 8. Bilingual Product Catalog
+
+## 8.1 Arabic ↔ English Mapping
+
+-   Each product/goods type has both Arabic and English names stored
+
+-   When staff enters Arabic name, English equivalent auto-populates
+
+-   Used for customs documentation (Commercial Invoice, Packing List)
+
+-   New products can be added with both translations
+
+## 8.2 Stored Pricing
+
+-   Default shipping price per goods type
+
+-   Stored reduced/declared price for customs (entered once, reused)
+
+-   Customer-specific discounted prices (optional)
+
+-   All pricing suggestions can be overridden per transaction
+
+# 9. Photo Management
+
+## 9.1 Photo Requirements
+
+|                       |                       |                              |
+|-----------------------|-----------------------|------------------------------|
+| **Stage**             | **Photo Type**        | **Purpose**                  |
+| Origin Warehouse      | Goods photos          | Documentation & verification |
+| Origin Warehouse      | Signed documents      | Compliance record            |
+| Destination Warehouse | Delivery confirmation | Proof of receipt             |
+| Destination Warehouse | Signed receipt        | Customer acknowledgment      |
+
+## 9.2 Customer Name Overlay
+
+-   All goods photos automatically display customer name as watermark/overlay
+
+-   Enables easy identification during unloading at destination
+
+-   Staff in Gabon can quickly match packages to customers
+
+-   Container photo album generated with all labeled photos
+
+# 10. Pricing & Additional Fees
+
+## 10.1 Shipping Price Calculation
+
+-   Each good is priced by weight (kg) OR area (m²)
+
+-   The higher calculated value is used
+
+-   Default prices loaded from goods type catalog
+
+-   Customer-specific stored discounts applied automatically
+
+## 10.2 Additional Fees
+
+The system supports adding extra charges to customer invoices:
+
+-   Port of Beirut fees (if applicable)
+
+-   Internal transport/delivery charges
+
+-   Customs handling fees
+
+-   Other miscellaneous charges
+
+## 10.3 Pricing Overrides
+
+-   Staff may override per-kg price, per-m² price, or final total
+
+-   All overrides require reason and are fully audited
+
+-   Override history preserved for dispute resolution
+
+# 11. Document Generation
+
+## 11.1 Compliance Documents
+
+Auto-generated based on goods type, printed for customer signature:
+
+-   Responsibility Declaration - Customer acknowledges responsibility for goods
+
+-   Drug-Free Certification - Customer certifies goods contain no prohibited substances
+
+-   Other documents as required by goods classification
+
+## 11.2 Shipping Documents
+
+|                    |                                                                       |
+|--------------------|-----------------------------------------------------------------------|
+| **Document**       | **Description**                                                       |
+| Packing List       | Complete inventory of container contents with all customers and goods |
+| Commercial Invoice | For customs - uses stored reduced/declared prices in English          |
+| Customer Invoice   | Actual shipping charges with additional fees (per customer)           |
+| Excel Report       | Detailed breakdown per customer for internal records                  |
+
+# 12. Vessel Tracking
+
+-   Staff enters vessel name and departure/arrival dates
+
+-   Weekly updates can be added manually
+
+-   Each update is timestamped and logged
+
+-   Current status visible on container detail page
+
+-   Staff can export/share updates with customers manually
+
+# 13. Audit, Security & Compliance
+
+-   Role-based access control with defined permissions per user type
+
+-   Full audit trail - every change is logged with user, timestamp, and previous value
+
+-   Data can be modified but all changes are preserved and traceable
+
+-   Secure storage of documents and photos
+
+-   Multi-location system access (Lebanon and Gabon)
+
+-   Document archival and locking after approval
+
+# 14. Expected Business Benefits
+
+-   Prevents container overloading with real-time capacity monitoring
+
+-   Improves shipment planning with visual warnings
+
+-   Reduces operational errors through structured workflows
+
+-   Faster invoice processing with automated calculations
+
+-   Easy package identification with labeled photos
+
+-   Streamlined customs documentation with bilingual catalog
+
+-   Strong auditability for dispute resolution
+
+-   Scalable logistics operations
+
+# 15. Success Criteria
+
+The system is successful when:
+
+-   Containers never exceed capacity limits
+
+-   Warnings are triggered before limits are reached
+
+-   All packages have full photo documentation with customer identification
+
+-   Invoices, packing lists, and Excel files are generated automatically
+
+-   Bilingual product catalog functions correctly
+
+-   All additional fees are properly tracked and invoiced
+
+-   Operations remain smooth under scale
+
+-   Complete audit trail exists for all transactions
+
+# 16. Implementation Phases
+
+**Phase 1:** Core logistics, container capacity control, photo management
+
+**Phase 2:** Pricing, additional fees, invoicing, packing list & Excel outputs
+
+**Phase 3:** Bilingual catalog, vessel tracking, reporting & optimization
+
+# 17. Future Development
+
+The following features are planned for future phases after the core system is operational:
+
+## 17.1 WhatsApp Business API Integration
+
+Automated customer notifications via the Official WhatsApp Business API (Meta Cloud API) at key workflow stages. This provides production-grade, reliable messaging with 99.9% delivery guarantee.
+
+**API Specifications:**
+
+-   Provider: Meta Cloud API (recommended) or Twilio (alternative)
+
+-   Cost: Approximately $0.05–$0.08 per message (varies by country)
+
+-   Reliability: 99.9% guaranteed delivery
+
+-   Risk: None (legitimate, officially supported business use)
+
+**Pre-Approved Message Templates:**
+
+-   Price List Notification – Sent upon customer registration
+
+-   Goods Received Notification – Confirmation with package reference and weight
+
+-   Documents for Signature – Request for responsibility declaration and drug-free certification
+
+-   Shipment Status Update – Container, vessel, status, and ETA information
+
+-   Arrival Notification – Pickup location and arrival confirmation
+
+-   Invoice Ready – Invoice delivery with total amount
+
+**Technical Implementation:**
+
+-   Full media support (photos, documents, invoices)
+
+-   Webhook integration for delivery status tracking (sent, delivered, read, failed)
+
+-   Bilingual template support (English and Arabic)
+
+-   Complete message logging and audit trail
+
+**Setup Requirements:**
+
+-   Meta Business Account creation and verification (1–3 days)
+
+-   Phone number registration for sending notifications
+
+-   Message template approval by Meta (24–48 hours)
+
+**Estimated Monthly Cost:** 100 customers × 5 notifications = 500 messages × $0.05 = approximately $25/month
+
+## 17.2 Advanced Reporting
+
+-   Business intelligence dashboards
+
+-   Revenue analytics by customer/goods type
+
+-   Operational efficiency metrics
+
+# 18. Project Pricing
+
+The total cost for this project is **$4,500 USD**.
+
+**Payment Terms:**
+
+-   **25% Upfront Payment:** $1,125 USD – Due upon signing of contract
+
+-   **75% Final Payment:** $3,375 USD – Due upon delivery and acceptance of the completed project
+
+This pricing includes all development, testing, deployment, and documentation as outlined in this proposal.
+
+# 19. Project Timeline
+
+**Estimated Duration:** 8 to 10 weeks from date of contract signing
+
+**Milestone Schedule:**
+
+-   **Weeks 1–3:** Phase 1 – Core logistics, container capacity control, photo management
+
+-   **Weeks 4–6:** Phase 2 – Pricing, additional fees, invoicing, packing list & Excel outputs
+
+-   **Weeks 7–8:** Phase 3 – Bilingual catalog, vessel tracking, reporting & optimization
+
+-   **Weeks 9–10:** Testing, bug fixes, deployment, and documentation
+
+The timeline may be adjusted based on feedback cycles and any additional requirements identified during development.
+
+# 20. Conclusion
+
+This system will become the central operational platform for the company's logistics operations between Lebanon and Gabon, ensuring capacity control, operational visibility, and financial accuracy across all shipments and warehouses.

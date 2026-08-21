@@ -23,6 +23,9 @@ public class TransitionRuleService : ITransitionRuleService
             (ShipmentStatus.Arrived, ShipmentStatus.Closed) => true,
             (ShipmentStatus.Draft, ShipmentStatus.Cancelled) => true,
             (ShipmentStatus.Scheduled, ShipmentStatus.Cancelled) => true,
+            // Loading can fall through after a container is staged; cancelling
+            // cascades to every package that has not shipped yet.
+            (ShipmentStatus.ReadyToDepart, ShipmentStatus.Cancelled) => true,
             _ => false
         };
     }
