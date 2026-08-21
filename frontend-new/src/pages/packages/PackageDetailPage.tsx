@@ -390,7 +390,6 @@ export default function PackageDetailPage() {
     <>
       <Breadcrumbs
         items={[
-          { label: 'Packages', href: '/ops/packages' },
           ...(pkgData.shipmentId
             ? [{ label: `Shipment #${pkgData.shipmentId}`, href: `/ops/shipments/${pkgData.shipmentId}` }]
             : []),

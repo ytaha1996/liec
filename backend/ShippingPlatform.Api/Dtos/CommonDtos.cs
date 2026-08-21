@@ -12,5 +12,6 @@ public record UpdateShipmentRequest(string? TiiuCode, DateTime? PlannedDeparture
 
 public record BulkTransitionRequest(int[] PackageIds, string Action);
 public record BulkTransitionError(int PackageId, string Reason);
+public record MovePackagesRequest(int[] PackageIds);
 
 public record PagedResult<T>(List<T> Items, int Total, int Page, int PageSize);

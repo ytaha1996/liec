@@ -188,9 +188,6 @@ export default function DashboardPage() {
 
         <div className="flex flex-col sm:flex-row gap-2">
           <Button onClick={() => navigate('/ops/shipments')}>View Shipments</Button>
-          <Button variant="outline" onClick={() => navigate('/ops/packages')}>
-            View Packages
-          </Button>
         </div>
       </div>
     </>

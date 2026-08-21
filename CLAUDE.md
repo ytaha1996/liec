@@ -103,13 +103,16 @@ DeliveryResult:     Pending, Sent, Failed, SkippedNoOptIn
 ### Shipment Lifecycle
 ```
 Draft → Scheduled → ReadyToDepart → Departed → Arrived → Closed
-  └→ Cancelled (from Draft, Scheduled only)
+  └→ Cancelled (from Draft, Scheduled, ReadyToDepart)
 ```
 - **Schedule:** Requires TIIU code (regex `^[A-Z]{3,4}\d{4,7}$`)
 - **ReadyToDepart:** At least 1 ReadyToShip package. Unloaded packages (Draft/Received/Packed) auto-reassigned to another Draft shipment on same route (created if none exists). Capacity recalculated.
 - **Depart:** Photo compliance gate (all packages need Departure photos). Sets ActualDepartureAt.
 - **Close:** Photo compliance gate (all packages need Arrival photos + be HandedOut/Cancelled).
-- **Cancel:** Cascades to non-shipped packages, recalculates capacity.
+- **Cancel:** Allowed from Draft, Scheduled and ReadyToDepart. Cascades to non-shipped packages, recalculates capacity.
+- **Move packages out:** Before departure (Draft/Scheduled/ReadyToDepart) packages can be handed to the next
+  shipment on the same route — the manual counterpart to the auto-reassignment above. ReadyToShip packages
+  step back to Packed (the target is a Draft), and a shipment left with no packages is Cancelled automatically.
 
 ### Package Lifecycle
 ```
@@ -174,6 +177,7 @@ Controllers → Business → Services → Data (AppDbContext)
 - `GET /{id}/media`, `GET /{id}/audit-log`
 - FX snapshots: `GET /{id}/fx-snapshots`, `PUT /{id}/fx-snapshots/{code}`, `DELETE /{id}/fx-snapshots/{code}` (Admin/Manager)
 - `POST /{shipmentId}/packages/bulk-transition` — bulk package action
+- `POST /{id}/packages/move-to-next` — move packages to the next shipment on the route (Admin/Manager)
 
 **Packages** (`/api/packages`)
 - `POST /shipments/{shipmentId}/packages` — create in shipment
@@ -267,8 +271,8 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 - `/ops/dashboard` → DashboardPage (stats, pending container alerts)
 - `/ops/shipments` → ShipmentsPage (list + create with capacity columns)
 - `/ops/shipments/:id` → ShipmentDetailPage (info, capacity bars, transitions, packages table + bulk transitions, FX snapshots, WhatsApp, exports)
-- `/ops/packages` → PackagesPage (list + auto-assign)
-- `/ops/packages/:id` → PackageDetailPage (info, pricing, items + bulk add, photos, documents, overrides, transitions)
+- `/ops/packages` → hidden; redirects to `/ops/shipments` (packages are managed from their shipment)
+- `/ops/packages/:id` → PackageDetailPage (info, pricing, items + bulk add, photos, documents, overrides, transitions) — still reachable
 
 **Master Data (/master)**
 - `/master/customers` → CustomersPage (CRUD)

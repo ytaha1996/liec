@@ -7,9 +7,11 @@ test.describe('table behaviors', () => {
   test('search filters rows', async ({ page }) => {
     await page.goto('/master/warehouses');
     const table = page.getByRole('table');
-    // 4 seeded warehouses (+ possible E2E ones) → many rows initially
+    // 4 seeded warehouses (+ possible E2E ones) → many rows initially. Poll:
+    // the table paints its header before the loader resolves, so a bare count()
+    // can land on the header-only frame.
+    await expect.poll(async () => table.getByRole('row').count()).toBeGreaterThan(2);
     const initialRows = await table.getByRole('row').count();
-    expect(initialRows).toBeGreaterThan(2);
 
     await page.getByPlaceholder('Search…').fill('Beirut');
     // header row + exactly one match

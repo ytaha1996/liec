@@ -15,7 +15,6 @@ import ProfilePage from '@/pages/auth/ProfilePage';
 import DashboardPage from '@/pages/dashboard/DashboardPage';
 import ShipmentsPage from '@/pages/shipments/ShipmentsPage';
 import ShipmentDetailPage from '@/pages/shipments/ShipmentDetailPage';
-import PackagesPage from '@/pages/packages/PackagesPage';
 import PackageDetailPage from '@/pages/packages/PackageDetailPage';
 import CustomersPage from '@/pages/customers/CustomersPage';
 import CustomerDetailPage from '@/pages/customers/CustomerDetailPage';
@@ -70,7 +69,9 @@ export default function App() {
           <Route path="/ops/dashboard" element={<DashboardPage />} />
           <Route path="/ops/shipments" element={<ShipmentsPage />} />
           <Route path="/ops/shipments/:id" element={<ShipmentDetailPage />} />
-          <Route path="/ops/packages" element={<PackagesPage />} />
+          {/* The package list is hidden — packages are managed from their
+              shipment. Individual package pages stay reachable. */}
+          <Route path="/ops/packages" element={<Navigate to="/ops/shipments" replace />} />
           <Route path="/ops/packages/:id" element={<PackageDetailPage />} />
 
           {/* Master Data — module-gated per MODULE_ACCESS */}

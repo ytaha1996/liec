@@ -38,18 +38,29 @@ const ALLOWED_TRANSITIONS: Record<
 > = {
   Draft: [
     { label: 'Schedule', action: 'schedule', confirmMessage: 'Schedule this shipment? It will be locked for departure preparation.' },
-    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? This cannot be undone.' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? Every package under it that has not shipped will be cancelled too. This cannot be undone.' },
   ],
   Scheduled: [
     { label: 'Ready To Depart', action: 'ready-to-depart', confirmMessage: '', useRtdPreview: true },
-    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? This cannot be undone.' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? Every package under it that has not shipped will be cancelled too. This cannot be undone.' },
   ],
-  ReadyToDepart: [{ label: 'Depart', action: 'depart', confirmMessage: 'Mark this shipment as Departed? Ensure all packages have departure photos.' }],
+  ReadyToDepart: [
+    { label: 'Depart', action: 'depart', confirmMessage: 'Mark this shipment as Departed? Ensure all packages have departure photos.' },
+    { label: 'Cancel', action: 'cancel', isCancel: true, confirmMessage: 'Cancel this shipment? Every package under it that has not shipped will be cancelled too. This cannot be undone.' },
+  ],
   Departed: [{ label: 'Arrive', action: 'arrive', confirmMessage: 'Mark this shipment as Arrived?' }],
   Arrived: [{ label: 'Close', action: 'close', confirmMessage: 'Close this shipment? This is final.' }],
   Closed: [],
   Cancelled: [],
 };
+
+interface MoveResult {
+  movedCount: number;
+  demotedCount: number;
+  targetShipmentId: number;
+  targetRefCode: string;
+  sourceCancelled: boolean;
+}
 
 const SHIPMENT_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'refCode', title: 'Ref Code' },
@@ -196,14 +207,44 @@ export default function ShipmentDetailPage() {
     }
   };
 
+  // Hand packages over to the next shipment on this route (an existing Draft,
+  // or a new one). Used when cargo does not make it into a staged container.
+  const moveToNext = async (packageIds: number[], clear: () => void) => {
+    try {
+      const r = await postJson<MoveResult>(`/api/shipments/${id}/packages/move-to-next`, { packageIds });
+      toast.success(
+        `${r.movedCount} package(s) moved to ${r.targetRefCode}` +
+          (r.demotedCount ? ` — ${r.demotedCount} reverted to Packed` : '') +
+          (r.sourceCancelled ? ' — this shipment was cancelled (no packages left)' : ''),
+      );
+      clear();
+      await detail.reload();
+    } catch (e) {
+      toast.error(parseApiError(e).message);
+    }
+  };
+
   // Bulk actions — each valid only when every selected package is in the
   // required source status (mirrors the backend's all-or-nothing validation).
   const CANCELLABLE = new Set(['Draft', 'Received', 'Packed', 'ReadyToShip']);
-  const BULK_ACTIONS: { key: string; title: string; required?: string; cancellable?: boolean; confirm: string }[] = [
+  // Anything not yet shipped can be handed to the next shipment, and only
+  // while this one is still on the ground.
+  const MOVABLE = new Set(['Draft', 'Received', 'Packed', 'ReadyToShip']);
+  const canMovePackages = ['Draft', 'Scheduled', 'ReadyToDepart'].includes(data?.status ?? '');
+  const BULK_ACTIONS: { key: string; title: string; required?: string; cancellable?: boolean; movable?: boolean; confirm: string }[] = [
     { key: 'ready-to-ship', title: 'Mark Ready to Ship', required: 'Packed', confirm: 'Mark {n} package(s) as Ready to Ship?' },
     { key: 'arrive-destination', title: 'Mark Arrived', required: 'Shipped', confirm: 'Mark {n} package(s) as Arrived at Destination?' },
     { key: 'ready-for-handout', title: 'Mark Ready for Handout', required: 'ArrivedAtDestination', confirm: 'Mark {n} package(s) as Ready for Handout?' },
     { key: 'cancel', title: 'Cancel Packages', cancellable: true, confirm: 'Cancel {n} package(s)? This cannot be undone.' },
+    ...(canMovePackages
+      ? [{
+          key: 'move-to-next',
+          title: 'Move to Next Shipment',
+          movable: true,
+          confirm:
+            'Move {n} package(s) to the next shipment on this route? A Draft shipment is created if the route has none. Packages marked Ready to Ship revert to Packed, and if this shipment is left with no packages it will be cancelled.',
+        }]
+      : []),
   ];
 
   const tableData = useMemo(
@@ -570,6 +611,7 @@ export default function ShipmentDetailPage() {
                 BULK_ACTIONS.map((a) => {
                   const eligible = selectedIds.every((sid) => {
                     const status = (tableData[sid] as ShipmentPackage | undefined)?.status;
+                    if (a.movable) return MOVABLE.has(status ?? '');
                     return a.cancellable ? CANCELLABLE.has(status ?? '') : status === a.required;
                   });
                   return (
@@ -584,7 +626,10 @@ export default function ShipmentDetailPage() {
                             title: a.title,
                             message: a.confirm.replace('{n}', String(selectedIds.length)),
                             destructive: a.cancellable,
-                            onSubmit: () => bulkTransition(selectedIds.map(Number), a.key, clear),
+                            onSubmit: () =>
+                              a.movable
+                                ? moveToNext(selectedIds.map(Number), clear)
+                                : bulkTransition(selectedIds.map(Number), a.key, clear),
                           }),
                         )
                       }

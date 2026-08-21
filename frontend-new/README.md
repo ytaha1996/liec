@@ -52,11 +52,13 @@ npm run test:e2e:headed   # watch the browser
   rather than the post-photo happy path.
 - Backend must be **built** first (`dotnet build`) — the webServer uses `--no-build` for speed.
 
-Coverage (68 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
+Coverage (74 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
 palette, nav scoping) · RBAC (Field redirects + hidden UI, admin surfaces) · master data CRUD
 (warehouses, good types, suppliers, currencies incl. delete + conditional validation, customers +
 consent) · pricing create/activate cascade · shipments create→schedule→packages→bulk ops→gates→
-cancel · packages auto-assign→items→bulk add→transitions→pricing override · supply orders full
+cancel · packages (reached via their shipment — the list page is hidden) items→bulk add→
+transitions→pricing override · moving packages to the next shipment incl. auto-cancel of an
+emptied shipment and the cancel-cascade warning · supply orders full
 lifecycle + cancel-with-reason + pack-requires-link · users CRUD + self-role & last-admin guards ·
 profile password change · communications pages · table search/sort/filter/pagination · mobile smoke ·
 **real-shipment replay** (`zz-real-shipment-925.spec.ts`): re-enacts an actual Beirut→Gabon
@@ -140,7 +142,6 @@ All 17 routes ported and wired in `App.tsx`. Production build clean (~273 KB gzi
 | `/ops/dashboard` | `frontend/src/pages/dashboard/DashboardPage.tsx` |
 | `/ops/shipments` | `frontend/src/pages/shipments/ShipmentsPage.tsx` |
 | `/ops/shipments/:id` | `frontend/src/pages/shipments/ShipmentDetailPage.tsx` |
-| `/ops/packages` | `frontend/src/pages/packages/PackagesPage.tsx` |
 | `/ops/packages/:id` | `frontend/src/pages/packages/PackageDetailPage.tsx` |
 | `/master/customers` | `frontend/src/pages/customers/CustomersPage.tsx` |
 | `/master/customers/:id` | `frontend/src/pages/customers/CustomerDetailPage.tsx` |

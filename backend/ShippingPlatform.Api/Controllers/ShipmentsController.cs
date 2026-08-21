@@ -115,6 +115,15 @@ public class ShipmentsController(IShipmentBusiness business, IPackageBusiness pa
     }
 
     [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin,Manager")]
+    [HttpPost("{id:int}/packages/move-to-next")]
+    public async Task<IActionResult> MovePackagesToNext(int id, MovePackagesRequest request)
+    {
+        var (result, err) = await business.MovePackagesToNextShipmentAsync(id, request.PackageIds ?? []);
+        if (err is not null) return BadRequest(err);
+        return result is null ? NotFound() : Ok(result);
+    }
+
     [HttpPost("{shipmentId:int}/packages/bulk-transition")]
     public async Task<IActionResult> BulkTransition(int shipmentId, BulkTransitionRequest request)
     {

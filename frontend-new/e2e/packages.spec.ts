@@ -1,27 +1,50 @@
 import { test, expect } from '@playwright/test';
-import { confirmDialog, expectToast, fillField, pickSelect, submitForm } from './helpers';
+import { confirmDialog, expectToast, fillField, pickDate, pickSelect, submitForm } from './helpers';
 
+// Package detail-page features. The package LIST page is hidden (packages are
+// managed from their shipment), so every test reaches the detail page the way a
+// user does: shipment → packages table → row. Dedicated CHN→DXB route so the
+// lookups stay unambiguous.
 test.describe.serial('packages flow', () => {
-  test('auto-assign creates a package and opens its detail', async ({ page }) => {
-    await page.goto('/ops/packages');
-    await page.getByRole('button', { name: 'Create Package' }).click();
+  let pkgUrl = '';
 
-    await pickSelect(page, 'Customer', /#\d+/);
+  test('create a package from its shipment and open the detail page', async ({ page }) => {
+    await page.goto('/ops/shipments');
+    await page.getByRole('button', { name: 'Create Shipment' }).click();
     await pickSelect(page, 'Origin Warehouse', /China/);
     await pickSelect(page, 'Destination Warehouse', /Dubai/);
-    await submitForm(page);
-    await expectToast(page, /auto-assigned/i);
+    await pickDate(page, /Planned Departure Date/);
+    await pickDate(page, /Planned Arrival Date/);
+    await page.getByRole('dialog').getByRole('button', { name: 'Submit' }).click();
+    await expectToast(page, /created/i);
+
+    const refCode = (await page.getByText(/CHN-\d+/).first().innerText()).trim();
+    await page.getByText(refCode).click();
+    await expect(page).toHaveURL(/\/ops\/shipments\/\d+/);
+
+    await page.getByRole('button', { name: '+ Add Package' }).click();
+    const dialog = page.getByRole('dialog');
+    await pickSelect(page, 'Customer', /#\d+/);
+    await dialog.getByRole('button', { name: 'Submit' }).click();
+    await expectToast(page, /package created/i);
+    await expect(dialog).not.toBeVisible();
+
+    await page.getByRole('table').last().getByRole('row').nth(1).getByRole('button').first().click();
     await expect(page).toHaveURL(/\/ops\/packages\/\d+/);
+    await expect(page.getByText('Package Info')).toBeVisible();
+    pkgUrl = page.url();
+  });
+
+  test('the hidden list route redirects to shipments', async ({ page }) => {
+    await page.goto('/ops/packages');
+    await expect(page).toHaveURL(/\/ops\/shipments$/);
+    // …while the individual package page stays reachable.
+    await page.goto(pkgUrl);
     await expect(page.getByText('Package Info')).toBeVisible();
   });
 
   test('add item + bulk add items', async ({ page }) => {
-    await page.goto('/ops/packages');
-    await page.getByRole('link', { name: /Package #|\d+/ }).first();
-    // Open the newest package via the table's clickable id
-    await page.getByRole('row').nth(1).getByRole('button').first().click();
-    await expect(page).toHaveURL(/\/ops\/packages\/\d+/);
-
+    await page.goto(pkgUrl);
     await page.getByRole('tab', { name: 'Items & Pricing' }).click();
 
     // Single add
@@ -31,7 +54,7 @@ test.describe.serial('packages flow', () => {
     await submitForm(page);
     await expectToast(page, /item added/i);
 
-    // Bulk add — fill 2 of the 3 default rows
+    // Bulk add — fill 1 of the 3 default rows
     await page.getByRole('button', { name: 'Bulk Add' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText('Bulk Add Items')).toBeVisible();
@@ -42,8 +65,7 @@ test.describe.serial('packages flow', () => {
   });
 
   test('edit weight/CBM then receive → pack', async ({ page }) => {
-    await page.goto('/ops/packages');
-    await page.getByRole('row').nth(1).getByRole('button').first().click();
+    await page.goto(pkgUrl);
     await page.getByRole('tab', { name: 'Items & Pricing' }).click();
 
     await page.getByRole('button', { name: /Edit Weight/ }).click();
@@ -64,8 +86,7 @@ test.describe.serial('packages flow', () => {
   });
 
   test('pricing override writes history', async ({ page }) => {
-    await page.goto('/ops/packages');
-    await page.getByRole('row').nth(1).getByRole('button').first().click();
+    await page.goto(pkgUrl);
     await page.getByRole('tab', { name: 'Items & Pricing' }).click();
 
     await page.getByRole('button', { name: 'Override' }).last().click();
@@ -83,8 +104,7 @@ test.describe.serial('packages flow', () => {
   test('ship without departure photos surfaces the gate error', async ({ page }) => {
     // The packed package's shipment is still Draft, so Ready To Ship is
     // gated by shipment status — this asserts the disabled state instead.
-    await page.goto('/ops/packages');
-    await page.getByRole('row').nth(1).getByRole('button').first().click();
+    await page.goto(pkgUrl);
     const rts = page.getByRole('button', { name: 'Ready To Ship' });
     await expect(rts).toBeDisabled();
   });

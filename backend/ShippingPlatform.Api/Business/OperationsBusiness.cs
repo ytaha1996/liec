@@ -18,6 +18,7 @@ public interface IShipmentBusiness
     Task<(ShipmentDto? dto, GateFailure? gate, object? error)> CloseAsync(int id);
     Task<List<object>> MediaAsync(int id);
     Task<object> PreviewReadyToDepartAsync(int id);
+    Task<(object? result, object? error)> MovePackagesToNextShipmentAsync(int id, int[] packageIds);
 }
 
 public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoComplianceService gates, ITransitionRuleService transitions, ICapacityService capacity, IAuditService audit, ShippingPlatform.Api.Services.FxRates.IShipmentSnapshotService fxSnapshot) : IShipmentBusiness
@@ -183,28 +184,7 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
 
             if (unloaded.Count > 0)
             {
-                var target = await db.Shipments
-                    .Where(x => x.Id != id
-                        && x.OriginWarehouseId == s.OriginWarehouseId
-                        && x.DestinationWarehouseId == s.DestinationWarehouseId
-                        && x.Status == ShipmentStatus.Draft)
-                    .OrderBy(x => x.CreatedAt)
-                    .FirstOrDefaultAsync();
-
-                if (target is null)
-                {
-                    target = new Shipment
-                    {
-                        OriginWarehouseId = s.OriginWarehouseId,
-                        DestinationWarehouseId = s.DestinationWarehouseId,
-                        PlannedDepartureDate = DateTime.UtcNow.AddDays(30),
-                        PlannedArrivalDate = DateTime.UtcNow.AddDays(60),
-                        Status = ShipmentStatus.Draft,
-                        RefCode = await refs.GenerateAsync(s.OriginWarehouseId),
-                    };
-                    db.Shipments.Add(target);
-                    await db.SaveChangesAsync();
-                }
+                var target = await ResolveNextShipmentAsync(s);
 
                 foreach (var p in unloaded)
                     p.ShipmentId = target.Id;
@@ -282,6 +262,107 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
             .Include(x => x.Media)
             .Select(x => (object)new { packageId = x.Id, customerId = x.CustomerId, media = x.Media.Select(m => new { m.Id, m.Stage, m.PublicUrl, m.CapturedAt }) })
             .ToListAsync();
+    }
+
+    // The "next" shipment on a route: the oldest open Draft heading the same
+    // way, or a fresh one when the route has none. Shared by the automatic
+    // reassignment at Ready-To-Depart and the manual move below.
+    private async Task<Shipment> ResolveNextShipmentAsync(Shipment source)
+    {
+        var target = await db.Shipments
+            .Where(x => x.Id != source.Id
+                && x.OriginWarehouseId == source.OriginWarehouseId
+                && x.DestinationWarehouseId == source.DestinationWarehouseId
+                && x.Status == ShipmentStatus.Draft)
+            .OrderBy(x => x.CreatedAt)
+            .FirstOrDefaultAsync();
+        if (target is not null) return target;
+
+        target = new Shipment
+        {
+            OriginWarehouseId = source.OriginWarehouseId,
+            DestinationWarehouseId = source.DestinationWarehouseId,
+            PlannedDepartureDate = DateTime.UtcNow.AddDays(30),
+            PlannedArrivalDate = DateTime.UtcNow.AddDays(60),
+            Status = ShipmentStatus.Draft,
+            RefCode = await refs.GenerateAsync(source.OriginWarehouseId),
+        };
+        db.Shipments.Add(target);
+        await db.SaveChangesAsync();
+        return target;
+    }
+
+    /// <summary>
+    /// Moves packages off a shipment that has not departed yet onto the next
+    /// shipment on the same route — the manual counterpart to the automatic
+    /// reassignment that runs at Ready-To-Depart, for cargo that turns out not
+    /// to fit after the container was staged. Validation is all-or-nothing, and
+    /// a shipment left with no packages is cancelled.
+    /// </summary>
+    public async Task<(object? result, object? error)> MovePackagesToNextShipmentAsync(int id, int[] packageIds)
+    {
+        var s = await db.Shipments.FindAsync(id);
+        if (s is null) return (null, null);
+
+        if (s.Status is not (ShipmentStatus.Draft or ShipmentStatus.Scheduled or ShipmentStatus.ReadyToDepart))
+            return (null, new { code = "INVALID_STATUS", message = $"Packages can only be moved before the shipment departs (current status: {s.Status})." });
+
+        if (packageIds is null || packageIds.Length == 0)
+            return (null, new { code = "VALIDATION_ERROR", message = "Select at least one package to move." });
+
+        var ids = packageIds.Distinct().ToArray();
+        var packages = await db.Packages.Where(p => ids.Contains(p.Id)).ToListAsync();
+
+        var errors = new List<BulkTransitionError>();
+        foreach (var pid in ids)
+        {
+            var p = packages.FirstOrDefault(x => x.Id == pid);
+            if (p is null) { errors.Add(new BulkTransitionError(pid, "Package not found.")); continue; }
+            if (p.ShipmentId != id) { errors.Add(new BulkTransitionError(pid, "Package belongs to a different shipment.")); continue; }
+            if (p.Status == PackageStatus.Cancelled) { errors.Add(new BulkTransitionError(pid, "Package is cancelled.")); continue; }
+            if (p.Status >= PackageStatus.Shipped) errors.Add(new BulkTransitionError(pid, $"Package has already shipped (status {p.Status})."));
+        }
+        if (errors.Count > 0)
+            return (null, new { code = "MOVE_VALIDATION_FAILED", message = "No packages were moved.", errors });
+
+        var target = await ResolveNextShipmentAsync(s);
+        var moved = packages.Where(p => ids.Contains(p.Id)).ToList();
+
+        var demoted = 0;
+        foreach (var p in moved)
+        {
+            // The target is a Draft shipment and ReadyToShip requires Scheduled+,
+            // so a re-planned package steps back to Packed.
+            if (p.Status == PackageStatus.ReadyToShip) { p.Status = PackageStatus.Packed; demoted++; }
+            p.ShipmentId = target.Id;
+        }
+        await db.SaveChangesAsync();
+
+        // Nothing left to carry — the emptied shipment is cancelled outright.
+        var remaining = await db.Packages.CountAsync(p => p.ShipmentId == id && p.Status != PackageStatus.Cancelled);
+        var sourceCancelled = false;
+        if (remaining == 0)
+        {
+            var previous = s.Status;
+            s.Status = ShipmentStatus.Cancelled;
+            await db.SaveChangesAsync();
+            sourceCancelled = true;
+            await audit.LogAsync("Shipment", id, $"Status → {ShipmentStatus.Cancelled}", previous.ToString(), "Cancelled (no packages left after move)");
+        }
+
+        await capacity.RecalculateAsync(id);
+        await capacity.RecalculateAsync(target.Id);
+        await audit.LogAsync("Shipment", id, "PackagesMoved", $"{moved.Count} package(s)", $"moved to {target.RefCode}");
+        await audit.LogAsync("Shipment", target.Id, "PackagesReceived", $"{moved.Count} package(s)", $"moved from {s.RefCode}");
+
+        return (new
+        {
+            movedCount = moved.Count,
+            demotedCount = demoted,
+            targetShipmentId = target.Id,
+            targetRefCode = target.RefCode,
+            sourceCancelled,
+        }, null);
     }
 
     public async Task<object> PreviewReadyToDepartAsync(int id)

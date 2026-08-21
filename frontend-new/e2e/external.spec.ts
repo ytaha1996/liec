@@ -19,8 +19,12 @@ test.describe('external integrations @external', () => {
   });
 
   test('documents tab shows the upload affordance', async ({ page }) => {
-    await page.goto('/ops/packages');
-    await page.getByRole('table').getByRole('button').first().click();
+    // The package list is hidden — reach a package through its shipment.
+    await page.goto('/ops/shipments');
+    await page.getByRole('row').nth(1).getByRole('link').first().click();
+    await expect(page).toHaveURL(/\/ops\/shipments\/\d+/);
+    await page.getByRole('table').last().getByRole('row').nth(1).getByRole('button').first().click();
+    await expect(page).toHaveURL(/\/ops\/packages\/\d+/);
     await page.getByRole('tab', { name: 'Photos' }).click();
     await expect(page.getByText('Documents')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Upload' })).toBeVisible();

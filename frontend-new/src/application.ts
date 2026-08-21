@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   Ship,
-  Package,
   Users,
   Warehouse,
   Tag,
@@ -46,7 +45,6 @@ export const buildApplications = (role: UserRole): AppGroup[] => {
       modules: [
         { name: 'dashboard', route: '/ops/dashboard', title: 'Dashboard', description: 'Live overview', icon: LayoutDashboard, hidden: !visible(role, 'dashboard') },
         { name: 'shipments', route: '/ops/shipments', title: 'Shipments', description: 'Containers & routes', icon: Ship, hidden: !visible(role, 'shipments') },
-        { name: 'packages', route: '/ops/packages', title: 'Packages', description: 'Customer packages', icon: Package, hidden: !visible(role, 'packages') },
       ],
     },
     {
