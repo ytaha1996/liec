@@ -109,3 +109,71 @@ test.describe.serial('packages flow', () => {
     await expect(rts).toBeDisabled();
   });
 });
+
+// Pricing adjustments, price basis and the per-customer messaging cards — all
+// on the package detail page reached above.
+test.describe.serial('package pricing adjustments', () => {
+  let url = '';
+
+  test('shows the price basis the tariff chose', async ({ page }) => {
+    await page.goto('/ops/shipments');
+    await page.getByText(/CHN-\d+/).first().click();
+    await page.getByRole('table').last().getByRole('row').nth(1).getByRole('button').first().click();
+    await expect(page).toHaveURL(/\/ops\/packages\/\d+/);
+    url = page.url();
+
+    await page.getByRole('tab', { name: 'Items & Pricing' }).click();
+    await expect(page.getByText('Priced On')).toBeVisible();
+    // 1.5 m³ / 120 kg from the spec above: volume beats weight.
+    await expect(page.getByText('CBM', { exact: true }).first()).toBeVisible();
+  });
+
+  test('a fee and a discount move the net total', async ({ page }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Items & Pricing' }).click();
+
+    await page.getByRole('button', { name: 'Adjust' }).first().click();
+    await fillField(page, /^Fee$/, '70000');
+    await fillField(page, /^Fee reason/, 'Customs declaration');
+    await fillField(page, /^Discount$/, '500');
+    await fillField(page, /^Discount reason/, 'Rounding');
+    await submitForm(page);
+    await expectToast(page, /fee \/ discount updated/i);
+
+    await expect(page.getByText(/70,000/).first()).toBeVisible();
+    await expect(page.getByText(/500/).first()).toBeVisible();
+  });
+
+  test('the adjustment lands on the package activity log', async ({ page }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(page.getByText('Pricing Adjustment')).toBeVisible();
+  });
+
+  test('a discount cannot exceed the freight plus fee', async ({ page }) => {
+    await page.goto(url);
+    await page.getByRole('tab', { name: 'Items & Pricing' }).click();
+    await page.getByRole('button', { name: 'Adjust' }).first().click();
+    await fillField(page, /^Discount$/, '99999999');
+    await fillField(page, /^Discount reason/, 'Too much');
+    await submitForm(page);
+    await expectToast(page, /discount cannot exceed/i);
+  });
+
+  test('customer links through to the customer page', async ({ page }) => {
+    await page.goto(url);
+    await page.getByRole('link', { name: /\(#\d+\)/ }).click();
+    await expect(page).toHaveURL(/\/master\/customers\/\d+/);
+  });
+
+  test('per-customer WhatsApp cards offer a status send', async ({ page }) => {
+    await page.goto(url);
+    await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Send' }).first().click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    // Targets this one customer, not the whole shipment.
+    await expect(dialog.getByText(/send status update to/i)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+  });
+});

@@ -12,6 +12,24 @@ test.describe('RBAC — Field user', () => {
 
     await page.goto('/comms/group-helper-export');
     await expect(page).toHaveURL(/\/ops\/dashboard/);
+
+    // Reports carry company-wide billing figures.
+    await page.goto('/ops/reports');
+    await expect(page).toHaveURL(/\/ops\/dashboard/);
+  });
+
+  test('customer names on a shipment are plain text, not links', async ({ page }) => {
+    await page.goto('/ops/shipments');
+    // Depends on a shipment from an earlier spec (alphabetical ordering); when
+    // this file runs on its own the database is empty.
+    const ref = page.getByText(/^[A-Z]{3}-\d+$/).first();
+    const seeded = await ref.isVisible().catch(() => false);
+    test.skip(!seeded, 'no shipments yet — run the whole suite');
+
+    await ref.click();
+    await expect(page).toHaveURL(/\/ops\/shipments\/\d+/);
+    // Field cannot open the customers module, so the column must not link there.
+    await expect(page.getByRole('link', { name: /\(#\d+\)/ })).toHaveCount(0);
   });
 
   test('financial card is hidden on the dashboard', async ({ page }) => {

@@ -19,7 +19,7 @@ import { parseApiError, type GateError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { useUserRole, canManageShipments, canSendWhatsApp, canExport, canViewActivityLog, canBulkTransitionPackages } from '@/helpers/rbac';
+import { useUserRole, canSee, canManageShipments, canSendWhatsApp, canExport, canViewActivityLog, canBulkTransitionPackages } from '@/helpers/rbac';
 import { formatAuditEntry } from '@/helpers/audit-utils';
 import { BOOL_CHIPS, PKG_STATUS_CHIPS, SHIPMENT_STATUS_CHIPS } from '@/constants/statusColors';
 import { SHIPMENT_STATUS_LABELS, PKG_STATUS_LABELS } from '@/constants/statusLabels';
@@ -28,7 +28,7 @@ import { OpenConfirmation } from '@/redux/confirmation/confirmationReducer';
 import { AddPackageDialog } from './components/AddPackageDialog';
 import { EditShipmentDrawer } from './components/EditShipmentDrawer';
 import { ReadyToDepartPreviewDialog } from './components/ReadyToDepartPreviewDialog';
-import { WhatsAppCampaignCards } from './components/WhatsAppCampaignCards';
+import { WhatsAppSendCards } from '@/components/messaging/WhatsAppSendCards';
 import { FxSnapshotsSection } from './components/FxSnapshotsSection';
 import { EditPackageDialog } from '../packages/components/EditPackageDialog';
 
@@ -272,7 +272,16 @@ export default function ShipmentDetailPage() {
       type: EnhancedTableColumnType.Clickable,
       onClick: (_tid, row) => navigate(`/ops/packages/${row.id}`),
     },
-    { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT },
+    // Links through to the customer, except for Field — that role has no access
+    // to the customers module, so RequireModule would bounce them.
+    canSee(role, 'customers')
+      ? {
+          id: 'customer',
+          label: 'Customer',
+          type: EnhancedTableColumnType.LINK,
+          url: (row: Record<string, unknown>) => `/master/customers/${row.customerId}`,
+        }
+      : { id: 'customer', label: 'Customer', type: EnhancedTableColumnType.TEXT },
     { id: 'weightKg', label: 'Weight (Kg)', type: EnhancedTableColumnType.NUMBER, numeric: true },
     { id: 'cbm', label: 'CBM', type: EnhancedTableColumnType.NUMBER, numeric: true },
     { id: 'chargeDisplay', label: 'Charge', type: EnhancedTableColumnType.TEXT },
@@ -500,7 +509,7 @@ export default function ShipmentDetailPage() {
         )}
 
         {canSendWhatsApp(role) && (
-          <WhatsAppCampaignCards
+          <WhatsAppSendCards
             shipmentId={id}
             shipmentStatus={data.status}
             customerCount={uniqueCustomerCount}

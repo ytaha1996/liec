@@ -39,6 +39,14 @@ const parseMediaPayload = (raw: string): string => {
   return raw;
 };
 
+// "shipment=DXB-2601 status=ReadyToShip" → "DXB-2601 (Ready to Ship)"
+const parseMovePayload = (raw: string): string => {
+  const ref = raw.match(/shipment=(\S+)/)?.[1];
+  const status = raw.match(/status=(\w+)/)?.[1];
+  if (ref && status) return `${ref} (${humanize(status)})`;
+  return ref ?? raw;
+};
+
 export const formatAuditEntry = (log: AuditLog): AuditEntry => {
   const { action, oldValue, newValue } = log;
 
@@ -72,6 +80,18 @@ export const formatAuditEntry = (log: AuditLog): AuditEntry => {
       return { title: 'Activated', detail: '' };
     case 'Retire':
       return { title: 'Retired', detail: '' };
+    case 'MovedToShipment':
+      return {
+        title: 'Moved to another shipment',
+        detail:
+          oldValue && newValue
+            ? `${parseMovePayload(oldValue)} → ${parseMovePayload(newValue)}`
+            : (newValue ?? ''),
+      };
+    case 'PackagesMoved':
+      return { title: 'Packages moved out', detail: newValue ?? '' };
+    case 'PackagesReceived':
+      return { title: 'Packages moved in', detail: newValue ?? '' };
     case 'MediaUpload':
       return { title: 'Photo uploaded', detail: parseMediaPayload(newValue ?? '') };
     case 'FxOverride':

@@ -27,18 +27,20 @@ const toDate = (value: unknown): Date | null => {
 export function formatCurrencyNumber(
   value: unknown,
   currency = 'USD',
-  decimals = 2,
+  decimals?: number,
 ): string {
   if (!isValidNumber(value)) return '--';
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency,
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
+      // Left to the currency's own convention unless a caller insists. XAF
+      // (FCFA) has no minor unit, so forcing two decimals printed every
+      // operational amount as "FCFA 550,000.00".
+      ...(decimals == null ? {} : { minimumFractionDigits: decimals, maximumFractionDigits: decimals }),
     }).format(parseFloat(String(value)));
   } catch {
-    return `${currency} ${parseFloat(String(value)).toFixed(decimals)}`;
+    return `${currency} ${parseFloat(String(value)).toFixed(decimals ?? 2)}`;
   }
 }
 

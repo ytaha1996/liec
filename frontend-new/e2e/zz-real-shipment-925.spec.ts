@@ -12,9 +12,10 @@ import { API, confirmDialog, expectToast, fillField, pickDate, pickSelect, scrol
 // The real tariff maps 1:1 onto the platform's pricing engine:
 //   max(kg × 500 CFA, m³ × 275,000 CFA), minimum charge 120,000 CFA (<0.5 m³),
 //   regular customers 250,000 CFA/m³ (rate override), 450,000 CFA/ton weight
-//   deals (rate override), customs/rounding fees + free packages (total-charge
-//   override). Every package's final charge must equal the BOL "TOTAL PRICE"
-//   column, and the grand total must equal the BOL's 19,475,000 CFA.
+//   deals (rate override), the FEES column as real fee/discount adjustments,
+//   and genuinely free packages as total-charge overrides. Every package's net
+//   (freight + fee − discount) must equal the BOL "TOTAL PRICE" column, the
+//   grand total the BOL's 19,475,000 CFA, and each price basis the BOL remark.
 //
 // Named zz-* so it runs LAST: it adds 28 customers and activates a new pricing
 // config, which would disturb seed-count assertions in earlier specs.
@@ -23,6 +24,7 @@ import { API, confirmDialog, expectToast, fillField, pickDate, pickSelect, scrol
 type UnitName = 'Box' | 'Piece' | 'Crt' | 'Bag' | 'Pallet' | 'Gallon' | 'Bundle';
 type RealItem = { gt: string; qty: number; unit: UnitName; note: string };
 type Override = { type: 'RatePerKg' | 'RatePerCbm' | 'TotalCharge'; value: number; reason: string };
+type Adjustment = { amount: number; reason: string };
 type RealClient = {
   code: string; // order-form / BOL client code
   name: string;
@@ -32,6 +34,10 @@ type RealClient = {
   expected: number; // BOL "TOTAL PRICE" (CFA)
   remark?: string;
   overrides?: Override[];
+  // The BOL's FEES column: positive entries are fees, negative ones discounts.
+  fee?: Adjustment;
+  discount?: Adjustment;
+  basis?: 'Cbm' | 'Weight' | 'Minimum' | 'Custom';
   items: RealItem[];
 };
 
@@ -67,10 +73,9 @@ const CLIENTS: RealClient[] = [
   {
     code: '2', name: 'FOUAD HAREB', phone: '+24102222261', cbm: 5.75, kg: 4722, expected: 2_125_000,
     remark: 'REGULAR CUSTOMER',
-    overrides: [
-      { type: 'RatePerKg', value: 450, reason: 'REGULAR CUSTOMER — 450,000 CFA/ton' },
-      { type: 'TotalCharge', value: 2_125_000, reason: '+100 CFA fee — BOL 925' },
-    ],
+    overrides: [{ type: 'RatePerKg', value: 450, reason: 'REGULAR CUSTOMER — 450,000 CFA/ton' }],
+    fee: { amount: 100, reason: 'Rounding to invoice total — BOL 925' },
+    basis: 'Weight',
     items: [
       { gt: 'Machinery & Parts', qty: 2, unit: 'Piece', note: 'BULLDOZER TRACKS — جنزير' },
       { gt: 'Machinery & Parts', qty: 1, unit: 'Piece', note: 'EXCAVATOR TOWER PLATE — صفيحة برج حفّارة' },
@@ -82,6 +87,7 @@ const CLIENTS: RealClient[] = [
     code: '3', name: 'NADIM NOUREDINE', phone: '+24177771717', cbm: 0.08, kg: 28, expected: 0,
     remark: 'PAID IN 825',
     overrides: [{ type: 'TotalCharge', value: 0, reason: 'PAID IN 825' }],
+    basis: 'Custom',
     items: [
       { gt: 'Books & Stationery', qty: 5, unit: 'Crt', note: 'PRICE TAGS — ورق تسعير بضاعة' },
       { gt: 'Books & Stationery', qty: 2, unit: 'Crt', note: 'DATE LABELLING GUN — مكنة تواريخ' },
@@ -96,7 +102,8 @@ const CLIENTS: RealClient[] = [
   },
   {
     code: '5', name: 'MAHER ZAWIL', phone: '+24106888800', cbm: 2.5, kg: 654, expected: 688_000,
-    overrides: [{ type: 'TotalCharge', value: 688_000, reason: '+500 CFA fee — BOL 925' }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Cbm',
     items: [
       { gt: 'Food Items', qty: 42, unit: 'Crt', note: 'CHOCOLATE — شوكولا' },
       { gt: 'Food Items', qty: 3, unit: 'Gallon', note: 'OIL — زيت مازولا' },
@@ -112,7 +119,8 @@ const CLIENTS: RealClient[] = [
   },
   {
     code: '7', name: 'JACK DEMYAN', phone: '+24102262524', cbm: 3.5, kg: 1184, expected: 963_000,
-    overrides: [{ type: 'TotalCharge', value: 963_000, reason: '+500 CFA fee — BOL 925' }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Cbm',
     items: [
       { gt: 'Tools & Equipment', qty: 10, unit: 'Bag', note: 'POWDER GLUE — غراء بودرة' },
       { gt: 'Tools & Equipment', qty: 1, unit: 'Box', note: 'WOOD DRILLING MACHINE — مكنة حفر خشب' },
@@ -122,10 +130,9 @@ const CLIENTS: RealClient[] = [
   {
     code: '8', name: 'JAMAL JABER', phone: '+96171239673', cbm: 9.25, kg: 4318, expected: 2_312_000,
     remark: 'REGULAR CUSTOMER',
-    overrides: [
-      { type: 'RatePerCbm', value: 250_000, reason: REGULAR },
-      { type: 'TotalCharge', value: 2_312_000, reason: '-500 CFA rounding — BOL 925' },
-    ],
+    overrides: [{ type: 'RatePerCbm', value: 250_000, reason: REGULAR }],
+    discount: { amount: 500, reason: 'Rounding to invoice total — BOL 925' },
+    basis: 'Cbm',
     items: [{ gt: 'Food Items', qty: 1, unit: 'Box', note: 'Assorted foodstuff & household goods (48-line manifest)' }],
   },
   {
@@ -156,7 +163,8 @@ const CLIENTS: RealClient[] = [
   {
     code: '13', name: 'GHASSAN GHANDOUR', phone: '+24106954223', cbm: 0.75, kg: 625, expected: 313_000,
     remark: 'Weight-priced: 0.625 t × 500,000 CFA/ton',
-    overrides: [{ type: 'TotalCharge', value: 313_000, reason: '+500 CFA fee — BOL 925' }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Weight',
     items: [{ gt: 'Machinery & Parts', qty: 1, unit: 'Piece', note: 'HYDRAULIC PRESSURE PUMP — مضخّة هيدروليك للجرّافة' }],
   },
   {
@@ -179,7 +187,8 @@ const CLIENTS: RealClient[] = [
   },
   {
     code: '17', name: 'HASSAN ISMAIL', phone: '+9613373573', cbm: 1.5, kg: 271, expected: 413_000,
-    overrides: [{ type: 'TotalCharge', value: 413_000, reason: '+500 CFA fee — BOL 925' }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Cbm',
     items: [{ gt: 'Clothing', qty: 12, unit: 'Crt', note: 'CLOTHES — ثياب' }],
   },
   {
@@ -190,10 +199,8 @@ const CLIENTS: RealClient[] = [
   {
     code: '19&22', name: 'JAMAL HOUBBALLAH', phone: '+24160399999', cbm: 4.75, kg: 2016, expected: 1_376_000,
     remark: 'Two order forms combined (19 + 22)',
-    overrides: [{
-      type: 'TotalCharge', value: 1_376_000,
-      reason: 'INCLUDING 70,000 CFA CUSTOMS DECLARATION PORT BEYRUTH',
-    }],
+    fee: { amount: 69_750, reason: 'INCLUDING 70,000 CFA CUSTOMS DECLARATION PORT BEYRUTH' },
+    basis: 'Cbm',
     items: [
       { gt: 'Food Items', qty: 34, unit: 'Crt', note: 'SWEETS RAW MATERIAL — مواد اوّليّة للحلويات' },
       { gt: 'Plastic Goods', qty: 40, unit: 'Bag', note: 'CAKE BOXES — علب كاتو كرتون' },
@@ -208,10 +215,9 @@ const CLIENTS: RealClient[] = [
   {
     code: '21', name: 'HASSAN CHAAYTO', phone: '+96171471717', cbm: 1, kg: 649, expected: 292_000,
     remark: 'Weight-priced at 450,000 CFA/ton',
-    overrides: [
-      { type: 'RatePerKg', value: 450, reason: 'Weight deal — 450,000 CFA/ton' },
-      { type: 'TotalCharge', value: 292_000, reason: '-50 CFA rounding — BOL 925' },
-    ],
+    overrides: [{ type: 'RatePerKg', value: 450, reason: 'Weight deal — 450,000 CFA/ton' }],
+    discount: { amount: 50, reason: 'Rounding to invoice total — BOL 925' },
+    basis: 'Weight',
     items: [
       { gt: 'Construction Materials', qty: 10, unit: 'Piece', note: 'CONCRETE BLOCK MOLD — قالب حجر باطون' },
       { gt: 'Construction Materials', qty: 1, unit: 'Piece', note: 'BLOCK PRESS — مكبس حجر باطون' },
@@ -221,10 +227,9 @@ const CLIENTS: RealClient[] = [
   {
     code: '23', name: 'HAMZA HAYDAR', phone: '+24162455544', cbm: 7.75, kg: 814, expected: 1_938_000,
     remark: 'HIGH CBM — 1 m³ = 250,000 CFA',
-    overrides: [
-      { type: 'RatePerCbm', value: 250_000, reason: 'HIGH CBM — 1 m³ = 250,000 CFA' },
-      { type: 'TotalCharge', value: 1_938_000, reason: '+500 CFA fee — BOL 925' },
-    ],
+    overrides: [{ type: 'RatePerCbm', value: 250_000, reason: 'HIGH CBM — 1 m³ = 250,000 CFA' }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Cbm',
     items: [
       { gt: 'Furniture', qty: 24, unit: 'Piece', note: 'WOOD CHAIR — كراسي خشب' },
       { gt: 'Furniture', qty: 4, unit: 'Crt', note: 'TABLE — طاولة' },
@@ -234,10 +239,8 @@ const CLIENTS: RealClient[] = [
   },
   {
     code: '24', name: 'GHASSAN KHADRA', phone: '+9613086518', cbm: 1.25, kg: 679, expected: 414_000,
-    overrides: [{
-      type: 'TotalCharge', value: 414_000,
-      reason: 'INCLUDING 70,000 CFA CUSTOMS DECLARATION PORT BEYRUTH',
-    }],
+    fee: { amount: 70_250, reason: 'INCLUDING 70,000 CFA CUSTOMS DECLARATION PORT BEYRUTH' },
+    basis: 'Cbm',
     items: [{ gt: 'Construction Materials', qty: 120, unit: 'Crt', note: 'SILICONE — سيليكون' }],
   },
   {
@@ -248,10 +251,9 @@ const CLIENTS: RealClient[] = [
   {
     code: '26', name: 'YOUSSEF MANSOUR', phone: '+24106340514', cbm: 5.25, kg: 2468, expected: 1_313_000,
     remark: 'REGULAR CUSTOMER',
-    overrides: [
-      { type: 'RatePerCbm', value: 250_000, reason: REGULAR },
-      { type: 'TotalCharge', value: 1_313_000, reason: '+500 CFA fee — BOL 925' },
-    ],
+    overrides: [{ type: 'RatePerCbm', value: 250_000, reason: REGULAR }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Cbm',
     items: [
       { gt: 'Tools & Equipment', qty: 41, unit: 'Piece', note: 'HOSE — نباريش' },
       { gt: 'Tools & Equipment', qty: 48, unit: 'Crt', note: 'HOSE ACCESSORIES — نباريش اكسسوارات' },
@@ -266,10 +268,9 @@ const CLIENTS: RealClient[] = [
   {
     code: '28', name: 'ABBAS HIJAZI', phone: '+24106644300', cbm: 11.25, kg: 4943, expected: 2_813_000,
     remark: 'REGULAR CUSTOMER & HIGH CBM',
-    overrides: [
-      { type: 'RatePerCbm', value: 250_000, reason: 'REGULAR CUSTOMER & HIGH CBM — 250,000 CFA/m³' },
-      { type: 'TotalCharge', value: 2_813_000, reason: '+500 CFA fee — BOL 925' },
-    ],
+    overrides: [{ type: 'RatePerCbm', value: 250_000, reason: 'REGULAR CUSTOMER & HIGH CBM — 250,000 CFA/m³' }],
+    fee: { amount: 500, reason: 'Handling — BOL 925' },
+    basis: 'Cbm',
     items: [
       { gt: 'Food Items', qty: 50, unit: 'Crt', note: 'COAL — فحم' },
       { gt: 'Food Items', qty: 41, unit: 'Crt', note: 'CHTOURA CANS — معلبات شتورا' },
@@ -281,11 +282,13 @@ const CLIENTS: RealClient[] = [
     code: '29', name: 'IMAD NASSAR', phone: '+24162650000', cbm: 0.1, kg: 52, expected: 0,
     remark: 'FOR FREE — LOW CBM & WEIGHT — REGULAR CUSTOMER',
     overrides: [{ type: 'TotalCharge', value: 0, reason: 'FOR FREE — LOW CBM & WEIGHT — REGULAR CUSTOMER' }],
+    basis: 'Custom',
     items: [{ gt: 'Food Items', qty: 1, unit: 'Box', note: 'FOOD STUFF — مونة' }],
   },
   {
     code: '36', name: 'RACHID JABER', phone: '+24177727227', cbm: 5.01, kg: 554, expected: 0,
     overrides: [{ type: 'TotalCharge', value: 0, reason: 'No charge — BOL 925' }],
+    basis: 'Custom',
     items: [{ gt: 'Electronics', qty: 1, unit: 'Crt', note: 'ELECTRIC STUFF — 9KG/0.06m³ — عبدالله جابر' }],
   },
 ];
@@ -318,6 +321,12 @@ async function getJson<T>(request: APIRequestContext, url: string): Promise<T> {
   const res = await request.get(`${API}${url}`, { headers: auth() });
   expect(res.ok(), `GET ${url} → ${res.status()}`).toBeTruthy();
   return (await res.json()) as T;
+}
+
+async function patchJson<T>(request: APIRequestContext, url: string, data: unknown): Promise<T> {
+  const res = await request.patch(`${API}${url}`, { headers: auth(), data });
+  expect(res.ok(), `PATCH ${url} → ${res.status()} ${await res.text()}`).toBeTruthy();
+  return (await res.json().catch(() => ({}))) as T;
 }
 
 async function postJson<T>(request: APIRequestContext, url: string, data: unknown): Promise<T> {
@@ -494,11 +503,21 @@ test.describe.serial('real shipment 925 (BEI → GAB) replay', () => {
     expect(packageIds.size).toBeGreaterThanOrEqual(CLIENTS.length);
   });
 
-  test('pricing: replay the BOL overrides (regular rates, weight deals, fees, free)', async ({ request }) => {
+  test('pricing: replay the BOL rates, fees and discounts', async ({ request }) => {
     for (const c of CLIENTS) {
       for (const o of c.overrides ?? []) {
         await postJson(request, `/api/packages/${packageIds.get(c.name)}/pricing-override`, {
           overrideType: o.type, newValue: o.value, reason: o.reason,
+        });
+      }
+      // The BOL's FEES column, carried as fee/discount rather than folded into
+      // the freight — so the invoice still shows what the customer is paying for.
+      if (c.fee || c.discount) {
+        await patchJson(request, `/api/packages/${packageIds.get(c.name)}/adjustments`, {
+          feeAmount: c.fee?.amount ?? 0,
+          feeReason: c.fee?.reason ?? null,
+          discountAmount: c.discount?.amount ?? 0,
+          discountReason: c.discount?.reason ?? null,
         });
       }
     }
@@ -507,7 +526,8 @@ test.describe.serial('real shipment 925 (BEI → GAB) replay', () => {
   test('BOL parity: every charge matches, grand total 19,475,000 CFA, capacity 75.37 m³ / 28.570 t', async ({ page, request }) => {
     const detail = await getJson<{
       shipment: { totalCbm: number; totalWeightKg: number };
-      packages: Array<{ id: number; customerName: string; chargeAmount: number; currency: string; cbm: number; weightKg: number }>;
+      packages: Array<{ id: number; customerName: string; chargeAmount: number; currency: string; cbm: number; weightKg: number;
+        priceBasis: string; feeAmount: number; discountAmount: number; netAmount: number }>;
     }>(request, `/api/shipments/${shipmentId}/detail`);
 
     expect(detail.packages.length).toBe(CLIENTS.length);
@@ -518,8 +538,12 @@ test.describe.serial('real shipment 925 (BEI → GAB) replay', () => {
       expect(pkg.currency, `${c.name} currency`).toBe('XAF');
       expect(Number(pkg.cbm), `${c.name} cbm`).toBeCloseTo(c.cbm, 3);
       expect(Number(pkg.weightKg), `${c.name} kg`).toBeCloseTo(c.kg, 3);
-      expect(Number(pkg.chargeAmount), `${c.name} charge`).toBe(c.expected);
-      sum += Number(pkg.chargeAmount);
+      // Net = freight + fee − discount, and it must equal the BOL's TOTAL PRICE.
+      expect(Number(pkg.netAmount), `${c.name} total`).toBe(c.expected);
+      expect(Number(pkg.feeAmount), `${c.name} fee`).toBe(c.fee?.amount ?? 0);
+      expect(Number(pkg.discountAmount), `${c.name} discount`).toBe(c.discount?.amount ?? 0);
+      if (c.basis) expect(pkg.priceBasis, `${c.name} basis`).toBe(c.basis);
+      sum += Number(pkg.netAmount);
     }
     expect(sum).toBe(GRAND_TOTAL_CFA);
     expect(Number(detail.shipment.totalCbm)).toBeCloseTo(TOTAL_CBM, 3);

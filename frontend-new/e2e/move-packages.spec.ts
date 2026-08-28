@@ -95,6 +95,16 @@ test.describe.serial('move packages to the next shipment', () => {
     await page.goto(`/ops/shipments/${targetId}`);
     await expect(page.getByText('Draft').first()).toBeVisible();
     await expect(page.getByRole('table').last().getByRole('row')).toHaveCount(2); // header + 1
+
+    // The receiving shipment records the arrival…
+    await expect(page.getByText('Packages moved in')).toBeVisible();
+
+    // …and the package's own history explains where it came from.
+    await page.getByRole('table').last().getByRole('row').nth(1).getByRole('button').first().click();
+    await expect(page).toHaveURL(/\/ops\/packages\/\d+/);
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(page.getByText('Moved to another shipment')).toBeVisible();
+    await expect(page.getByText(new RegExp(`→ ${targetRef}`))).toBeVisible();
   });
 
   test('moving the last package cancels the emptied shipment', async ({ page }) => {
@@ -211,6 +221,12 @@ test.describe.serial('moving a ReadyToShip package @external', () => {
 
     const targetDetail = await (await request.get(`${API}/api/shipments/${moved.shipmentId}/detail`, { headers })).json();
     expect(targetDetail.shipment.status).toBe('Draft');
+
+    // The demotion is on the package's own record, in readable form.
+    await page.goto(`/ops/packages/${pkgId}`);
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(page.getByText('Moved to another shipment')).toBeVisible();
+    await expect(page.getByText(/\(Ready to Ship\).*→.*\(Packed\)/)).toBeVisible();
 
     // …and the emptied container cancelled itself.
     const source = await (await request.get(`${API}/api/shipments/${shipmentId}`, { headers })).json();

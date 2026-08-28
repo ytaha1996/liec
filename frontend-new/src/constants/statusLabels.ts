@@ -36,3 +36,12 @@ export const PRICING_CONFIG_STATUS_LABELS: Record<string, string> = {
   Active: 'Active',
   Retired: 'Retired',
 };
+
+// Which side of the tariff set a package's freight.
+export const PRICE_BASIS_LABELS: Record<string, string> = {
+  Unknown: '—',
+  Cbm: 'CBM',
+  Weight: 'Weight',
+  Minimum: 'Minimum charge',
+  Custom: 'Custom',
+};

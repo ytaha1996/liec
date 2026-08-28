@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -13,18 +13,21 @@ import { InformationWidget, InformationWidgetFieldTypes, type IInformationWidget
 import { EnhancedTable, EnhancedTableColumnType, type EnhanceTableHeaderTypes } from '@/components/enhanced-table';
 import { Loader, EmptyState } from '@/components/feedback';
 import { MediaStageCards, PhotoGalleryModal, PackageDocuments, type MediaItem } from '@/components/media';
-import { getJson, postJson, deleteJson } from '@/api/client';
+import { getJson, postJson, patchJson, deleteJson } from '@/api/client';
 import { parseApiError, type GateError } from '@/api/parseApiError';
 import { useLoader } from '@/hooks/useLoader';
 import { useInitializeFunction } from '@/hooks/useInitializeFunction';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { useUserRole, canTransitionPackage, canEditPackageItems, canEditPackageWeight, canUploadPhotos, canOverridePricing, canViewActivityLog } from '@/helpers/rbac';
+import { useUserRole, canSee, canTransitionPackage, canEditPackageItems, canEditPackageWeight, canUploadPhotos, canOverridePricing, canSendWhatsApp, canViewActivityLog } from '@/helpers/rbac';
 import { formatAuditEntry } from '@/helpers/audit-utils';
 import { formatPriceWithFlag } from '@/helpers/format-price';
 import { convertPrice, type CurrencyRow } from '@/helpers/fx-rates';
 import { UNIT_LABEL_EN, fetchUnits, type LookupItem } from '@/api/lookups';
 import { PKG_STATUS_CHIPS } from '@/constants/statusColors';
-import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS, SHIPMENT_STATUS_LABELS } from '@/constants/statusLabels';
+import { PKG_STATUS_LABELS, SUPPLY_ORDER_STATUS_LABELS, SHIPMENT_STATUS_LABELS, PRICE_BASIS_LABELS } from '@/constants/statusLabels';
+import { GenericDialog } from '@/components/dialogs';
+import { WhatsAppSendCards } from '@/components/messaging/WhatsAppSendCards';
+import { DynamicFormWidget, DynamicField } from '@/components/dynamic-form';
 import { useAppDispatch } from '@/redux/hooks';
 import { OpenConfirmation } from '@/redux/confirmation/confirmationReducer';
 import { ItemDialog } from './components/ItemDialog';
@@ -63,7 +66,22 @@ const PRICING_OVERRIDE_LOCKED = new Set(['HandedOut', 'Cancelled']);
 
 const PKG_INFO_FIELDS: IInformationWidgetField[] = [
   { type: InformationWidgetFieldTypes.Text, name: 'shipmentRef', title: 'Shipment' },
-  { type: InformationWidgetFieldTypes.Text, name: 'customer', title: 'Customer' },
+  {
+    type: InformationWidgetFieldTypes.Custom,
+    name: 'customer',
+    title: 'Customer',
+    render: (value, row) => {
+      const label = String(value ?? '—');
+      const cid = row.customerId as number | undefined;
+      // Field has no access to the customers module — show the name, no link.
+      if (!cid || !row.canOpenCustomer) return label;
+      return (
+        <Link to={`/master/customers/${cid}`} className="text-primary underline underline-offset-2">
+          {label}
+        </Link>
+      );
+    },
+  },
   { type: InformationWidgetFieldTypes.Text, name: 'provisionMethod', title: 'Provision Method' },
   { type: InformationWidgetFieldTypes.Text, name: 'supplyOrderInfo', title: 'Supply Order' },
   { type: InformationWidgetFieldTypes.Datetime, name: 'createdAt', title: 'Created At' },
@@ -73,6 +91,11 @@ const PKG_INFO_FIELDS: IInformationWidgetField[] = [
 interface PackageData {
   id: number;
   customerId: number;
+  priceBasis?: string;
+  feeAmount?: number;
+  feeReason?: string;
+  discountAmount?: number;
+  discountReason?: string;
   shipmentId?: number;
   supplyOrderId?: number;
   provisionMethod: string;
@@ -139,6 +162,7 @@ export default function PackageDetailPage() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideType, setOverrideType] = useState<'RatePerKg' | 'RatePerCbm' | 'TotalCharge'>('RatePerKg');
   const [editPkgOpen, setEditPkgOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   const pkg = useLoader<PackageDetailResponse | PackageData>(() => getJson(`/api/packages/${id}`));
   const media = useLoader<MediaItem[]>(() => getJson<MediaItem[]>(`/api/packages/${id}/media`));
@@ -307,7 +331,11 @@ export default function PackageDetailPage() {
 
   const pkgDisplay = {
     ...pkgData,
-    customer: customersMap[pkgData.customerId] ?? `#${pkgData.customerId}`,
+    // Name plus the customer's code — the number staff quote on order forms.
+    customer: customersMap[pkgData.customerId]
+      ? `${customersMap[pkgData.customerId]} (#${pkgData.customerId})`
+      : `#${pkgData.customerId}`,
+    canOpenCustomer: canSee(role, 'customers'),
     shipmentRef: shipment.data?.refCode ?? (pkgData.shipmentId ? `#${pkgData.shipmentId}` : '—'),
     provisionMethod:
       pkgData.provisionMethod === 'ProcuredForCustomer' ? 'Procured For Customer' : 'Customer Provided',
@@ -317,6 +345,9 @@ export default function PackageDetailPage() {
       ? `#${pkgData.supplyOrderId}`
       : '—',
     weightTons: (pkgData.weightKg ?? 0) / 1000,
+    priceBasisLabel: PRICE_BASIS_LABELS[pkgData.priceBasis ?? 'Unknown'] ?? '—',
+    netAmount:
+      (pkgData.chargeAmount ?? 0) + (pkgData.feeAmount ?? 0) - (pkgData.discountAmount ?? 0),
   };
 
   const shipmentDisplay = shipment.data
@@ -346,6 +377,28 @@ export default function PackageDetailPage() {
     { type: InformationWidgetFieldTypes.Date, name: 'plannedArrivalDate', title: 'Planned Arrival' },
   ];
 
+  const adjustAction =
+    canOverridePricing(role) && !PRICING_OVERRIDE_LOCKED.has(pkgData.status)
+      ? { action: { label: 'Adjust', onClick: () => setAdjustOpen(true) } }
+      : {};
+
+  const saveAdjustments = async (values: Record<string, unknown>) => {
+    try {
+      await patchJson(`/api/packages/${id}/adjustments`, {
+        feeAmount: Number(values.feeAmount ?? 0),
+        feeReason: values.feeReason || null,
+        discountAmount: Number(values.discountAmount ?? 0),
+        discountReason: values.discountReason || null,
+      });
+      toast.success('Fee / discount updated');
+      setAdjustOpen(false);
+      await pkg.reload();
+      await audit.reload();
+    } catch (e) {
+      toast.error(parseApiError(e).message);
+    }
+  };
+
   const overrideAction = (kind: 'RatePerKg' | 'RatePerCbm' | 'TotalCharge') =>
     canOverridePricing(role) && !PRICING_OVERRIDE_LOCKED.has(pkgData.status)
       ? {
@@ -365,6 +418,10 @@ export default function PackageDetailPage() {
     { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerCbm', title: 'Rate Per CBM', ...overrideAction('RatePerCbm') },
     { type: InformationWidgetFieldTypes.Text, name: 'appliedRatePerKg', title: 'Rate Per Kg', ...overrideAction('RatePerKg') },
     { type: InformationWidgetFieldTypes.Currency, name: 'chargeAmount', title: 'Charge Amount', currency: displayCcy, ...overrideAction('TotalCharge') },
+    { type: InformationWidgetFieldTypes.Text, name: 'priceBasisLabel', title: 'Priced On' },
+    { type: InformationWidgetFieldTypes.Currency, name: 'feeAmount', title: 'Fee', currency: displayCcy, ...adjustAction },
+    { type: InformationWidgetFieldTypes.Currency, name: 'discountAmount', title: 'Discount', currency: displayCcy, ...adjustAction },
+    { type: InformationWidgetFieldTypes.Currency, name: 'netAmount', title: 'Net Total', currency: displayCcy },
   ];
 
   const titleActions: MainPageAction[] = (ALLOWED_TRANSITIONS[pkgData.status] ?? [])
@@ -447,6 +504,14 @@ export default function PackageDetailPage() {
           </div>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
+            {canSendWhatsApp(role) && shipment.data?.status && pkgData.shipmentId ? (
+              <WhatsAppSendCards
+                shipmentId={pkgData.shipmentId}
+                shipmentStatus={shipment.data.status}
+                customerId={pkgData.customerId}
+                customerName={customersMap[pkgData.customerId] ?? `#${pkgData.customerId}`}
+              />
+            ) : null}
             <InformationWidget title="Package Info" fields={PKG_INFO_FIELDS} data={pkgDisplay as never} />
             {shipmentDisplay && (
               <InformationWidget
@@ -623,6 +688,50 @@ export default function PackageDetailPage() {
           overrides.reload();
         }}
       />
+
+      <GenericDialog
+        open={adjustOpen}
+        onClose={() => setAdjustOpen(false)}
+        title="Fee / Discount"
+        size="sm"
+      >
+        <DynamicFormWidget
+          fields={{
+            feeAmount: {
+              type: DynamicField.CURRENCY,
+              name: 'feeAmount',
+              title: 'Fee',
+              value: String(pkgData.feeAmount ?? 0),
+              grid: { sm: 6 },
+            },
+            feeReason: {
+              type: DynamicField.TEXT,
+              name: 'feeReason',
+              title: 'Fee reason',
+              value: pkgData.feeReason ?? '',
+              grid: { sm: 6 },
+              conditionalRequired: (v) => Number(v.feeAmount ?? 0) > 0,
+            },
+            discountAmount: {
+              type: DynamicField.CURRENCY,
+              name: 'discountAmount',
+              title: 'Discount',
+              value: String(pkgData.discountAmount ?? 0),
+              grid: { sm: 6 },
+            },
+            discountReason: {
+              type: DynamicField.TEXT,
+              name: 'discountReason',
+              title: 'Discount reason',
+              value: pkgData.discountReason ?? '',
+              grid: { sm: 6 },
+              conditionalRequired: (v) => Number(v.discountAmount ?? 0) > 0,
+            },
+          }}
+          onSubmit={saveAdjustments}
+          drawerMode
+        />
+      </GenericDialog>
 
       <EditPackageDialog
         open={editPkgOpen}
