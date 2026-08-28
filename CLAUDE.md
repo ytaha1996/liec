@@ -72,7 +72,7 @@ liec/
 | **PricingConfig** | Name, Currency, DefaultRatePerKg, DefaultRatePerCbm, MinimumCharge, Status | Lifecycle: Draft→Scheduled→Active→Retired |
 | **Shipment** | RefCode (unique), TiiuCode, OriginWarehouseId, DestinationWarehouseId, Status, MaxWeightKg, MaxCbm, TotalWeightKg, TotalCbm, PlannedDepartureDate, PlannedArrivalDate, ActualDepartureAt, ActualArrivalAt | 1:many Packages |
 | **ShipmentSequence** | OriginWarehouseCode, Year, LastNumber | RefCode format: `{CODE}-{YY}{NN}` |
-| **Package** | ShipmentId, CustomerId, ProvisionMethod, Status, WeightKg, Cbm, Currency, AppliedRatePerKg, AppliedRatePerCbm, ChargeAmount, HasDeparturePhotos, HasArrivalPhotos, HasPricingOverride, SupplyOrderId, Note | 1:many Items/Media/PricingOverrides |
+| **Package** | ShipmentId, CustomerId, ProvisionMethod, Status, WeightKg, Cbm, Currency, AppliedRatePerKg, AppliedRatePerCbm, ChargeAmount, PriceBasis, FeeAmount, FeeReason, DiscountAmount, DiscountReason, HasDeparturePhotos, HasArrivalPhotos, HasPricingOverride, SupplyOrderId, Note | 1:many Items/Media/PricingOverrides |
 | **PackageItem** | PackageId, GoodTypeId, Quantity (default 1), Note | No weight/volume (moved to Package) |
 | **PackagePricingOverride** | PackageId, OverrideType, OriginalValue, NewValue, Reason, AdminUserId | 3 types: RatePerKg, RatePerCbm, TotalCharge |
 | **Supplier** | Name, Email, IsActive | For procurement |
@@ -90,6 +90,7 @@ PackageStatus:      Draft, Received, Packed, ReadyToShip, Shipped, ArrivedAtDest
 SupplyOrderStatus:  Draft, Approved, Ordered, DeliveredToWarehouse, PackedIntoPackage, Closed, Cancelled
 PricingConfigStatus: Draft, Scheduled, Active, Retired
 PricingOverrideType: RatePerKg, RatePerCbm, TotalCharge
+PriceBasis:         Unknown, Cbm, Weight, Minimum, Custom
 ProvisionMethod:    CustomerProvided, ProcuredForCustomer
 MediaStage:         Receiving, Departure, Arrival, Other
 CampaignType:       StatusUpdate, DeparturePhotos, ArrivalPhotos
@@ -141,6 +142,12 @@ Draft → Approved → Ordered → DeliveredToWarehouse → PackedIntoPackage �
 - MinimumCharge enforced if set on config
 - Pricing frozen once shipped or override applied
 - Override types: RatePerKg, RatePerCbm, TotalCharge (all audited)
+- **PriceBasis** records which side set the freight (Cbm / Weight / Minimum / Custom).
+  Stamped by PricingService and the override path; `Services/PriceBasisHelper.cs` is the
+  single definition, shared by exports and reports. Legacy rows are backfilled at startup.
+- **Fee / Discount** ride on top of the freight (the BOL's FEES column) and are stored
+  separately from ChargeAmount, so a pricing recalc never wipes them and the invoice keeps
+  the split. Net = ChargeAmount + FeeAmount − DiscountAmount, derived and never stored.
 
 ---
 
@@ -187,6 +194,7 @@ Controllers → Business → Services → Data (AppDbContext)
 - Items: `POST /{id}/items`, `PUT /{id}/items/{itemId}`, `DELETE /{id}/items/{itemId}`
 - Media: `POST /{id}/media` [FormFile], `GET /{id}/media`, `DELETE /{id}/media/{mediaId}`
 - Pricing: `POST /{id}/pricing-override`, `GET /{id}/pricing-overrides`
+- Adjustments: `PATCH /{id}/adjustments` — fee/discount + reasons (Admin/Manager/Accountant)
 
 **SupplyOrders** (`/api/supply-orders`)
 - GET, GET /{id}, POST, PUT /{id}
@@ -197,10 +205,21 @@ Controllers → Business → Services → Data (AppDbContext)
 - `POST /customers/{customerId}/whatsapp/status?shipmentId=`, `/photos/departure?shipmentId=`, `/photos/arrival?shipmentId=`
 - `GET /whatsapp/campaigns`, `GET /whatsapp/campaigns/{id}`
 
+**Reports** (`/api/reports`) — Admin/Manager/Accountant
+- `GET /` — the report catalogue (key, title, description, supported filters)
+- `GET /{key}` [?from&to&customerId&shipmentId&shipmentStatus&originWarehouseId&destinationWarehouseId&limit]
+  — one report as `{ columns, rows, totals }`, aggregated DB-side. Four reports:
+  `customer-summary` (every customer: shipments, volume, weight, freight/fees/discounts,
+  **Total Billed**), `top-customers` (ranked, with per-CBM and per-ton rates; `limit` default 15),
+  `revenue-by-month`, `container-utilisation` (used vs max, % full, what it carried).
+  Rows are loose dictionaries keyed by column, so the page and the Excel writer render any
+  report without bespoke code — a new report is one builder in `Services/ReportService.cs`
+
 **Exports** (`/api/exports`)
 - `POST /group-helper` — VCF/CSV customer contacts
 - `POST /shipments/{id}/bol-report` — Excel BOL
 - `POST /shipments/{id}/customer-invoices-excel` — per-customer invoice sheets
+- `POST /reports/{key}` — Excel of any report, driven by its own columns
 
 ### Services (Services/)
 
@@ -210,7 +229,8 @@ Controllers → Business → Services → Data (AppDbContext)
 | **BlobStorageService** | Azure Blob upload/delete, container `"media"` and `"exports"` |
 | **RefCodeService** | Shipment ref codes: `{CODE}-{YY}{NN}` |
 | **CapacityService** | Sums package weights/CBM for shipment |
-| **PricingService** | Rate calculation from config + good type |
+| **PricingService** | Rate calculation from config + good type; stamps PriceBasis |
+| **ReportService** | The report catalogue behind `/api/reports` — one builder per report |
 | **PhotoComplianceService** | Gate checks for departure/close/handout |
 | **ImageWatermarkService** | SkiaSharp customer name overlay on photos (best-effort) |
 | **TwilioWhatsAppSender** | Twilio API messaging (API-key auth preferred), phone validation, SID logging, media chunking (max 10/msg), test-mode redirect via `Twilio:TestPhoneNumbers` |
@@ -271,6 +291,7 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 - `/ops/dashboard` → DashboardPage (stats, pending container alerts)
 - `/ops/shipments` → ShipmentsPage (list + create with capacity columns)
 - `/ops/shipments/:id` → ShipmentDetailPage (info, capacity bars, transitions, packages table + bulk transitions, FX snapshots, WhatsApp, exports)
+- `/ops/reports` → ReportsPage (report picker, per-report filters, totals, Excel export) — Admin/Manager/Accountant
 - `/ops/packages` → hidden; redirects to `/ops/shipments` (packages are managed from their shipment)
 - `/ops/packages/:id` → PackageDetailPage (info, pricing, items + bulk add, photos, documents, overrides, transitions) — still reachable
 
@@ -315,7 +336,8 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 - **Weight display:** Shown in **tons** (value / 1000, 3 decimals) everywhere in UI. Inputs remain in **kg**.
 - **Volume:** Labeled as **CBM** (not m3)
 - **Field ordering:** CBM first, then Weight — in tables, detail pages, and Excel exports
-- **Excel BOL:** Already uses tons + CBM-first ordering
+- **Excel BOL:** tons + CBM-first ordering; carries a "Priced On" column next to the
+  customer plus real Fees/Discount columns
 - **Customer invoice Excel:** Weight in tons, CBM in m3 with 3 decimals
 
 ---
@@ -333,7 +355,10 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 - `WhatsAppFrom` must be E.164 (`+…`) — sandbox `+14155238886` or the approved business number
 - Test mode: non-empty `Twilio:TestPhoneNumbers` array redirects ALL sends to those numbers with a `[TEST → +original]` prefix; empty array = production
 - Phone validation: must match `^\+\d{8,15}$`
-- Media: max 10 per message, remaining sent in follow-up messages
+- Media: **one attachment per WhatsApp message** — extra MediaUrl values are silently ignored by
+  WhatsApp (unlike MMS), so each photo is sent as its own message, 200ms apart, each error-checked
+- Images must be JPEG/PNG (Twilio does not transcode); uploads are re-encoded to JPEG by the
+  watermarker and HEIC is refused at upload. Image cap 5 MB, overall 20 MB
 - 200ms throttle between bulk sends
 - WhatsApp policy: free text only inside a 24h customer-service window; first outbound to a cold recipient needs a pre-approved Content Template
 

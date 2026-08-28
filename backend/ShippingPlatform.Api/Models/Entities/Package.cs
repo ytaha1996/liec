@@ -21,6 +21,20 @@ public class Package
     public bool HasDeparturePhotos { get; set; }
     public bool HasArrivalPhotos { get; set; }
     public bool HasPricingOverride { get; set; }
+
+    // Which side of the tariff set ChargeAmount (volume, weight, the configured
+    // minimum, or a negotiated total). Stamped by PricingService and the override
+    // path so exports and reports agree without recomputing.
+    public PriceBasis PriceBasis { get; set; } = PriceBasis.Unknown;
+
+    // Adjustments on top of the freight, mirroring the FEES column on the real
+    // BOL. Kept apart from ChargeAmount so a pricing recalc never wipes them and
+    // the freight/fee split survives into the invoice. Both are non-negative;
+    // the net (ChargeAmount + Fee - Discount) is derived, never stored.
+    public decimal FeeAmount { get; set; }
+    [MaxLength(500)] public string? FeeReason { get; set; }
+    public decimal DiscountAmount { get; set; }
+    [MaxLength(500)] public string? DiscountReason { get; set; }
     public int? SupplyOrderId { get; set; }
     [MaxLength(1000)] public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

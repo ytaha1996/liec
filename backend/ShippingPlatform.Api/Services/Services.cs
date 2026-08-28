@@ -137,19 +137,31 @@ public class CapacityService(AppDbContext db, IConfiguration cfg) : ICapacitySer
     }
 }
 
-public interface IImageWatermarkService { Stream Apply(Stream input, string text, string contentType); }
+/// <summary>
+/// Stamps the customer's name onto a photo. Returns the processed stream along
+/// with the content type and extension it actually produced — the watermarker
+/// re-encodes to JPEG, and storing that under the original type would leave the
+/// blob's Content-Type lying about its bytes.
+/// </summary>
+public record WatermarkResult(Stream Stream, string ContentType, string Extension);
+public interface IImageWatermarkService { WatermarkResult Apply(Stream input, string text, string contentType, string fileName); }
 public class ImageWatermarkService : IImageWatermarkService
 {
-    public Stream Apply(Stream input, string text, string contentType)
+    public WatermarkResult Apply(Stream input, string text, string contentType, string fileName)
     {
+        var originalExt = Path.GetExtension(fileName);
+        var unchanged = (Stream stream) => new WatermarkResult(stream, contentType, originalExt);
+
         // Watermark is a best-effort enhancement; if SkiaSharp is unavailable, return raw stream
         try
         {
-            if (!contentType.StartsWith("image/")) return input;
+            if (!contentType.StartsWith("image/")) return unchanged(input);
             var ms = new MemoryStream();
             input.CopyTo(ms); ms.Position = 0;
             using var bitmap = SkiaSharp.SKBitmap.Decode(ms);
-            if (bitmap is null) { ms.Position = 0; return ms; }
+            // Undecodable (HEIC from an iPhone, say) — pass the original bytes
+            // through untouched rather than mislabelling them.
+            if (bitmap is null) { ms.Position = 0; return unchanged(ms); }
             using var canvas = new SkiaSharp.SKCanvas(bitmap);
             var fontSize = Math.Min(Math.Min(bitmap.Width, bitmap.Height) * 0.06f, 96f);
             using var paint = new SkiaSharp.SKPaint
@@ -170,12 +182,13 @@ public class ImageWatermarkService : IImageWatermarkService
             var result = new MemoryStream();
             encoded.AsStream().CopyTo(result);
             result.Position = 0;
-            return result;
+            // Re-encoded: the bytes are JPEG now, whatever arrived.
+            return new WatermarkResult(result, "image/jpeg", ".jpg");
         }
         catch
         {
             if (input.CanSeek) input.Position = 0;
-            return input;
+            return unchanged(input);
         }
     }
 }
@@ -209,6 +222,7 @@ public class PricingService(AppDbContext db) : IPricingService
         if (package.WeightKg <= 0 && package.Cbm <= 0)
         {
             package.ChargeAmount = 0;
+            package.PriceBasis = PriceBasis.Unknown;
             return;
         }
 
@@ -217,6 +231,7 @@ public class PricingService(AppDbContext db) : IPricingService
         // (e.g. 285 kg / 2 m³ bills the CBM side; 625 kg / 0.75 m³ the weight side).
         var calculated = Math.Max(package.WeightKg * rateKg, package.Cbm * rateCbm);
         package.ChargeAmount = active.MinimumCharge > 0 ? Math.Max(calculated, active.MinimumCharge) : calculated;
+        package.PriceBasis = PriceBasisHelper.Resolve(package);
     }
 }
 
@@ -365,9 +380,10 @@ public class TwilioWhatsAppSender : IWhatsAppSender
     {
         try
         {
-            var urls = mediaUrls?.ToList() ?? [];
-            var firstBatch = urls.Take(10).Select(u => new Uri(u)).ToList();
+            var urls = mediaUrls?.Where(u => !string.IsNullOrWhiteSpace(u)).ToList() ?? [];
 
+            // First message carries the text; when there are photos it also
+            // carries the first one as a captioned image.
             var options = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
                 new Twilio.Types.PhoneNumber($"whatsapp:{phone}"))
             {
@@ -375,8 +391,8 @@ public class TwilioWhatsAppSender : IWhatsAppSender
                 Body = text,
             };
 
-            if (firstBatch.Count > 0)
-                options.MediaUrl = firstBatch;
+            if (urls.Count > 0)
+                options.MediaUrl = [new Uri(urls[0])];
 
             var msg = await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(options);
 
@@ -403,17 +419,39 @@ public class TwilioWhatsAppSender : IWhatsAppSender
                 return (false, errMsg);
             }
 
-            // Send remaining media in chunks of 10 if more than 10 photos.
-            for (var i = 10; i < urls.Count; i += 10)
+            // Every remaining photo needs its own message. Failures here are
+            // reported rather than swallowed: a caller told "sent" while eight
+            // of nine photos vanished is worse than a partial-failure error.
+            var failures = new List<string>();
+            for (var i = 1; i < urls.Count; i++)
             {
-                var chunk = urls.Skip(i).Take(10).Select(u => new Uri(u)).ToList();
-                var chunkOpts = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
+                // Twilio's own guidance is to pace bulk sends; the campaign loop
+                // throttles between recipients, this throttles between photos.
+                await Task.Delay(200);
+
+                var photoOpts = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
                     new Twilio.Types.PhoneNumber($"whatsapp:{phone}"))
                 {
                     From = new Twilio.Types.PhoneNumber($"whatsapp:{_from}"),
-                    MediaUrl = chunk,
+                    MediaUrl = [new Uri(urls[i])],
                 };
-                await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(chunkOpts);
+                var extra = await Twilio.Rest.Api.V2010.Account.MessageResource.CreateAsync(photoOpts);
+                _logger.LogInformation(
+                    "WhatsApp media {Index}/{Total}: phone={Phone} sid={Sid} status={Status} errorCode={ErrorCode}",
+                    i + 1, urls.Count, phone, extra.Sid, extra.Status, extra.ErrorCode);
+
+                if (extra.ErrorCode != null)
+                    failures.Add($"photo {i + 1}/{urls.Count}: Twilio error {extra.ErrorCode}: {extra.ErrorMessage}");
+                else if (extra.Status == Twilio.Rest.Api.V2010.Account.MessageResource.StatusEnum.Failed
+                         || extra.Status == Twilio.Rest.Api.V2010.Account.MessageResource.StatusEnum.Undelivered)
+                    failures.Add($"photo {i + 1}/{urls.Count}: status {extra.Status} — {extra.ErrorMessage}");
+            }
+
+            if (failures.Count > 0)
+            {
+                var errMsg = string.Join(" | ", failures);
+                _logger.LogWarning("WhatsApp photo sends partially failed for {Phone}: {Err}", phone, errMsg);
+                return (false, errMsg);
             }
 
             return (true, null);
@@ -440,6 +478,7 @@ public interface IExportService
     Task<string> GenerateShipmentCustomerInvoicesExcelAsync(int shipmentId, CancellationToken ct = default);
     Task<string> GenerateShipmentCommercialDocumentsAsync(int shipmentId, CancellationToken ct = default);
     Task<string> GenerateCustomersExcelAsync(CancellationToken ct = default);
+    Task<string> GenerateReportExcelAsync(ReportResultDto report, ReportFilter filter, CancellationToken ct = default);
 }
 
 public class ExportService(
@@ -557,6 +596,104 @@ public class ExportService(
     private static readonly XLColor FooterTotalFill = XLColor.FromHtml("#D6E3F0");
     private static readonly XLColor DateLabelText   = XLColor.FromHtml("#1F3A5F");
 
+    /// <summary>
+    /// Excel of whatever the Reports page is showing. Driven entirely by the
+    /// report definition, so a new report needs no export code and the file can
+    /// never disagree with the screen.
+    /// </summary>
+    public async Task<string> GenerateReportExcelAsync(ReportResultDto report, ReportFilter filter, CancellationToken ct = default)
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Report");
+        var amountFormat = string.Equals(report.Currency, "XAF", StringComparison.OrdinalIgnoreCase) ? "#,##0" : "#,##0.00";
+        var lastCol = Math.Max(report.Columns.Count, 1);
+
+        ws.Range(1, 1, 1, lastCol).Merge().SetValue(report.Title.ToUpperInvariant());
+        StyleTitle(ws.Range(1, 1, 1, lastCol), 16);
+
+        var period = filter.From is null && filter.To is null
+            ? "All time"
+            : $"{filter.From?.ToString("dd MMM yyyy") ?? "Start"} to {filter.To?.ToString("dd MMM yyyy") ?? "Today"}";
+        ws.Cell("A3").Value = "Period:"; ws.Cell("B3").Value = period;
+        ws.Cell("D3").Value = "Currency:"; ws.Cell("E3").Value = report.Currency;
+        StyleMetaRow(ws.Range(3, 1, 3, lastCol));
+        ws.Cell("A3").Style.Font.Bold = true; ws.Cell("D3").Style.Font.Bold = true;
+        ws.Cell("A4").SetValue($"Generated: {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC");
+        ws.Cell("A4").Style.Font.Italic = true; ws.Cell("A4").Style.Font.FontSize = 9; ws.Cell("A4").Style.Font.FontColor = XLColor.Gray;
+
+        for (var c = 0; c < report.Columns.Count; c++)
+            ws.Cell(6, c + 1).Value = report.Columns[c].Label;
+        StyleColumnHeaders(ws.Range(6, 1, 6, lastCol));
+
+        var row = 7;
+        foreach (var r in report.Rows)
+        {
+            for (var c = 0; c < report.Columns.Count; c++)
+            {
+                var col = report.Columns[c];
+                WriteCell(ws.Cell(row, c + 1), r.GetValueOrDefault(col.Key), col.Type, amountFormat);
+            }
+            StyleDataRow(ws.Range(row, 1, row, lastCol), row);
+            row++;
+        }
+
+        // Totals line up under the columns they total; the first column just
+        // says TOTAL.
+        if (report.Totals.Count > 0)
+        {
+            ws.Cell(row, 1).Value = "TOTAL";
+            for (var c = 1; c < report.Columns.Count; c++)
+            {
+                var col = report.Columns[c];
+                if (report.Totals.TryGetValue(col.Key, out var value))
+                    WriteCell(ws.Cell(row, c + 1), value, col.Type, amountFormat);
+            }
+            var totalsRange = ws.Range(row, 1, row, lastCol);
+            totalsRange.Style.Font.Bold = true;
+            totalsRange.Style.Border.TopBorder = XLBorderStyleValues.Double;
+        }
+
+        ws.Column(1).Width = 32;
+        for (var c = 2; c <= lastCol; c++) ws.Column(c).Width = 15;
+        ws.SheetView.FreezeRows(6);
+        ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+        ws.PageSetup.FitToPages(1, 0);
+        ApplyOuterBorder(ws);
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        var fileName = BuildExportFileName(report.Key, null, "xlsx");
+        var key = ExportBlobKey(fileName);
+        var container = cfg["AzureBlob:ExportsContainer"] ?? "exports";
+        var (_, url) = await blob.UploadAsync(container, fileName, ms, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key, ct);
+        return url;
+    }
+
+    /// <summary>Writes one report cell in the shape its column type asks for.</summary>
+    private static void WriteCell(IXLCell cell, object? value, string type, string amountFormat)
+    {
+        if (value is null) { cell.Value = "—"; return; }
+
+        switch (type)
+        {
+            case "Currency":
+                cell.Value = Convert.ToDecimal(value);
+                cell.Style.NumberFormat.Format = amountFormat;
+                break;
+            case "Decimal3":
+                cell.Value = Convert.ToDecimal(value);
+                cell.Style.NumberFormat.Format = "#,##0.000";
+                break;
+            case "Number":
+                cell.Value = Convert.ToDecimal(value);
+                cell.Style.NumberFormat.Format = "#,##0.##";
+                break;
+            default:
+                cell.Value = value.ToString();
+                break;
+        }
+    }
     public async Task<string> GenerateShipmentBolReportAsync(int shipmentId, CancellationToken ct = default)
     {
         var shipment = await LoadShipmentExportData(shipmentId, ct);
@@ -575,39 +712,39 @@ public class ExportService(
         var amountFormat = string.Equals(currencyCode, "XAF", StringComparison.OrdinalIgnoreCase) ? "#,##0" : "#,##0.00";
 
         // ── Title row ──
-        ws.Range("A1:I1").Merge().SetValue("BILL OF LADING");
-        StyleTitle(ws.Range("A1:I1"), 16);
+        ws.Range("A1:K1").Merge().SetValue("BILL OF LADING");
+        StyleTitle(ws.Range("A1:K1"), 16);
 
         // ── Metadata rows ──
         ws.Cell("A3").Value = "Container:"; ws.Cell("B3").Value = shipment.RefCode;
         ws.Cell("C3").Value = "TIIU:"; ws.Cell("D3").Value = shipment.TiiuCode ?? "—";
         ws.Cell("F3").Value = "BL No:"; ws.Cell("G3").Value = shipment.RefCode;
         ws.Cell("H3").Value = "Currency:"; ws.Cell("I3").Value = $"{currencyCode} ({currencySymbol})";
-        StyleMetaRow(ws.Range("A3:I3"));
+        StyleMetaRow(ws.Range("A3:K3"));
         ws.Cell("A3").Style.Font.Bold = true; ws.Cell("C3").Style.Font.Bold = true; ws.Cell("F3").Style.Font.Bold = true; ws.Cell("H3").Style.Font.Bold = true;
 
         ws.Cell("A4").Value = "Origin:"; ws.Cell("B4").Value = $"{shipment.OriginWarehouse.Name} ({shipment.OriginWarehouse.Code})";
         ws.Cell("C4").Value = "Destination:"; ws.Cell("D4").Value = $"{shipment.DestinationWarehouse.Name} ({shipment.DestinationWarehouse.Code})";
-        StyleMetaRow(ws.Range("A4:I4"));
+        StyleMetaRow(ws.Range("A4:K4"));
         ws.Cell("A4").Style.Font.Bold = true; ws.Cell("C4").Style.Font.Bold = true;
 
         ws.Cell("A5").Value = "Departure EXW:"; ws.Cell("B5").Value = shipment.PlannedDepartureDate.ToString("dd MMM yyyy");
         ws.Cell("C5").Value = "Departure POL:"; ws.Cell("D5").Value = shipment.PlannedDepartureDate.ToString("dd MMM yyyy");
         ws.Cell("F5").Value = "Arrival POD:"; ws.Cell("G5").Value = shipment.PlannedArrivalDate.ToString("dd MMM yyyy");
-        StyleMetaRow(ws.Range("A5:I5"));
+        StyleMetaRow(ws.Range("A5:K5"));
         ws.Cell("A5").Style.Font.Bold = true; ws.Cell("C5").Style.Font.Bold = true; ws.Cell("F5").Style.Font.Bold = true;
 
-        ws.Cell("I6").SetValue($"Generated: {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC");
-        ws.Cell("I6").Style.Font.Italic = true;
-        ws.Cell("I6").Style.Font.FontColor = XLColor.Gray;
-        ws.Cell("I6").Style.Font.FontSize = 9;
-        ws.Cell("I6").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        ws.Cell("K6").SetValue($"Generated: {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC");
+        ws.Cell("K6").Style.Font.Italic = true;
+        ws.Cell("K6").Style.Font.FontColor = XLColor.Gray;
+        ws.Cell("K6").Style.Font.FontSize = 9;
+        ws.Cell("K6").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
         // ── Column Headers ──
-        var headers = new[] { "#", "Customer", "CBM", "Weight (Tons)", "Rate", "Freight", "Fees", "Total", "Notes" };
+        var headers = new[] { "#", "Customer", "Priced On", "CBM", "Weight (Tons)", "Rate", "Freight", "Fees", "Discount", "Total", "Notes" };
         for (var c = 0; c < headers.Length; c++)
             ws.Cell(8, c + 1).Value = headers[c];
-        StyleColumnHeaders(ws.Range(8, 1, 8, 9));
+        StyleColumnHeaders(ws.Range(8, 1, 8, 11));
 
         // ── Data ──
         var grouped = shipment.Packages
@@ -621,7 +758,14 @@ public class ExportService(
                 WeightTons = g.Sum(x => x.WeightKg) / 1000m,
                 Rate = g.Average(x => x.WeightKg * x.AppliedRatePerKg >= x.Cbm * x.AppliedRatePerCbm ? x.AppliedRatePerKg : x.AppliedRatePerCbm),
                 Freight = g.Sum(x => x.ChargeAmount),
-                Fees = 0m,
+                Fees = g.Sum(x => x.FeeAmount),
+                Discount = g.Sum(x => x.DiscountAmount),
+                // One customer can hold several packages (real 925 example:
+                // JAMAL HOUBBALLAH, order forms 19 & 22) — "Mixed" when they
+                // were not priced the same way.
+                Basis = PriceBasisHelper.GroupLabel(g),
+                Reasons = string.Join("; ", g.Select(x => x.FeeReason).Concat(g.Select(x => x.DiscountReason))
+                    .Where(r => !string.IsNullOrWhiteSpace(r))),
             })
             .ToList();
 
@@ -630,32 +774,37 @@ public class ExportService(
         {
             ws.Cell(row, 1).Value = g.No;
             ws.Cell(row, 2).Value = g.CustomerName;
-            ws.Cell(row, 3).Value = g.Cbm; ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.000";
-            ws.Cell(row, 4).Value = g.WeightTons; ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
-            ws.Cell(row, 5).Value = g.Rate; ws.Cell(row, 5).Style.NumberFormat.Format = amountFormat;
-            ws.Cell(row, 6).Value = g.Freight; ws.Cell(row, 6).Style.NumberFormat.Format = amountFormat;
-            ws.Cell(row, 7).Value = g.Fees; ws.Cell(row, 7).Style.NumberFormat.Format = amountFormat;
-            ws.Cell(row, 8).Value = g.Freight + g.Fees; ws.Cell(row, 8).Style.NumberFormat.Format = amountFormat; ws.Cell(row, 8).Style.Font.Bold = true;
-            ws.Cell(row, 9).Value = "";
-            StyleDataRow(ws.Range(row, 1, row, 9), row);
+            ws.Cell(row, 3).Value = g.Basis;
+            ws.Cell(row, 4).Value = g.Cbm; ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
+            ws.Cell(row, 5).Value = g.WeightTons; ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0.000";
+            ws.Cell(row, 6).Value = g.Rate; ws.Cell(row, 6).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 7).Value = g.Freight; ws.Cell(row, 7).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 8).Value = g.Fees; ws.Cell(row, 8).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 9).Value = g.Discount; ws.Cell(row, 9).Style.NumberFormat.Format = amountFormat;
+            ws.Cell(row, 10).Value = g.Freight + g.Fees - g.Discount; ws.Cell(row, 10).Style.NumberFormat.Format = amountFormat; ws.Cell(row, 10).Style.Font.Bold = true;
+            ws.Cell(row, 11).Value = g.Reasons;
+            StyleDataRow(ws.Range(row, 1, row, 11), row);
             row++;
         }
 
         // ── Totals row ──
         ws.Cell(row, 2).Value = "TOTAL"; ws.Cell(row, 2).Style.Font.Bold = true;
-        ws.Cell(row, 3).Value = grouped.Sum(x => x.Cbm); ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.000";
-        ws.Cell(row, 4).Value = grouped.Sum(x => x.WeightTons); ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
-        ws.Cell(row, 6).Value = grouped.Sum(x => x.Freight); ws.Cell(row, 6).Style.NumberFormat.Format = amountFormat;
-        ws.Cell(row, 7).Value = grouped.Sum(x => x.Fees); ws.Cell(row, 7).Style.NumberFormat.Format = amountFormat;
-        ws.Cell(row, 8).Value = grouped.Sum(x => x.Freight + x.Fees); ws.Cell(row, 8).Style.NumberFormat.Format = amountFormat;
-        var totalsRange = ws.Range(row, 1, row, 9);
+        ws.Cell(row, 4).Value = grouped.Sum(x => x.Cbm); ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.000";
+        ws.Cell(row, 5).Value = grouped.Sum(x => x.WeightTons); ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0.000";
+        ws.Cell(row, 7).Value = grouped.Sum(x => x.Freight); ws.Cell(row, 7).Style.NumberFormat.Format = amountFormat;
+        ws.Cell(row, 8).Value = grouped.Sum(x => x.Fees); ws.Cell(row, 8).Style.NumberFormat.Format = amountFormat;
+        ws.Cell(row, 9).Value = grouped.Sum(x => x.Discount); ws.Cell(row, 9).Style.NumberFormat.Format = amountFormat;
+        ws.Cell(row, 10).Value = grouped.Sum(x => x.Freight + x.Fees - x.Discount); ws.Cell(row, 10).Style.NumberFormat.Format = amountFormat;
+        var totalsRange = ws.Range(row, 1, row, 11);
         totalsRange.Style.Font.Bold = true;
         totalsRange.Style.Border.TopBorder = XLBorderStyleValues.Double;
 
+
         // ── Column widths + layout ──
-        ws.Column(1).Width = 5; ws.Column(2).Width = 30; ws.Column(3).Width = 12;
-        ws.Column(4).Width = 14; ws.Column(5).Width = 12; ws.Column(6).Width = 14;
-        ws.Column(7).Width = 12; ws.Column(8).Width = 14; ws.Column(9).Width = 20;
+        ws.Column(1).Width = 5; ws.Column(2).Width = 30; ws.Column(3).Width = 11;
+        ws.Column(4).Width = 12; ws.Column(5).Width = 14; ws.Column(6).Width = 12;
+        ws.Column(7).Width = 14; ws.Column(8).Width = 12; ws.Column(9).Width = 12;
+        ws.Column(10).Width = 14; ws.Column(11).Width = 28;
         ws.SheetView.FreezeRows(8);
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
         ws.PageSetup.FitToPages(1, 0);
@@ -723,6 +872,11 @@ public class ExportService(
         var totalCbm = group.Sum(x => x.Cbm);
         var totalWeight = group.Sum(x => x.WeightKg);
         var totalFreight = group.Sum(x => x.ChargeAmount);
+        var totalFee = group.Sum(x => x.FeeAmount);
+        var totalDiscount = group.Sum(x => x.DiscountAmount);
+        var netTotal = totalFreight + totalFee - totalDiscount;
+        var adjustmentReasons = string.Join("; ", group.Select(x => x.FeeReason).Concat(group.Select(x => x.DiscountReason))
+            .Where(r => !string.IsNullOrWhiteSpace(r)));
 
         // ── Title ──
         ws.Range("A1:D1").Merge().SetValue("CUSTOMER INVOICE");
@@ -740,16 +894,39 @@ public class ExportService(
 
         ws.Cell("A5").Value = $"CBM: {Math.Round(totalCbm, 3)} m\u00B3";
         ws.Cell("B5").Value = $"Weight: {totalWeight / 1000m:N3} t";
-        ws.Cell("C5").Value = totalFreight <= 0 ? "FOR FREE" : $"Freight: {Math.Round(totalFreight, 0):N0} {currencySymbol}";
+        ws.Cell("C5").Value = $"Priced on: {PriceBasisHelper.GroupLabel(group)}";
         StyleMetaRow(ws.Range("A5:D5"));
         ws.Cell("A5").Style.Font.Bold = true; ws.Cell("B5").Style.Font.Bold = true; ws.Cell("C5").Style.Font.Bold = true;
 
+        // Freight and its adjustments stay itemised so the customer can see what
+        // the total is made of, rather than a single reconciled number.
+        if (netTotal <= 0)
+        {
+            ws.Cell("A6").Value = "FOR FREE";
+        }
+        else
+        {
+            ws.Cell("A6").Value = $"Freight: {Math.Round(totalFreight, 0):N0} {currencySymbol}";
+            if (totalFee > 0) ws.Cell("B6").Value = $"Fee: +{Math.Round(totalFee, 0):N0} {currencySymbol}";
+            if (totalDiscount > 0) ws.Cell("C6").Value = $"Discount: -{Math.Round(totalDiscount, 0):N0} {currencySymbol}";
+            ws.Cell("D6").Value = $"TOTAL: {Math.Round(netTotal, 0):N0} {currencySymbol}";
+        }
+        StyleMetaRow(ws.Range("A6:D6"));
+        ws.Range("A6:D6").Style.Font.Bold = true;
+        if (!string.IsNullOrWhiteSpace(adjustmentReasons))
+        {
+            ws.Cell("A7").Value = adjustmentReasons;
+            ws.Cell("A7").Style.Font.Italic = true;
+            ws.Cell("A7").Style.Font.FontSize = 9;
+            ws.Cell("A7").Style.Font.FontColor = XLColor.Gray;
+        }
+
         // ── Column Headers ──
-        ws.Cell(7, 1).Value = "Item"; ws.Cell(7, 2).Value = "Qty"; ws.Cell(7, 3).Value = "Unit"; ws.Cell(7, 4).Value = "Notes";
-        StyleColumnHeaders(ws.Range(7, 1, 7, 4));
+        ws.Cell(9, 1).Value = "Item"; ws.Cell(9, 2).Value = "Qty"; ws.Cell(9, 3).Value = "Unit"; ws.Cell(9, 4).Value = "Notes";
+        StyleColumnHeaders(ws.Range(9, 1, 9, 4));
 
         // ── Data ──
-        var row = 8;
+        var row = 10;
         var lines = group.SelectMany(p => p.Items.Select(i => new { Item = i, PackageNote = p.Note })).ToList();
         if (lines.Count == 0)
         {
@@ -778,7 +955,7 @@ public class ExportService(
         ws.Column(2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         ws.Column(3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         ws.Column(4).Style.Alignment.WrapText = true;
-        ws.SheetView.FreezeRows(7);
+        ws.SheetView.FreezeRows(9);
         ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
         ws.PageSetup.FitToPages(1, 0);
         ApplyOuterBorder(ws);

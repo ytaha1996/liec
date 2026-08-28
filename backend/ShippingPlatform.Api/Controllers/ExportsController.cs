@@ -19,6 +19,9 @@ public class ExportsController(IExportBusiness business) : ControllerBase
     [HttpPost("shipments/{shipmentId:int}/customer-invoices-excel")]
     public async Task<IActionResult> ShipmentCustomerInvoicesExcel(int shipmentId) => Ok(await business.ShipmentCustomerInvoicesExcelAsync(shipmentId));
 
+    [HttpPost("reports/{key}")]
+    public async Task<IActionResult> Report(string key, ReportFilter filter) => Ok(await business.ReportExcelAsync(key, filter));
+
     [HttpPost("customers-excel")]
     public async Task<IActionResult> CustomersExcel() => Ok(await business.CustomersExcelAsync());
 

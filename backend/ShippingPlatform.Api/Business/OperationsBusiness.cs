@@ -64,7 +64,8 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
                 p.Status, p.WeightKg, p.Cbm,
                 p.Currency, p.AppliedRatePerKg, p.AppliedRatePerCbm, p.ChargeAmount,
                 p.HasDeparturePhotos, p.HasArrivalPhotos, p.HasPricingOverride,
-                p.SupplyOrderId, p.Note, p.CreatedAt))
+                p.SupplyOrderId, p.Note, p.CreatedAt,
+                p.PriceBasis, p.FeeAmount, p.DiscountAmount, p.ChargeAmount + p.FeeAmount - p.DiscountAmount))
             .ToList();
 
         return new ShipmentDetailDto(
@@ -329,14 +330,24 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
         var moved = packages.Where(p => ids.Contains(p.Id)).ToList();
 
         var demoted = 0;
+        var trail = new List<(int Id, PackageStatus Before, PackageStatus After)>();
         foreach (var p in moved)
         {
+            var before = p.Status;
             // The target is a Draft shipment and ReadyToShip requires Scheduled+,
             // so a re-planned package steps back to Packed.
             if (p.Status == PackageStatus.ReadyToShip) { p.Status = PackageStatus.Packed; demoted++; }
             p.ShipmentId = target.Id;
+            trail.Add((p.Id, before, p.Status));
         }
         await db.SaveChangesAsync();
+
+        // Each package carries its own record of the move, so the status step
+        // back to Packed is visible where an operator looks for it.
+        foreach (var (pkgId, before, after) in trail)
+            await audit.LogAsync("Package", pkgId, "MovedToShipment",
+                $"shipment={s.RefCode} status={before}",
+                $"shipment={target.RefCode} status={after}");
 
         // Nothing left to carry — the emptied shipment is cancelled outright.
         var remaining = await db.Packages.CountAsync(p => p.ShipmentId == id && p.Status != PackageStatus.Cancelled);
@@ -352,8 +363,8 @@ public class ShipmentBusiness(AppDbContext db, IRefCodeService refs, IPhotoCompl
 
         await capacity.RecalculateAsync(id);
         await capacity.RecalculateAsync(target.Id);
-        await audit.LogAsync("Shipment", id, "PackagesMoved", $"{moved.Count} package(s)", $"moved to {target.RefCode}");
-        await audit.LogAsync("Shipment", target.Id, "PackagesReceived", $"{moved.Count} package(s)", $"moved from {s.RefCode}");
+        await audit.LogAsync("Shipment", id, "PackagesMoved", null, $"{moved.Count} package(s) moved to {target.RefCode}");
+        await audit.LogAsync("Shipment", target.Id, "PackagesReceived", null, $"{moved.Count} package(s) moved from {s.RefCode}");
 
         return (new
         {
@@ -411,12 +422,18 @@ public interface IPackageBusiness
     Task<List<PackageDocumentDto>> ListDocumentsAsync(int id);
     Task<object?> DeleteDocumentAsync(int packageId, int documentId, int? adminUserId);
     Task<(PackageDto? dto, object? error)> ApplyPricingOverrideAsync(int id, ApplyPricingOverrideRequest req, int adminUserId);
+    Task<(PackageDto? dto, object? error)> SetAdjustmentsAsync(int id, PackageAdjustmentsRequest req, int adminUserId);
     Task<List<PricingOverrideDto>> GetPricingOverridesAsync(int id);
     Task<(int transitioned, object? error)> BulkTransitionAsync(int shipmentId, BulkTransitionRequest request);
 }
 
 public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoComplianceService gates, IBlobStorageService blob, IConfiguration cfg, ITransitionRuleService transitions, ICapacityService capacity, IImageWatermarkService watermark, IRefCodeService refs, IAuditService audit) : IPackageBusiness
 {
+    // What WhatsApp will actually render (Twilio: JPG/JPEG/PNG; WEBP is
+    // stickers-only). Anything else is rejected at upload rather than at send.
+    private static readonly HashSet<string> WhatsAppSafeImageTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "image/jpeg", "image/jpg", "image/png" };
+
     public async Task<(PackageDto? dto, object? error)> CreateAsync(int shipmentId, CreatePackageRequest input)
     {
         // Validate customer exists and is active
@@ -758,10 +775,16 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (req.File is null || req.File.Length == 0) return new { code = "VALIDATION_ERROR", message = "File required." };
 
         await using var rawStream = req.File.OpenReadStream();
-        var processedStream = watermark.Apply(rawStream, $"{p.Customer.Name} (#{p.CustomerId})", req.File.ContentType);
-        var ext = Path.GetExtension(req.File.FileName);
-        var forced = $"media/packages/{id}/{req.Stage.ToString().ToLowerInvariant()}/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}{ext}";
-        var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, processedStream, req.File.ContentType, forced);
+        var processed = watermark.Apply(rawStream, $"{p.Customer.Name} (#{p.CustomerId})", req.File.ContentType, req.File.FileName);
+
+        // WhatsApp accepts JPEG/PNG/WEBP only and Twilio does not transcode, so
+        // anything else (HEIC straight off an iPhone) would upload fine and then
+        // fail silently at send time. Refuse it here, where it can be explained.
+        if (processed.ContentType.StartsWith("image/") && !WhatsAppSafeImageTypes.Contains(processed.ContentType))
+            return new { code = "VALIDATION_ERROR", message = $"'{processed.ContentType}' images cannot be sent over WhatsApp. Upload a JPEG or PNG." };
+
+        var forced = $"media/packages/{id}/{req.Stage.ToString().ToLowerInvariant()}/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid()}{processed.Extension}";
+        var (key, url) = await blob.UploadAsync(cfg["AzureBlob:MediaContainer"] ?? "media", req.File.FileName, processed.Stream, processed.ContentType, forced);
         var media = new Media { PackageId = id, Stage = req.Stage, BlobKey = key, PublicUrl = url, CapturedAt = req.CapturedAt, OperatorName = req.OperatorName, Notes = req.Notes, RecordedByAdminUserId = req.AdminUserId };
         db.Media.Add(media); await db.SaveChangesAsync();
         p.HasDeparturePhotos = await db.Media.AnyAsync(x => x.PackageId == id && x.Stage == MediaStage.Departure);
@@ -885,6 +908,11 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
                 break;
         }
 
+        // A negotiated total becomes Custom; a rate override still prices off
+        // one side of the tariff, so re-derive which side now wins.
+        p.PriceBasis = req.OverrideType == PricingOverrideType.TotalCharge
+            ? PriceBasis.Custom
+            : (p.WeightKg * p.AppliedRatePerKg >= p.Cbm * p.AppliedRatePerCbm ? PriceBasis.Weight : PriceBasis.Cbm);
         p.HasPricingOverride = true;
         db.PricingOverrides.Add(new PackagePricingOverride
         {
@@ -900,6 +928,36 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             $"{req.OverrideType}={originalValue}",
             $"{req.OverrideType}={req.NewValue} reason={req.Reason}",
             adminUserId);
+        return (p.ToDto(), null);
+    }
+
+    /// <summary>
+    /// Sets the fee and discount carried on top of the freight — the FEES column
+    /// on the operational BOL. Stored apart from ChargeAmount so a later pricing
+    /// recalc cannot wipe them and the split survives into the invoice.
+    /// </summary>
+    public async Task<(PackageDto? dto, object? error)> SetAdjustmentsAsync(int id, PackageAdjustmentsRequest req, int adminUserId)
+    {
+        var p = await db.Packages.FindAsync(id);
+        if (p is null) return (null, null);
+        if (p.Status >= PackageStatus.HandedOut) return (null, new { code = "PACKAGE_LOCKED", message = "Cannot change pricing on a package that has been handed out." });
+
+        var fee = req.FeeAmount ?? 0m;
+        var discount = req.DiscountAmount ?? 0m;
+        if (fee < 0 || discount < 0) return (null, new { code = "VALIDATION_ERROR", message = "Fee and discount cannot be negative." });
+        if (fee > 0 && string.IsNullOrWhiteSpace(req.FeeReason)) return (null, new { code = "VALIDATION_ERROR", message = "A reason is required for the fee." });
+        if (discount > 0 && string.IsNullOrWhiteSpace(req.DiscountReason)) return (null, new { code = "VALIDATION_ERROR", message = "A reason is required for the discount." });
+        if (p.ChargeAmount + fee - discount < 0) return (null, new { code = "VALIDATION_ERROR", message = "The discount cannot exceed the freight plus fee." });
+
+        var before = $"fee={p.FeeAmount} discount={p.DiscountAmount}";
+        p.FeeAmount = fee;
+        p.FeeReason = fee > 0 ? req.FeeReason : null;
+        p.DiscountAmount = discount;
+        p.DiscountReason = discount > 0 ? req.DiscountReason : null;
+        await db.SaveChangesAsync();
+
+        await audit.LogAsync("Package", id, "PricingAdjustment", before,
+            $"fee={fee} discount={discount} net={p.ChargeAmount + fee - discount}", adminUserId);
         return (p.ToDto(), null);
     }
 

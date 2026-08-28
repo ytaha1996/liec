@@ -139,6 +139,16 @@ public class PackagesController(IPackageBusiness business) : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Manager,Accountant")]
+    [HttpPatch("api/packages/{id:int}/adjustments")]
+    public async Task<IActionResult> SetAdjustments(int id, PackageAdjustmentsRequest req)
+    {
+        var adminId = int.TryParse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier), out var aid) ? aid : 0;
+        var (dto, err) = await business.SetAdjustmentsAsync(id, req, adminId);
+        if (err is not null) return BadRequest(err);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [Authorize(Roles = "Admin,Manager,Accountant")]
     [HttpPost("api/packages/{id:int}/pricing-override")]
     public async Task<IActionResult> ApplyPricingOverride(int id, ApplyPricingOverrideRequest req)
     {

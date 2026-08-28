@@ -3,6 +3,9 @@ namespace ShippingPlatform.Api.Models;
 public enum PricingConfigStatus { Draft, Scheduled, Active, Retired }
 public enum ShipmentStatus { Draft, Scheduled, ReadyToDepart, Departed, Arrived, Closed, Cancelled }
 public enum PricingOverrideType { RatePerKg, RatePerCbm, TotalCharge }
+// Which side of the tariff actually set the freight. Persisted so the BOL and
+// the reports can group by it without recomputing. Append-only.
+public enum PriceBasis { Unknown = 0, Cbm = 1, Weight = 2, Minimum = 3, Custom = 4 }
 public enum PackageStatus { Draft, Received, Packed, ReadyToShip, Shipped, ArrivedAtDestination, ReadyForHandout, HandedOut, Cancelled }
 public enum SupplyOrderStatus { Draft, Approved, Ordered, DeliveredToWarehouse, PackedIntoPackage, Closed, Cancelled }
 public enum ProvisionMethod { CustomerProvided, ProcuredForCustomer }

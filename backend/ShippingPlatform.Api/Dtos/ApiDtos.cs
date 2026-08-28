@@ -61,9 +61,16 @@ public record ShipmentDetailPackageDto(
     bool HasPricingOverride,
     int? SupplyOrderId,
     string? Note,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    PriceBasis PriceBasis,
+    decimal FeeAmount,
+    decimal DiscountAmount,
+    decimal NetAmount);
 
-public record PackageDto(int Id, int ShipmentId, int CustomerId, ProvisionMethod ProvisionMethod, PackageStatus Status, decimal WeightKg, decimal Cbm, string Currency, decimal AppliedRatePerKg, decimal AppliedRatePerCbm, decimal ChargeAmount, bool HasDeparturePhotos, bool HasArrivalPhotos, bool HasPricingOverride, int? SupplyOrderId, string? Note, DateTime CreatedAt);
+public record PackageDto(int Id, int ShipmentId, int CustomerId, ProvisionMethod ProvisionMethod, PackageStatus Status, decimal WeightKg, decimal Cbm, string Currency, decimal AppliedRatePerKg, decimal AppliedRatePerCbm, decimal ChargeAmount, bool HasDeparturePhotos, bool HasArrivalPhotos, bool HasPricingOverride, int? SupplyOrderId, string? Note, DateTime CreatedAt, PriceBasis PriceBasis, decimal FeeAmount, string? FeeReason, decimal DiscountAmount, string? DiscountReason, decimal NetAmount);
+
+/// <summary>Fee/discount carried on top of the freight. Null leaves the value unchanged at 0.</summary>
+public record PackageAdjustmentsRequest(decimal? FeeAmount, string? FeeReason, decimal? DiscountAmount, string? DiscountReason);
 public record InlineSupplyOrderRequest(int SupplierId, string Name, decimal PurchasePrice, string? Details = null);
 public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, decimal? WeightKg = null, decimal? Cbm = null, string? Note = null, List<UpsertPackageItemRequest>? Items = null, InlineSupplyOrderRequest? SupplyOrder = null);
 public record AutoAssignPackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, int OriginWarehouseId, int DestinationWarehouseId, InlineSupplyOrderRequest? SupplyOrder = null);
@@ -100,7 +107,7 @@ public static class DtoMap
     public static SupplyOrderDto ToDto(this SupplyOrder x) => new(x.Id, x.CustomerId, x.SupplierId, x.PackageId, x.Name, x.PurchasePrice, x.Details, x.Status, x.CancelReason);
     public static PricingConfigDto ToDto(this PricingConfig x) => new(x.Id, x.Name, x.Currency, x.EffectiveFrom, x.EffectiveTo, x.DefaultRatePerKg, x.DefaultRatePerCbm, x.MinimumCharge, x.Status);
     public static ShipmentDto ToDto(this Shipment x) => new(x.Id, x.RefCode, x.TiiuCode, x.OriginWarehouseId, x.DestinationWarehouseId, x.PlannedDepartureDate, x.PlannedArrivalDate, x.ActualDepartureAt, x.ActualArrivalAt, x.Status, x.MaxWeightKg, x.MaxCbm, x.TotalWeightKg, x.TotalCbm, x.CreatedAt);
-    public static PackageDto ToDto(this Package x) => new(x.Id, x.ShipmentId, x.CustomerId, x.ProvisionMethod, x.Status, x.WeightKg, x.Cbm, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerCbm, x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.HasPricingOverride, x.SupplyOrderId, x.Note, x.CreatedAt);
+    public static PackageDto ToDto(this Package x) => new(x.Id, x.ShipmentId, x.CustomerId, x.ProvisionMethod, x.Status, x.WeightKg, x.Cbm, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerCbm, x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.HasPricingOverride, x.SupplyOrderId, x.Note, x.CreatedAt, x.PriceBasis, x.FeeAmount, x.FeeReason, x.DiscountAmount, x.DiscountReason, x.ChargeAmount + x.FeeAmount - x.DiscountAmount);
     public static PackageItemDto ToDto(this PackageItem x) => new(x.Id, x.PackageId, x.GoodTypeId, x.GoodType?.NameEn ?? "", x.Quantity, x.Unit, x.UnitPrice, x.UnitPriceCurrency, x.Note);
     public static CurrencyDto ToDto(this Currency x) => new(x.Id, x.Code, x.Name, x.Symbol, x.IsBase, x.AnchorCurrencyCode, x.Rate, x.IsActive, x.UpdatedAt);
     public static ShipmentRateSnapshotDto ToDto(this ShipmentRateSnapshot x) => new(x.Id, x.ShipmentId, x.Event, x.CurrencyCode, x.RateToBase, x.CapturedAt);

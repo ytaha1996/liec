@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ShippingPlatform.Api.Data;
 using ShippingPlatform.Api.Models;
+using ShippingPlatform.Api.Dtos;
 using ShippingPlatform.Api.Services;
 
 namespace ShippingPlatform.Api.Business;
@@ -144,9 +145,10 @@ public interface IExportBusiness
     Task<object> ShipmentCustomerInvoicesExcelAsync(int shipmentId);
     Task<object> ShipmentCommercialDocumentsAsync(int shipmentId);
     Task<object> CustomersExcelAsync();
+    Task<object> ReportExcelAsync(string key, ReportFilter filter);
 }
 
-public class ExportBusiness(IExportService exports) : IExportBusiness
+public class ExportBusiness(IExportService exports, IReportService reports) : IExportBusiness
 {
     public async Task<object> GroupHelperAsync(string format)
     {
@@ -169,6 +171,14 @@ public class ExportBusiness(IExportService exports) : IExportBusiness
     public async Task<object> ShipmentCommercialDocumentsAsync(int shipmentId)
     {
         var url = await exports.GenerateShipmentCommercialDocumentsAsync(shipmentId);
+        return new { publicUrl = url };
+    }
+
+    public async Task<object> ReportExcelAsync(string key, ReportFilter filter)
+    {
+        var report = await reports.RunAsync(key, filter);
+        if (report is null) throw new KeyNotFoundException($"No report named {key}.");
+        var url = await exports.GenerateReportExcelAsync(report, filter);
         return new { publicUrl = url };
     }
 

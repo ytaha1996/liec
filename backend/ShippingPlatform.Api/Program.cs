@@ -84,6 +84,7 @@ if (!string.IsNullOrEmpty(builder.Configuration["Twilio:AccountSid"]))
 else
     builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IInvoiceSequenceService, InvoiceSequenceService>();
 builder.Services.AddSingleton(sp => InvoiceTemplateConstants.FromConfig(sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IFxRateService, ShippingPlatform.Api.Services.FxRates.FxRateService>();
@@ -149,6 +150,20 @@ using (var scope = app.Services.CreateScope())
     // string) would throw on it. EnsureCreated() covers that path.
     if (db.Database.IsRelational()) db.Database.Migrate();
     else db.Database.EnsureCreated();
+
+    // ── One-time backfill: PriceBasis for packages priced before the column
+    //    existed. Derived from the frozen rates, so it reproduces what the
+    //    tariff decided at the time rather than todays config.
+    {
+        var unstamped = db.Packages
+            .Where(p => p.PriceBasis == PriceBasis.Unknown && (p.WeightKg > 0 || p.Cbm > 0))
+            .ToList();
+        if (unstamped.Count > 0)
+        {
+            foreach (var p in unstamped) p.PriceBasis = PriceBasisHelper.Resolve(p);
+            db.SaveChanges();
+        }
+    }
 
     // ── Admin user ──────────────────────────────────────────────────────────
     var email = app.Configuration["SeedAdmin:Email"] ?? Environment.GetEnvironmentVariable("ADMIN_EMAIL") ?? Environment.GetEnvironmentVariable("SEED_ADMIN_EMAIL") ?? "admin@local";
