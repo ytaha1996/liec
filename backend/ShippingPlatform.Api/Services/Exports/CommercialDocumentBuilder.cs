@@ -221,11 +221,26 @@ public static class CommercialDocumentBuilder
         var r = firstItemRow;
         var lines = packages.SelectMany(p => p.Items.OrderBy(i => i.Id).Select(i => new { Package = p, Item = i })).ToList();
 
+        // ACC-01: declared value is what the goods are worth, read by customs.
+        // It is never defaulted from freight and never invented — a plausible
+        // fabricated number is exactly how wrong figures reach a customs
+        // authority unchallenged. Refuse the export and name what is missing.
+        var missing = lines
+            .Where(x => x.Item.DeclaredValue is null || x.Item.DeclaredValue.Amount <= 0m)
+            .Select(x => $"package #{x.Package.Id} / {FormatItemName(x.Item.GoodType, x.Item.GoodTypeId)}")
+            .Distinct()
+            .ToList();
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                "Cannot produce the commercial invoice: these items have no declared value — " +
+                string.Join("; ", missing) +
+                ". Enter the declared value on each item before exporting.");
+
         foreach (var line in lines)
         {
             var goodName = FormatItemName(line.Item.GoodType, line.Item.GoodTypeId);
             var unitCode = UnitLabels.ExcelCode.TryGetValue(line.Item.Unit, out var ec) ? ec : line.Item.Unit.ToString().ToUpperInvariant();
-            var unitPrice = line.Item.UnitPrice ?? 10m;
+            var unitPrice = line.Item.DeclaredValue!.Amount;
 
             ws.Cell($"{col.Description}{r}").Value = goodName;
             ws.Cell($"{col.Description}{r}").Style.Alignment.WrapText = true;

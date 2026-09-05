@@ -46,6 +46,20 @@ public class ReportService(AppDbContext db) : IReportService
         new("container-utilisation", "Container Utilisation",
             "How full each container went against its limits, and what it carried.",
             [.. PeriodAndRoute, "shipmentStatus"]),
+
+        // ── Financial (ACC-17, ACC-20) ──
+        new("aged-receivable", "Aged Receivable",
+            "Who owes what, and how late. The collections list.",
+            ["customerId"]),
+        new("revenue-by-period", "Revenue by Period",
+            "Posted revenue per month, tying the ledger back to containers shipped.",
+            ["from", "to"]),
+        new("general-ledger", "General Ledger",
+            "Every movement on every account. The first thing an auditor asks for.",
+            ["from", "to"]),
+        new("trial-balance", "Trial Balance",
+            "All accounts with their debits and credits, which must agree.",
+            ["from", "to"]),
     ];
 
     public async Task<ReportResultDto?> RunAsync(string key, ReportFilter filter, CancellationToken ct = default)
@@ -60,6 +74,10 @@ public class ReportService(AppDbContext db) : IReportService
             "top-customers" => await TopCustomersAsync(def, filter, currency, ct),
             "revenue-by-month" => await RevenueByMonthAsync(def, filter, currency, ct),
             "container-utilisation" => await ContainerUtilisationAsync(def, filter, currency, ct),
+            "aged-receivable" => await AgedReceivableAsync(def, filter, ct),
+            "revenue-by-period" => await RevenueByPeriodAsync(def, filter, ct),
+            "general-ledger" => await GeneralLedgerAsync(def, filter, ct),
+            "trial-balance" => await TrialBalanceAsync(def, filter, ct),
             _ => null,
         };
     }
@@ -89,6 +107,228 @@ public class ReportService(AppDbContext db) : IReportService
         => cells.ToDictionary(c => c.Key, c => c.Value);
 
     private static decimal Round3(decimal v) => decimal.Round(v, 3);
+
+    /// <summary>The currency the books are kept in, taken from what has been posted.</summary>
+    private async Task<string> LedgerCurrencyAsync(CancellationToken ct)
+        => await db.JournalEntryLines.Select(l => l.CurrencyCode).FirstOrDefaultAsync(ct)
+           ?? await db.Invoices.Select(i => i.CurrencyCode).FirstOrDefaultAsync(ct)
+           ?? "XAF";
+
+    // ── Aged Receivable (ACC-17) ────────────────────────────────────────────
+    private async Task<ReportResultDto> AgedReceivableAsync(
+        ReportDefinitionDto def, ReportFilter f, CancellationToken ct)
+    {
+        var currency = await LedgerCurrencyAsync(ct);
+
+        var invoices = await db.Invoices
+            .Where(i => i.State == InvoiceState.Posted && i.Type == InvoiceType.Invoice)
+            .Where(i => f.CustomerId == null || i.CustomerId == f.CustomerId)
+            .Select(i => new { i.Id, i.CustomerId, i.Customer.Name, i.InvoiceDate, i.GrandTotal })
+            .ToListAsync(ct);
+
+        var paidByInvoice = (await db.PaymentAllocations
+                .Select(a => new { a.InvoiceId, a.Amount })
+                .ToListAsync(ct))
+            .GroupBy(a => a.InvoiceId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        var creditedByInvoice = (await db.Invoices
+                .Where(i => i.ReversesInvoiceId != null && i.State == InvoiceState.Posted)
+                .Select(i => new { InvoiceId = i.ReversesInvoiceId!.Value, i.GrandTotal })
+                .ToListAsync(ct))
+            .GroupBy(i => i.InvoiceId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.GrandTotal));
+
+        var today = DateTime.UtcNow.Date;
+        var rows = invoices
+            .Select(i =>
+            {
+                var paid = paidByInvoice.GetValueOrDefault(i.Id, 0m);
+                var credited = creditedByInvoice.GetValueOrDefault(i.Id, 0m);
+                return new { i.CustomerId, i.Name, Outstanding = i.GrandTotal - paid - credited, Age = (today - i.InvoiceDate.Date).Days };
+            })
+            .Where(x => x.Outstanding > 0m)
+            .GroupBy(x => new { x.CustomerId, x.Name })
+            .Select(g => new
+            {
+                g.Key.CustomerId,
+                g.Key.Name,
+                // Boundaries are inclusive at the top of each bucket: an invoice
+                // exactly 30 days old is still current.
+                Current = g.Where(x => x.Age <= 30).Sum(x => x.Outstanding),
+                B30 = g.Where(x => x.Age > 30 && x.Age <= 60).Sum(x => x.Outstanding),
+                B60 = g.Where(x => x.Age > 60 && x.Age <= 90).Sum(x => x.Outstanding),
+                B90 = g.Where(x => x.Age > 90).Sum(x => x.Outstanding),
+                Total = g.Sum(x => x.Outstanding),
+            })
+            .OrderByDescending(x => x.Total)
+            .ToList();
+
+        return new ReportResultDto(def.Key, def.Title, currency,
+            [
+                new("customer", "Customer", Text),
+                new("current", "Current (0-30)", Currency),
+                new("d30", "31-60 days", Currency),
+                new("d60", "61-90 days", Currency),
+                new("d90", "90+ days", Currency),
+                new("total", "Outstanding", Currency),
+            ],
+            [.. rows.Select(r => Row(
+                ("id", r.CustomerId),
+                ("customer", $"{r.Name} (#{r.CustomerId})"),
+                ("current", r.Current),
+                ("d30", r.B30),
+                ("d60", r.B60),
+                ("d90", r.B90),
+                ("total", r.Total)))],
+            Row(
+                ("customers", rows.Count),
+                ("current", rows.Sum(r => r.Current)),
+                ("d30", rows.Sum(r => r.B30)),
+                ("d60", rows.Sum(r => r.B60)),
+                ("d90", rows.Sum(r => r.B90)),
+                ("total", rows.Sum(r => r.Total))));
+    }
+
+    // ── Revenue by Period (ACC-20) ──────────────────────────────────────────
+    private async Task<ReportResultDto> RevenueByPeriodAsync(
+        ReportDefinitionDto def, ReportFilter f, CancellationToken ct)
+    {
+        var currency = await LedgerCurrencyAsync(ct);
+
+        // Straight from the ledger, so it ties to the books rather than to
+        // operational figures that were never posted.
+        var q = db.JournalEntryLines
+            .Where(l => l.Account.Type == AccountType.Revenue);
+        if (f.From is { } from) q = q.Where(l => l.JournalEntry.AccountingDate >= from);
+        if (f.To is { } to) q = q.Where(l => l.JournalEntry.AccountingDate <= to);
+
+        var grouped = await q
+            .GroupBy(l => new { l.JournalEntry.AccountingDate.Year, l.JournalEntry.AccountingDate.Month })
+            .Select(g => new
+            {
+                g.Key.Year,
+                g.Key.Month,
+                Entries = g.Count(),
+                // Revenue is a credit balance: credits less any debits reversed
+                // out by credit notes.
+                Revenue = g.Sum(x => x.Credit) - g.Sum(x => x.Debit),
+            })
+            .ToListAsync(ct);
+
+        var rows = grouped.OrderBy(g => g.Year).ThenBy(g => g.Month).ToList();
+
+        return new ReportResultDto(def.Key, def.Title, currency,
+            [
+                new("month", "Month", Text),
+                new("entries", "Ledger lines", Number),
+                new("revenue", "Revenue", Currency),
+            ],
+            [.. rows.Select(r => Row(
+                ("id", r.Year * 100 + r.Month),
+                ("month", $"{r.Year}-{r.Month:D2}"),
+                ("entries", r.Entries),
+                ("revenue", r.Revenue)))],
+            Row(
+                ("months", rows.Count),
+                ("entries", rows.Sum(r => r.Entries)),
+                ("revenue", rows.Sum(r => r.Revenue))));
+    }
+
+    // ── General Ledger ──────────────────────────────────────────────────────
+    private async Task<ReportResultDto> GeneralLedgerAsync(
+        ReportDefinitionDto def, ReportFilter f, CancellationToken ct)
+    {
+        var currency = await LedgerCurrencyAsync(ct);
+
+        var q = db.JournalEntryLines.AsQueryable();
+        if (f.From is { } from) q = q.Where(l => l.JournalEntry.AccountingDate >= from);
+        if (f.To is { } to) q = q.Where(l => l.JournalEntry.AccountingDate <= to);
+
+        var lines = await q
+            .OrderBy(l => l.JournalEntry.AccountingDate).ThenBy(l => l.Id)
+            .Select(l => new
+            {
+                l.Id,
+                l.JournalEntry.Number,
+                l.JournalEntry.AccountingDate,
+                l.JournalEntry.Reference,
+                AccountCode = l.Account.Code,
+                AccountName = l.Account.NameEn,
+                l.Debit,
+                l.Credit,
+                l.Label,
+            })
+            .ToListAsync(ct);
+
+        return new ReportResultDto(def.Key, def.Title, currency,
+            [
+                new("entry", "Entry", Text),
+                new("date", "Date", Text),
+                new("account", "Account", Text),
+                new("label", "Detail", Text),
+                new("debit", "Debit", Currency),
+                new("credit", "Credit", Currency),
+            ],
+            [.. lines.Select(l => Row(
+                ("id", l.Id),
+                ("entry", l.Number),
+                ("date", l.AccountingDate.ToString("yyyy-MM-dd")),
+                // Trap 1: the account is named wherever an amount appears, so a
+                // wrong mapping shows itself on screen.
+                ("account", $"{l.AccountCode} {l.AccountName}"),
+                ("label", l.Label),
+                ("debit", l.Debit),
+                ("credit", l.Credit)))],
+            Row(
+                ("lines", lines.Count),
+                ("debit", lines.Sum(l => l.Debit)),
+                ("credit", lines.Sum(l => l.Credit))));
+    }
+
+    // ── Trial Balance ───────────────────────────────────────────────────────
+    private async Task<ReportResultDto> TrialBalanceAsync(
+        ReportDefinitionDto def, ReportFilter f, CancellationToken ct)
+    {
+        var currency = await LedgerCurrencyAsync(ct);
+
+        var q = db.JournalEntryLines.AsQueryable();
+        if (f.From is { } from) q = q.Where(l => l.JournalEntry.AccountingDate >= from);
+        if (f.To is { } to) q = q.Where(l => l.JournalEntry.AccountingDate <= to);
+
+        var grouped = await q
+            .GroupBy(l => new { l.Account.Code, l.Account.NameEn })
+            .Select(g => new
+            {
+                g.Key.Code,
+                g.Key.NameEn,
+                Debit = g.Sum(x => x.Debit),
+                Credit = g.Sum(x => x.Credit),
+            })
+            .ToListAsync(ct);
+
+        var rows = grouped.OrderBy(g => g.Code).ToList();
+
+        return new ReportResultDto(def.Key, def.Title, currency,
+            [
+                new("account", "Account", Text),
+                new("debit", "Debit", Currency),
+                new("credit", "Credit", Currency),
+                new("balance", "Balance", Currency),
+            ],
+            [.. rows.Select(r => Row(
+                ("id", r.Code),
+                ("account", $"{r.Code} {r.NameEn}"),
+                ("debit", r.Debit),
+                ("credit", r.Credit),
+                ("balance", r.Debit - r.Credit)))],
+            // The whole point of the report: these two must agree.
+            Row(
+                ("accounts", rows.Count),
+                ("debit", rows.Sum(r => r.Debit)),
+                ("credit", rows.Sum(r => r.Credit)),
+                ("balance", rows.Sum(r => r.Debit - r.Credit))));
+    }
 
     private static async Task<int> DistinctShipmentsAsync(IQueryable<Package> q, CancellationToken ct)
         => await q.Select(p => p.ShipmentId).Distinct().CountAsync(ct);

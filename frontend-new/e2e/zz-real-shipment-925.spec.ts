@@ -589,4 +589,87 @@ test.describe.serial('real shipment 925 (BEI → GAB) replay', () => {
     await expectToast(page, /receiving photo/i);
     await expect(table.getByText('Packed').first()).toBeVisible();
   });
+
+  // ── Accounting on real figures ────────────────────────────────────────────
+  // The strongest check available: invoice the real container and see the
+  // books arrive at the same 19,475,000 CFA the BOL was signed for.
+
+  test('billing: one invoice per real client, totalling the BOL to the franc', async ({ page, request }) => {
+    await page.goto(`/ops/shipments/${shipmentId}`);
+    await page.getByRole('button', { name: 'Generate Invoices' }).click();
+    await confirmDialog(page);
+    await expectToast(page, /draft invoice/i);
+
+    const list = await getJson<Array<{
+      id: number; number: string; customerId: number; customerName: string;
+      state: string; currency: string; grandTotal: number; lineCount: number;
+    }>>(request, `/api/shipments/${shipmentId}/invoices`);
+
+    // ACC-03: grouped by customer, one line per package.
+    expect(list.length).toBe(CLIENTS.length);
+    for (const inv of list) {
+      expect(inv.state, `${inv.number} must start as a draft`).toBe('Draft');
+      expect(inv.currency).toBe('XAF');
+      expect(inv.lineCount).toBe(1);
+    }
+
+    // Each client is billed exactly the BOL's TOTAL PRICE — freight plus the
+    // FEES column, which is where a fee or discount would otherwise get lost.
+    for (const c of CLIENTS) {
+      const customerId = customerIds.get(c.name)!;
+      const inv = list.find((i) => i.customerId === customerId)!;
+      expect(inv, `invoice for ${c.name}`).toBeTruthy();
+      expect(inv.grandTotal, `${c.name} invoiced`).toBe(c.expected);
+    }
+
+    expect(list.reduce((sum, i) => sum + i.grandTotal, 0)).toBe(GRAND_TOTAL_CFA);
+  });
+
+  test('billing: posting the container books 19,475,000 CFA of balanced entries', async ({ request }) => {
+    const list = await getJson<Array<{ id: number; number: string }>>(
+      request, `/api/shipments/${shipmentId}/invoices`);
+
+    for (const inv of list) {
+      await postJson(request, `/api/accounting/invoices/${inv.id}/post`, {});
+    }
+
+    let debits = 0;
+    let free = 0;
+    for (const inv of list) {
+      const detail = await getJson<{ journalEntryId: number | null; invoice: { grandTotal: number } }>(
+        request, `/api/invoices/${inv.id}`);
+
+      // The BOL carries three genuinely free packages. Those are still posted
+      // documents, but a zero debit against a zero credit belongs nowhere in
+      // the ledger.
+      if (detail.invoice.grandTotal === 0) {
+        expect(detail.journalEntryId, `${inv.number} is free — no entry`).toBeNull();
+        free += 1;
+        continue;
+      }
+
+      const entry = await getJson<{ totalDebit: number; totalCredit: number; isBalanced: boolean }>(
+        request, `/api/accounting/entries/${detail.journalEntryId}`);
+      // ACC-09: every single entry balances, not just the total.
+      expect(entry.isBalanced, `${inv.number} balanced`).toBe(true);
+      expect(entry.totalDebit, `${inv.number} debits = credits`).toBe(entry.totalCredit);
+      debits += entry.totalDebit;
+    }
+    expect(free, 'the three free carriages on the BOL').toBe(3);
+    expect(debits).toBe(GRAND_TOTAL_CFA);
+  });
+
+  test('billing: the receivable equals the BOL until the customers pay', async ({ request }) => {
+    // ACC-17: what the container is owed, straight from the ledger.
+    const ours = new Set(CLIENTS.map((c) => customerIds.get(c.name)!));
+    const aged = await getJson<{ rows: Array<Record<string, unknown>> }>(request, '/api/reports/aged-receivable');
+    const owed = aged.rows
+      .filter((r) => ours.has(Number(r.id)))
+      .reduce((sum, r) => sum + Number(r.total), 0);
+    expect(owed).toBe(GRAND_TOTAL_CFA);
+
+    // ACC-20: and the books still agree overall.
+    const trial = await getJson<{ totals: Record<string, number> }>(request, '/api/reports/trial-balance');
+    expect(trial.totals.debit).toBe(trial.totals.credit);
+  });
 });

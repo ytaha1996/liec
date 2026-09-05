@@ -22,6 +22,10 @@ export const MODULE_ACCESS: Record<string, UserRole[]> = {
   messaging:    ['Admin', 'Manager', 'Accountant'],
   groupHelper:  ['Admin', 'Manager', 'Accountant'],
   users:        ['Admin', 'Manager'],
+  // Finance. Field staff never see the books.
+  invoices:     ['Admin', 'Manager', 'Accountant'],
+  receivables:  ['Admin', 'Manager', 'Accountant'],
+  accounts:     ['Admin', 'Manager', 'Accountant'],
 };
 
 export const canSee = (role: UserRole, moduleName: string): boolean =>
@@ -64,3 +68,23 @@ export const canSendWhatsApp = (role: UserRole): boolean =>
 
 export const canExport = (role: UserRole): boolean =>
   role === 'Admin' || role === 'Manager' || role === 'Accountant';
+
+// ── Accounting (ACC-04, ACC-11, ACC-18) ─────────────────────────────────────
+// Posting turns a draft into history, so it is an accountant's act — a field
+// operator loading a container must never be able to reach it.
+export const canInvoice = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager' || role === 'Accountant';
+
+export const canPostInvoice = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager' || role === 'Accountant';
+
+export const canRecordPayment = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager' || role === 'Accountant';
+
+// The chart, the account mapping and period locks change what every future
+// posting does, so they stay with Admin and Manager (trap 1, ACC-13).
+export const canManageChartOfAccounts = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager';
+
+export const canClosePeriod = (role: UserRole): boolean =>
+  role === 'Admin' || role === 'Manager';

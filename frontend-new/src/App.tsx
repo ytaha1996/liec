@@ -25,6 +25,10 @@ import PricingConfigsPage from '@/pages/pricing/PricingConfigsPage';
 import SuppliersPage from '@/pages/suppliers/SuppliersPage';
 import SupplyOrdersPage from '@/pages/supply-orders/SupplyOrdersPage';
 import CurrenciesPage from '@/pages/currencies/CurrenciesPage';
+import InvoicesPage from '@/pages/accounting/InvoicesPage';
+import InvoiceDetailPage from '@/pages/accounting/InvoiceDetailPage';
+import ReceivablesPage from '@/pages/accounting/ReceivablesPage';
+import ChartOfAccountsPage from '@/pages/accounting/ChartOfAccountsPage';
 import MessagingLogsPage from '@/pages/messaging/MessagingLogsPage';
 import GroupHelperExportPage from '@/pages/messaging/GroupHelperExportPage';
 import UsersPage from '@/pages/users/UsersPage';
@@ -85,6 +89,12 @@ export default function App() {
           <Route path="/master/suppliers" element={<RequireModule module="suppliers"><SuppliersPage /></RequireModule>} />
           <Route path="/master/supply-orders" element={<RequireModule module="supplyOrders"><SupplyOrdersPage /></RequireModule>} />
           <Route path="/master/currencies" element={<RequireModule module="currencies"><CurrenciesPage /></RequireModule>} />
+
+          {/* Finance — the books. Field staff are kept out at the route. */}
+          <Route path="/finance/invoices" element={<RequireModule module="invoices"><InvoicesPage /></RequireModule>} />
+          <Route path="/finance/invoices/:id" element={<RequireModule module="invoices"><InvoiceDetailPage /></RequireModule>} />
+          <Route path="/finance/receivables" element={<RequireModule module="receivables"><ReceivablesPage /></RequireModule>} />
+          <Route path="/finance/accounts" element={<RequireModule module="accounts"><ChartOfAccountsPage /></RequireModule>} />
 
           {/* Communications */}
           <Route path="/comms/messaging-logs" element={<RequireModule module="messaging"><MessagingLogsPage /></RequireModule>} />

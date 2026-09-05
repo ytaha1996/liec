@@ -35,6 +35,13 @@ public class Package
     [MaxLength(500)] public string? FeeReason { get; set; }
     public decimal DiscountAmount { get; set; }
     [MaxLength(500)] public string? DiscountReason { get; set; }
+    /// <summary>
+    /// ACC-05: set once the package appears on an invoice. Generation only
+    /// picks up packages where this is null, so pressing the button twice
+    /// cannot duplicate or overwrite an existing invoice.
+    /// </summary>
+    public int? InvoiceLineId { get; set; }
+
     public int? SupplyOrderId { get; set; }
     [MaxLength(1000)] public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

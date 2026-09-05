@@ -28,6 +28,19 @@ npm run build      # production build (typecheck + vite build)
 
 Set `VITE_API_BASE_URL` if not using the Azure default baked into `main.tsx`.
 
+## Unit tests
+
+```bash
+npm run test:unit          # Vitest, jsdom, milliseconds
+npm run test:unit:watch
+```
+
+Pure logic and small components — currency formatting (XAF has no minor unit), converted-price
+flags, JWT claims and expiry, audit-log rendering, the RBAC matrix, the dynamic-form schema
+builder, status label/colour coverage, payment allocation, and `Money`, which refuses to render
+an amount without a currency (ACC-14). Anything needing a browser and a live backend belongs in the
+Playwright suite below. The backend has its own suite: `cd backend && dotnet test`.
+
 ## E2E tests (Playwright)
 
 ```bash
@@ -52,8 +65,9 @@ npm run test:e2e:headed   # watch the browser
   rather than the post-photo happy path.
 - Backend must be **built** first (`dotnet build`) — the webServer uses `--no-build` for speed.
 
-Coverage (91 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
-palette, nav scoping) · reports (catalogue of four business reports: totals reconcile with their
+Coverage (102 tests): auth incl. malformed-token boot check · dashboard · navigation (launcher,
+palette, nav scoping) · invoicing (draft generation grouped per customer, per-container numbering,
+idempotent re-runs, and the customs export refusing to invent a declared value) · reports (catalogue of four business reports: totals reconcile with their
 rows, cross-report grand totals agree, ranking + per-CBM maths, container utilisation matches its
 shipment, per-report Excel naming, column switching) · package pricing (price basis, fee/discount + guard rails, customer
 links, per-customer WhatsApp cards) · RBAC (Field redirects + hidden UI, admin surfaces) · master data CRUD
@@ -85,6 +99,7 @@ src/
 │   ├── dialogs/           # GenericDialog, GenericDrawer, ConfirmationBox
 │   ├── layout/            # Header, AppShell, MainPageTitle, MainPageSection, DetailPageLayout, RequireAuth
 │   ├── feedback/          # Loader, EmptyState, LoadingButton, ErrorBoundary, TableSkeleton
+│   ├── accounting/        # Money — an amount is never shown without its currency
 │   └── misc/              # StatusBadge, Breadcrumbs
 ├── pages/                 # one folder per module — mirrors frontend/src/pages
 ├── redux/                 # user + confirmation slices
@@ -137,7 +152,8 @@ export default function MyPage() {
 
 ## Pages — port status
 
-All 17 routes ported and wired in `App.tsx`. Production build clean (~273 KB gzipped, about half the original MUI bundle).
+All routes wired in `App.tsx` — 17 ported from the MUI app, plus the reports page and the four
+Finance pages the accounting layer added. Production build clean (~273 KB gzipped, about half the original MUI bundle).
 
 | Route | Source |
 |---|---|
@@ -148,6 +164,10 @@ All 17 routes ported and wired in `App.tsx`. Production build clean (~273 KB gzi
 | `/ops/shipments/:id` | `frontend/src/pages/shipments/ShipmentDetailPage.tsx` |
 | `/ops/reports` | _new_ — volumes & billing across shipments/customers |
 | `/ops/packages/:id` | `frontend/src/pages/packages/PackageDetailPage.tsx` |
+| `/finance/invoices` | _new_ — every invoice, filterable by state |
+| `/finance/invoices/:id` | _new_ — lines, journal entry, payments; post / cancel / credit note |
+| `/finance/receivables` | _new_ — customer balances, payments, record + allocate |
+| `/finance/accounts` | _new_ — chart of accounts, account mapping, period locking |
 | `/master/customers` | `frontend/src/pages/customers/CustomersPage.tsx` |
 | `/master/customers/:id` | `frontend/src/pages/customers/CustomerDetailPage.tsx` |
 | `/master/warehouses` | `frontend/src/pages/warehouses/WarehousesPage.tsx` |

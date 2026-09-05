@@ -30,6 +30,16 @@ public class InvoiceSequenceService(AppDbContext db) : IInvoiceSequenceService
                     seq = new InvoiceSequence { Year = year, LastNumber = 0 };
                     db.InvoiceSequences.Add(seq);
                 }
+
+                // Trap 3: a cleanup routine once reset a counter to 1 while real
+                // records still existed, leaving the next document one step from
+                // colliding with an issued one. Never trust the counter alone —
+                // take the highest number actually in use for the year.
+                var highestIssued = await db.Shipments
+                    .Where(x => x.InvoiceYear == year && x.InvoiceNumber != null)
+                    .MaxAsync(x => (int?)x.InvoiceNumber) ?? 0;
+                if (highestIssued > seq.LastNumber) seq.LastNumber = highestIssued;
+
                 seq.LastNumber++;
                 await db.SaveChangesAsync();
                 if (tx is not null) await tx.CommitAsync();

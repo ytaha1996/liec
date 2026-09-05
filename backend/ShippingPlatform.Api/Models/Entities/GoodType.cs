@@ -9,5 +9,8 @@ public class GoodType
     [MaxLength(200)] public string NameAr { get; set; } = string.Empty;
     public bool CanBreak { get; set; }
     public bool CanBurn { get; set; }
+    /// <summary>ACC-01: the HS code items of this type inherit unless overridden.</summary>
+    [MaxLength(20)] public string? DefaultHsCode { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

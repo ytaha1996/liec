@@ -11,7 +11,7 @@
 |---|---|
 | **Admin** | Full control, including user management |
 | **Manager** | Day-to-day operations — everything except user/role administration |
-| **Accountant** | Read business data, pricing overrides, exports; no operational writes |
+| **Accountant** | Read business data, pricing overrides, exports, and **the books** — invoicing, posting, payments and credit notes; no operational writes and no control of the chart itself |
 | **Field** | Warehouse staff — view ops data, upload/delete package photos; nothing else |
 
 Roles live in `Models/Enums.cs` (backend enum) and `helpers/rbac.ts` (both frontends).
@@ -105,6 +105,21 @@ Legend: ✅ allowed · ❌ denied · ⚠️ allowed but flagged as a gap
 | **Currencies** |
 | View | ✅ | ✅ | ✅ | ✅* |
 | Create / edit / delete | ✅ | ✅ | ❌ | ❌ |
+| **Accounting — invoices** |
+| View invoices (list + detail, incl. ledger entry) | ✅ | ✅ | ✅ | ❌ |
+| Generate drafts for a container | ✅ | ✅ | ✅ | ❌ |
+| Post to the ledger | ✅ | ✅ | ✅ | ❌ |
+| Cancel a draft / issue a credit note | ✅ | ✅ | ✅ | ❌ |
+| Edit or delete a posted invoice | ❌ | ❌ | ❌ | ❌ |
+| **Accounting — receivables** |
+| Customer balances + payment history | ✅ | ✅ | ✅ | ❌ |
+| Record a payment and allocate it | ✅ | ✅ | ✅ | ❌ |
+| **Accounting — the chart** |
+| View accounts, mapping and periods | ✅ | ✅ | ✅ | ❌ |
+| Add / edit an account | ✅ | ✅ | ❌ | ❌ |
+| Change which account each posting uses | ✅ | ✅ | ❌ | ❌ |
+| Close / reopen an accounting period | ✅ | ✅ | ❌ | ❌ |
+| **Financial reports** (aged receivable, GL, trial balance, revenue) | ✅ | ✅ | ✅ | ❌ |
 | **WhatsApp** |
 | Bulk + individual sends | ✅ | ✅ | ❌ | ❌ |
 | Campaign logs | ✅ | ✅ | ✅ | ❌ |
@@ -119,14 +134,16 @@ Legend: ✅ allowed · ❌ denied · ⚠️ allowed but flagged as a gap
 
 ## Frontend enforcement (UI gating)
 
-Both frontends share the same `MODULE_ACCESS` matrix and 13 `can*` helpers — logic is identical.
-Nav/module visibility matches in both. Route-level enforcement differs (see Gap F1).
+`MODULE_ACCESS` and the `can*` helpers in `src/helpers/rbac.ts` gate the UI.
+Nav visibility and route access both come from it: every module route below is wrapped in
+`RequireModule`, so a deep link a role cannot see redirects to the dashboard (gap F1, since fixed).
 
 | Module route | Admin | Manager | Accountant | Field |
 |---|:-:|:-:|:-:|:-:|
 | /ops/* (dashboard, shipments, packages) | ✅ | ✅ | ✅ | ✅ |
 | /master/warehouses, /master/good-types | ✅ | ✅ | ✅ | ✅ |
 | /master/customers, pricing, suppliers, supply-orders, currencies | ✅ | ✅ | ✅ | ❌ |
+| /finance/* (invoices, receivables, accounts) | ✅ | ✅ | ✅ | ❌ |
 | /comms/* | ✅ | ✅ | ✅ | ❌ |
 | /admin/users | ✅ | ✅ | ❌ | ❌ |
 

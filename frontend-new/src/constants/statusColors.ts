@@ -65,3 +65,16 @@ export const PRICING_CONFIG_STATUS_CHIPS: Record<string, ChipColors> = {
   Active:    { color: ON_DARK,    backgroundColor: C_COMPLETE },
   Retired:   { color: ON_DARK,    backgroundColor: C_RETIRED },
 };
+
+// Invoice states: a draft is still editable, a posted document is not.
+export const INVOICE_STATE_CHIPS: Record<string, ChipColors> = {
+  Draft:     { color: C_DRAFT_FG, backgroundColor: C_DRAFT_BG },
+  Posted:    { color: ON_DARK,    backgroundColor: C_COMPLETE },
+  Cancelled: { color: ON_DARK,    backgroundColor: C_CANCELLED },
+};
+
+export const PAYMENT_STATUS_CHIPS: Record<string, ChipColors> = {
+  Unpaid:           { color: ON_DARK, backgroundColor: C_CANCELLED },
+  'Partially paid': { color: ON_DARK, backgroundColor: C_ACTIVE },
+  Paid:             { color: ON_DARK, backgroundColor: C_COMPLETE },
+};

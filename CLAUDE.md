@@ -18,6 +18,7 @@ liec/
 │   ├── Services/                   # Service layer (pricing, blob, twilio, exports, etc.)
 │   ├── Models/
 │   │   ├── Entities/               # EF Core entity classes (one per file)
+│   │   ├── Accounting/             # Invoice, InvoiceLine, Tax, Account, JournalEntry, Payment, Money
 │   │   └── Enums.cs                # All enums
 │   ├── Data/AppDbContext.cs        # DbContext + indexes
 │   ├── Dtos/                       # ApiDtos.cs (DTOs + DtoMap), CommonDtos.cs, MediaUploadRequest.cs
@@ -60,7 +61,7 @@ liec/
 - **Migrations:** Auto-applied via `Migrate()` on startup
 - **CLI migration issues:** SSL errors with `dotnet ef database update` — use startup migration instead
 
-### Entity Model (17 tables)
+### Entity Model (32 tables)
 
 | Entity | Key Fields | Notes |
 |--------|-----------|-------|
@@ -80,7 +81,27 @@ liec/
 | **Media** | PackageId, Stage, BlobKey, PublicUrl, OperatorName, Notes | Stages: Receiving, Departure, Arrival, Other |
 | **WhatsAppCampaign** | Type, ShipmentId, TriggeredByAdminUserId, RecipientCount, Completed | Types: StatusUpdate, DeparturePhotos, ArrivalPhotos |
 | **WhatsAppDeliveryLog** | CampaignId, CustomerId, Phone, Result, FailureReason, SentAt | Results: Pending, Sent, Failed, SkippedNoOptIn |
-| **AuditLog** | EntityType, EntityId, Action, OldValue, NewValue, AdminUserId | Populated across auth, users, currencies, master data, pricing, shipments/packages/supply-order transitions, media/document uploads, FX overrides |
+| **AuditLog** | EntityType, EntityId, Action, OldValue, NewValue, AdminUserId | Populated across auth, users, currencies, master data, pricing, shipments/packages/supply-order transitions, media/document uploads, FX overrides, and every accounting act |
+
+#### Accounting (Models/Accounting/ — the ACC-01…ACC-20 layer)
+
+| Entity | Key Fields | Notes |
+|--------|-----------|-------|
+| **Invoice** | Number, ShipmentId, CustomerId, Type, State, ReversesInvoiceId?, CurrencyCode, InvoiceDate, AccountingDate, UntaxedTotal, TaxTotal, GrandTotal, JournalEntryId?, PostedAt, CancelReason | One per customer per container. `INV/{container}/NNN` |
+| **InvoiceLine** | InvoiceId, PackageId?, Label, `Money Amount`, TaxId?, TaxAmount, AccountId? | One per package; the label states the arithmetic |
+| **Tax** | Code, Name, Rate, Treatment, AccountId, IsActive | Configurable; **nothing applied yet** — every invoice resolves to 0 |
+| **Account** | Code (unique), NameEn/Fr/Ar, Type, ParentCode, IsPostable | The chart, as data. `Display => "{Code} {NameEn}"` |
+| **AccountingSettings** | Receivable/Revenue/Tax/Bank/RoundingAccountId | Which account each posting uses — a setting, never a constant |
+| **Journal** | Code, Name, Type | Sales / Purchases / Bank / Miscellaneous |
+| **AccountingPeriod** | Year, Month (unique), State, ClosedAt | Closed months refuse further entries |
+| **JournalEntry** | Number, JournalId, AccountingDate, PeriodId, Reference, SourceType/SourceId | `TotalDebit`, `TotalCredit`, `IsBalanced` are derived |
+| **JournalEntryLine** | AccountId, Debit, Credit, CurrencyCode, Label, CustomerId? | Never both a debit and a credit |
+| **Payment** | Number (`PAY/{yyyy}/NNNN`), CustomerId, `Money Amount`, Method, Reference, JournalEntryId | `Allocated` / `Unallocated` derived from allocations |
+| **PaymentAllocation** | PaymentId, InvoiceId, Amount | One payment can settle several invoices, in part or in full |
+
+`Money` is an EF **owned type** (`Amount` + `CurrencyCode`) used by every accounting amount.
+`Plus`/`Minus` throw on a currency mismatch, so ACC-14 is enforced by the type rather than by
+discipline. `Package.InvoiceLineId` is the idempotency key that makes re-generating safe.
 
 ### Enums (Models/Enums.cs)
 
@@ -92,6 +113,13 @@ PricingConfigStatus: Draft, Scheduled, Active, Retired
 PricingOverrideType: RatePerKg, RatePerCbm, TotalCharge
 PriceBasis:         Unknown, Cbm, Weight, Minimum, Custom
 ProvisionMethod:    CustomerProvided, ProcuredForCustomer
+InvoiceState:       Draft, Posted, Cancelled
+InvoiceType:        Invoice, CreditNote
+TaxTreatment:       None, Exempt, ZeroRated, Standard
+AccountType:        Receivable, Payable, Revenue, Expense, Asset, Liability, Equity
+JournalType:        Sales, Purchases, Bank, Miscellaneous
+PeriodState:        Open, Closed
+PaymentMethod:      Cash, BankTransfer, Cheque, Other
 MediaStage:         Receiving, Departure, Arrival, Other
 CampaignType:       StatusUpdate, DeparturePhotos, ArrivalPhotos
 DeliveryResult:     Pending, Sent, Failed, SkippedNoOptIn
@@ -136,6 +164,21 @@ Draft → Approved → Ordered → DeliveredToWarehouse → PackedIntoPackage �
 - **PackedIntoPackage:** Requires linked package
 - **Cancel:** Unlinks package
 
+### Invoice Lifecycle (ACC-04, 08, 11, 19)
+```
+Draft ──post──> Posted ──credit note──> (a NEW document that reverses it)
+  └──cancel──> Cancelled   (number stays consumed; packages become billable again)
+```
+- **Generate:** one draft per customer per container, one line per package. Only packages with
+  `Status != Cancelled && InvoiceLineId == null`, so pressing it twice is safe and a package
+  added later gets its own invoice rather than overwriting one.
+- **Post:** writes a balanced entry (Dr receivable, Cr revenue, Cr tax) and freezes the invoice.
+  A zero-total invoice — the real BOL has three free carriages — is marked Posted with **no**
+  ledger entry, because a zero debit against a zero credit belongs nowhere in the books.
+- **Posted is final:** no edit, no delete, no cancel. Correction is a credit note that references
+  the original and takes its own number.
+- **Cancel:** drafts only, reason required. The number is never reused, so the gap is explainable.
+
 ### Pricing Logic (Services/PricingService)
 - Rate = max(WeightKg × RatePerKg, Cbm × RatePerCbm)
 - Rates come from: GoodType overrides > Active PricingConfig defaults
@@ -150,6 +193,65 @@ Draft → Approved → Ordered → DeliveredToWarehouse → PackedIntoPackage �
   the split. Net = ChargeAmount + FeeAmount − DiscountAmount, derived and never stored.
 
 ---
+
+## Accounting (ACC-01 … ACC-20)
+
+Requirements come from the Finance note of 2 Sep 2026; requirement IDs are stable — quote them
+in commits. **All three stages are built:** invoicing, the ledger, and receivables.
+
+- **Declared value ≠ freight (ACC-01).** `PackageItem.DeclaredValue` is a `Money` in USD, read by
+  customs; freight is what LIEC charges. Neither is ever defaulted from the other. An item
+  inherits `GoodType.DefaultHsCode` unless it states its own `HsCode`.
+- **The commercial invoice refuses to guess.** It used to print `UnitPrice ?? 10m` — a fabricated
+  value on a customs document. Missing declared values now fail the export, naming the items.
+- **Money carries its currency (ACC-14).** `Models/Accounting/Money.cs` is an EF owned type;
+  combining two currencies throws rather than silently converting.
+- **Invoice numbers (ACC-07/08)** are `INV/{container}/NNN`, restarting per container, derived from
+  the highest surviving invoice with that prefix — there is no counter a cleanup can reset.
+  Cancelled invoices keep their number consumed so gaps stay explainable.
+- **Generation is idempotent (ACC-05)** via `Package.InvoiceLineId`; drafts only (ACC-04).
+- **The chart is data (ACC-02).** `Account` rows plus an `AccountingSettings` row saying which
+  account each posting uses. Nothing in the posting code names an account. Seeded to the mapping
+  Finance specified: **4111** customer receivable, **713** freight revenue (services — *never*
+  701, merchandise sales), 40 payables, 512/530 bank and cash, 4457 tax collected.
+- **Every entry balances (ACC-09).** `PostingService` refuses an unbalanced entry, a zero entry,
+  a negative debit or credit, and a line carrying both. There is no silent rounding line — only an
+  explicitly configured rounding account may absorb a difference.
+- **Posted is history (ACC-11).** No edit, no delete, no cancel. Correction is a credit note that
+  references the original and takes its own number (ACC-19).
+  A credit note copies the original’s **net/tax split** (pro-rata for a partial credit). Putting
+  the whole gross into the untaxed total still balances, so nothing would reject it — it would
+  just over-reverse revenue and never clear the tax account.
+- **Closed months are closed (ACC-13).** An entry dated into a closed period is refused, so a late
+  correction cannot quietly change a month already reported.
+- **Payment is allocation, not a flag (ACC-18).** A `Payment` is its own entry (Dr bank, Cr
+  receivable) spread across `PaymentAllocation` rows. Unpaid / partially paid / paid is derived
+  from those allocations every time it is asked for, so it cannot drift from the money.
+- **Free carriage.** The real BOL has three zero-value packages. They still produce a document,
+  but posting one writes **no** ledger entry — a zero debit against a zero credit belongs nowhere.
+- Already satisfied before this work: FX frozen at departure (ACC-15) and the immutable price
+  override trail with mandatory reason (ACC-12).
+
+### The five traps, and what holds each one down
+
+The Finance note lists five ways the Odoo implementation failed silently. Each has a guard and a
+test; if you change this area, keep them.
+
+| Trap | Guard |
+|---|---|
+| 1 · A wrong chart looked right for weeks | The mapping is a setting, seeded to 713 not 701, and **every screen prints the account code and name beside the amount** |
+| 2 · Codes compared by prefix | Account lookups match the **full** code; a test asserts 4111/41110 and 70/701/713 stay distinct |
+| 3 · A sequence reset to 1 | Both invoice numbering and the commercial-document numbering derive from the **highest surviving record**, not a counter |
+| 4 · Deleting a parent orphaned its children | `Shipment → Packages` and every accounting FK are `Restrict`; a test asserts the delete behaviour on each |
+| 5 · What actually worked | Draft-first generation, mandatory override reason, FX frozen at departure — all three kept and covered |
+
+### Tests
+
+| Suite | Where | Covers |
+|---|---|---|
+| Backend (143) | `backend/ShippingPlatform.Api.Tests` | Pricing on the real 925 tariff, transition rules, invoice numbering and generation, declared value, the ledger, the financial reports, and the model guards above |
+| Frontend (104) | `frontend-new/src/**/*.test.ts(x)` | Formatting, price flags, JWT claims and expiry, audit helpers, RBAC, the dynamic-form schema builder, status label/colour coverage, payment allocation, and `Money` refusing to render without a currency |
+| E2E (126) | `frontend-new/e2e` | `invoicing.spec.ts` (Stage 1), `ledger.spec.ts` (posting, immutability, payments, credit notes, period lock, reports, RBAC), and `zz-real-shipment-925.spec.ts`, which invoices the real container and checks the books arrive at the BOL's **19,475,000 CFA** |
 
 ## Backend Architecture
 
@@ -205,6 +307,22 @@ Controllers → Business → Services → Data (AppDbContext)
 - `POST /customers/{customerId}/whatsapp/status?shipmentId=`, `/photos/departure?shipmentId=`, `/photos/arrival?shipmentId=`
 - `GET /whatsapp/campaigns`, `GET /whatsapp/campaigns/{id}`
 
+**Invoices** (`/api`) — Admin/Manager/Accountant
+- `POST /shipments/{id}/invoices/generate` — one draft per customer for packages not yet
+  invoiced. Safe to run twice (ACC-05); never posts to the ledger (ACC-04)
+- `GET /shipments/{id}/invoices`, `GET /invoices` [?state&customerId&shipmentId]
+- `GET /invoices/{id}` — lines, ledger entry, derived balance, payments
+- `GET /invoices/{id}/credit-notes`
+
+**Accounting** (`/api/accounting`) — Admin/Manager/Accountant
+- Invoices: `POST /invoices/{id}/post`, `/cancel`, `/credit-note`, `GET /invoices/{id}/balance`
+- Payments: `POST /payments`, `GET /payments`, `GET /customers/balances`,
+  `GET /customers/{id}/open-invoices`
+- Chart: `GET /accounts`, `POST /accounts`, `PUT /accounts/{id}` (Admin/Manager),
+  `GET /settings`, `PUT /settings` (Admin/Manager)
+- Periods: `GET /periods`, `POST /periods/{year}/{month}/close` | `/reopen` (Admin/Manager)
+- Ledger: `GET /entries/{id}`
+
 **Reports** (`/api/reports`) — Admin/Manager/Accountant
 - `GET /` — the report catalogue (key, title, description, supported filters)
 - `GET /{key}` [?from&to&customerId&shipmentId&shipmentStatus&originWarehouseId&destinationWarehouseId&limit]
@@ -212,6 +330,9 @@ Controllers → Business → Services → Data (AppDbContext)
   `customer-summary` (every customer: shipments, volume, weight, freight/fees/discounts,
   **Total Billed**), `top-customers` (ranked, with per-CBM and per-ton rates; `limit` default 15),
   `revenue-by-month`, `container-utilisation` (used vs max, % full, what it carried).
+  Four more read the ledger rather than the operational figures: `aged-receivable`
+  (30/60/90/90+, boundaries inclusive at the top of each bucket), `revenue-by-period`,
+  `general-ledger` and `trial-balance` (debits must equal credits).
   Rows are loose dictionaries keyed by column, so the page and the Excel writer render any
   report without bespoke code — a new report is one builder in `Services/ReportService.cs`
 
@@ -237,6 +358,12 @@ Controllers → Business → Services → Data (AppDbContext)
 | **StubWhatsAppSender** | No-op for dev (used when Twilio:AccountSid is empty) |
 | **ExportService** | ClosedXML Excel generation (BOL, customer invoices, commercial docs), VCF/CSV contacts |
 | **TransitionRuleService** | State machine validation for all 3 lifecycles |
+| **InvoiceNumberService** | `INV/{container}/NNN`, derived from the highest surviving invoice — there is no counter to reset |
+| **InvoiceGenerationService** | Drafts per customer per container; skips packages already carrying a line |
+| **PostingService** | Builds and writes balanced entries; refuses unbalanced, zero, or negative ones, and any entry dated into a closed period |
+| **InvoicePostingService** | Post / cancel / credit note — the only ways an invoice changes state |
+| **PaymentService** | Records a payment as its own entry and allocates it; derives every balance |
+| **AccountingSeed** | Seeds the chart (4111, 713, 40, 512, 530, 4457, 658, 701), four journals, three tax records, and the account mapping |
 
 ### Business (Business/)
 
@@ -282,7 +409,8 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 
 ### RBAC (src/helpers/rbac.ts + docs/ROLES_AND_PERMISSIONS.md)
 - 4 roles: Admin, Manager, Accountant, Field — JWT role claim
-- `MODULE_ACCESS` matrix + 13 `can*` helpers gate UI actions
+- `MODULE_ACCESS` matrix + `can*` helpers gate UI actions, including `canPostInvoice`,
+  `canRecordPayment`, `canManageChartOfAccounts` and `canClosePeriod` for the books
 - Route enforcement: `RequireAuth` (login) + `RequireModule` (per-module) in App.tsx
 
 ### Routes (src/App.tsx)
@@ -304,6 +432,13 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 - `/master/suppliers` → SuppliersPage (CRUD)
 - `/master/supply-orders` → SupplyOrdersPage (CRUD + lifecycle)
 
+**Finance (/finance)** — Admin/Manager/Accountant; field staff redirect to the dashboard
+- `/finance/invoices` → InvoicesPage (every invoice, filterable by state)
+- `/finance/invoices/:id` → InvoiceDetailPage (lines, journal entry with account names, payments,
+  credit notes; post / cancel / credit-note actions)
+- `/finance/receivables` → ReceivablesPage (customer balances, payments, record + allocate)
+- `/finance/accounts` → ChartOfAccountsPage (accounts, account mapping, period locking)
+
 **Communications (/comms)**
 - `/comms/messaging-logs` → MessagingLogsPage (campaigns + delivery logs)
 - `/comms/group-helper-export` → GroupHelperExportPage (CSV/VCF export)
@@ -320,6 +455,7 @@ React 19, Vite 8, TypeScript, shadcn/ui + Tailwind v4 (CVA + `cn()` — no tss-r
 | **Header + AppLauncher** | `components/layout/` | Current-app nav + grid launcher (search, role-filtered) |
 | **MainPageTitle / MainPageSection / DetailPageLayout** | `components/layout/` | Page chrome (teal headers, action stacks) |
 | **MediaStageCards / PhotoGalleryModal** | `components/media/` | Photo upload/display by stage + lightbox |
+| **Money** | `components/accounting/` | Renders an amount **only** with its currency — refuses rather than guessing (ACC-14) |
 | **StatusBadge / Breadcrumbs / EmptyState / TableSkeleton / LoadingButton** | `components/misc/`, `components/feedback/` | Atoms |
 
 ### Frontend Patterns
@@ -372,12 +508,24 @@ cd backend/ShippingPlatform.Api
 dotnet build
 dotnet run   # runs on configured port, auto-migrates DB
 
+# Backend unit tests (xUnit + EF InMemory)
+cd backend && dotnet test
+
+# Frontend unit tests (Vitest + Testing Library)
+cd frontend-new && npm run test:unit
+
 # Frontend
 cd frontend-new
 npm install
 npm run dev  # Vite dev server on :5173
 npm run build  # tsc -b && vite build
 npx tsc --noEmit -p tsconfig.app.json  # type check only
+
+# Backend unit tests (xUnit)
+cd backend && dotnet test
+
+# Frontend unit tests (Vitest)
+cd frontend-new && npm run test:unit
 
 # E2E (Playwright — boots backend on InMemory provider + vite automatically)
 cd frontend-new
@@ -394,4 +542,9 @@ npm run test:e2e   # requires backend `dotnet build` first (webServer uses --no-
 - **Inline supply orders:** Packages with ProcuredForCustomer can auto-create supply orders during creation
 - **Bulk transitions:** Validation pass first, all-or-nothing execution
 - **Capacity:** Sum of non-cancelled packages; threshold (default 80%) for UI warnings only
+- **Accounting:** double-entry behind the operational data. The chart, the account each posting
+  uses, and the open/closed months are all **data Finance maintains** — nothing in the posting
+  code names an account. Freight revenue maps to **713 (services)**, never 701 (merchandise);
+  account codes are matched **in full**, never by prefix. Every screen showing a posted amount
+  prints the account code and name beside it.
 - **AuditLog:** actively populated — auth events, user CRUD, currency CRUD, master data writes, pricing config CRUD + activate/retire, pricing overrides, customer writes/consent, shipment/package/supply-order transitions, media/document uploads, FX overrides. Viewable via `/audit-log` endpoints (Admin/Manager)

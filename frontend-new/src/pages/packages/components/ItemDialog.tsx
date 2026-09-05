@@ -55,6 +55,26 @@ const buildFields = (
     step: 0.01,
     grid: { sm: 6, md: 6 },
   },
+  // ACC-01: what the goods are worth, read by customs. This is not the freight
+  // and is never derived from it — the commercial invoice refuses to print
+  // rather than invent a figure, so an empty value here blocks that export.
+  declaredValue: {
+    type: DynamicField.NUMBER,
+    name: 'declaredValue',
+    title: 'Declared Value ($) — customs, not freight',
+    value: (initial?.declaredValue as number | string) ?? '',
+    min: 0,
+    step: 0.01,
+    grid: { sm: 6, md: 6 },
+  },
+  hsCode: {
+    type: DynamicField.TEXT,
+    name: 'hsCode',
+    title: 'HS Code',
+    placeholder: 'Blank = good type default',
+    value: (initial?.hsCode as string) ?? '',
+    grid: { sm: 6, md: 6 },
+  },
   note: {
     type: DynamicField.TEXT,
     name: 'note',
@@ -73,12 +93,17 @@ export function ItemDialog({
   onSaved,
 }: ItemDialogProps) {
   const submit = async (values: Record<string, unknown>): Promise<boolean> => {
-    const unitPrice = values.unitPrice === '' || values.unitPrice == null ? null : Number(values.unitPrice);
+    const optionalNumber = (v: unknown) => (v === '' || v == null ? null : Number(v));
     const body = {
       goodTypeId: Number(values.goodTypeId),
       quantity: Number(values.quantity),
       unit: values.unit,
-      unitPrice,
+      unitPrice: optionalNumber(values.unitPrice),
+      // Sent with its currency so no document can print it under another
+      // heading (ACC-14).
+      declaredValue: optionalNumber(values.declaredValue),
+      declaredValueCurrency: values.declaredValue ? 'USD' : null,
+      hsCode: values.hsCode || null,
       note: values.note || null,
     };
     try {

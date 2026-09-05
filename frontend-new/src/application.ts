@@ -12,6 +12,9 @@ import {
   MessageSquare,
   FileDown,
   UserCog,
+  Receipt,
+  Wallet,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { canSee, type UserRole } from '@/helpers/rbac';
@@ -62,6 +65,17 @@ export const buildApplications = (role: UserRole): AppGroup[] => {
         { name: 'suppliers', route: '/master/suppliers', title: 'Suppliers', description: 'Vendor list', icon: Building2, hidden: !visible(role, 'suppliers') },
         { name: 'supplyOrders', route: '/master/supply-orders', title: 'Supply Orders', description: 'Procurement', icon: ShoppingCart, hidden: !visible(role, 'supplyOrders') },
         { name: 'currencies', route: '/master/currencies', title: 'Currencies', description: 'FX rate chain', icon: Coins, hidden: !visible(role, 'currencies') },
+      ],
+    },
+    {
+      name: 'finance',
+      title: 'Finance',
+      route: '/finance',
+      color: '#2E7D5B',
+      modules: [
+        { name: 'invoices', route: '/finance/invoices', title: 'Invoices', description: 'Customer billing', icon: Receipt, hidden: !visible(role, 'invoices') },
+        { name: 'receivables', route: '/finance/receivables', title: 'Receivables', description: 'Balances & payments', icon: Wallet, hidden: !visible(role, 'receivables') },
+        { name: 'accounts', route: '/finance/accounts', title: 'Chart of Accounts', description: 'Accounts & periods', icon: BookOpen, hidden: !visible(role, 'accounts') },
       ],
     },
     {

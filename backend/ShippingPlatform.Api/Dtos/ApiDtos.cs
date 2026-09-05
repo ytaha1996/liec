@@ -75,13 +75,25 @@ public record InlineSupplyOrderRequest(int SupplierId, string Name, decimal Purc
 public record CreatePackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, decimal? WeightKg = null, decimal? Cbm = null, string? Note = null, List<UpsertPackageItemRequest>? Items = null, InlineSupplyOrderRequest? SupplyOrder = null);
 public record AutoAssignPackageRequest(int CustomerId, ProvisionMethod ProvisionMethod, int? SupplyOrderId, int OriginWarehouseId, int DestinationWarehouseId, InlineSupplyOrderRequest? SupplyOrder = null);
 public record UpdatePackageRequest(decimal? WeightKg, decimal? Cbm, string? Note);
-public record PackageItemDto(int Id, int PackageId, int GoodTypeId, string GoodTypeName, int Quantity, Unit Unit, decimal? UnitPrice, string UnitPriceCurrency, string? Note);
+public record PackageItemDto(int Id, int PackageId, int GoodTypeId, string GoodTypeName, int Quantity, Unit Unit, decimal? UnitPrice, string UnitPriceCurrency, string? Note, decimal? DeclaredValue, string? DeclaredValueCurrency, string? HsCode);
 
 /// <summary>
 /// PackageItem create/update payload.
 /// <para><c>UnitPrice</c>: when null on create, the service layer assigns 10m. On update, null preserves the existing value (no auto-default).</para>
 /// </summary>
-public record UpsertPackageItemRequest(int GoodTypeId, int Quantity = 1, Unit Unit = Unit.Box, decimal? UnitPrice = null, string? UnitPriceCurrency = null, string? Note = null);
+public record UpsertPackageItemRequest(
+    int GoodTypeId,
+    int Quantity = 1,
+    Unit Unit = Unit.Box,
+    decimal? UnitPrice = null,
+    string? UnitPriceCurrency = null,
+    string? Note = null,
+    // ACC-01: what the goods are worth, read by customs. Held in USD unless
+    // stated otherwise, and never defaulted from the freight.
+    decimal? DeclaredValue = null,
+    string? DeclaredValueCurrency = null,
+    // Left null to inherit the good type default (ACC-01).
+    string? HsCode = null);
 public record BulkUpsertPackageItemsRequest(List<UpsertPackageItemRequest>? Items);
 public record ApplyPricingOverrideRequest(PricingOverrideType OverrideType, decimal NewValue, string Reason);
 public record PricingOverrideDto(int Id, PricingOverrideType OverrideType, decimal OriginalValue, decimal NewValue, string Reason, DateTime CreatedAt);
@@ -108,7 +120,7 @@ public static class DtoMap
     public static PricingConfigDto ToDto(this PricingConfig x) => new(x.Id, x.Name, x.Currency, x.EffectiveFrom, x.EffectiveTo, x.DefaultRatePerKg, x.DefaultRatePerCbm, x.MinimumCharge, x.Status);
     public static ShipmentDto ToDto(this Shipment x) => new(x.Id, x.RefCode, x.TiiuCode, x.OriginWarehouseId, x.DestinationWarehouseId, x.PlannedDepartureDate, x.PlannedArrivalDate, x.ActualDepartureAt, x.ActualArrivalAt, x.Status, x.MaxWeightKg, x.MaxCbm, x.TotalWeightKg, x.TotalCbm, x.CreatedAt);
     public static PackageDto ToDto(this Package x) => new(x.Id, x.ShipmentId, x.CustomerId, x.ProvisionMethod, x.Status, x.WeightKg, x.Cbm, x.Currency, x.AppliedRatePerKg, x.AppliedRatePerCbm, x.ChargeAmount, x.HasDeparturePhotos, x.HasArrivalPhotos, x.HasPricingOverride, x.SupplyOrderId, x.Note, x.CreatedAt, x.PriceBasis, x.FeeAmount, x.FeeReason, x.DiscountAmount, x.DiscountReason, x.ChargeAmount + x.FeeAmount - x.DiscountAmount);
-    public static PackageItemDto ToDto(this PackageItem x) => new(x.Id, x.PackageId, x.GoodTypeId, x.GoodType?.NameEn ?? "", x.Quantity, x.Unit, x.UnitPrice, x.UnitPriceCurrency, x.Note);
+    public static PackageItemDto ToDto(this PackageItem x) => new(x.Id, x.PackageId, x.GoodTypeId, x.GoodType?.NameEn ?? "", x.Quantity, x.Unit, x.UnitPrice, x.UnitPriceCurrency, x.Note, x.DeclaredValue?.Amount, x.DeclaredValue?.CurrencyCode, x.HsCode);
     public static CurrencyDto ToDto(this Currency x) => new(x.Id, x.Code, x.Name, x.Symbol, x.IsBase, x.AnchorCurrencyCode, x.Rate, x.IsActive, x.UpdatedAt);
     public static ShipmentRateSnapshotDto ToDto(this ShipmentRateSnapshot x) => new(x.Id, x.ShipmentId, x.Event, x.CurrencyCode, x.RateToBase, x.CapturedAt);
 }

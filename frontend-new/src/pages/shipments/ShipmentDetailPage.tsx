@@ -29,6 +29,7 @@ import { AddPackageDialog } from './components/AddPackageDialog';
 import { EditShipmentDrawer } from './components/EditShipmentDrawer';
 import { ReadyToDepartPreviewDialog } from './components/ReadyToDepartPreviewDialog';
 import { WhatsAppSendCards } from '@/components/messaging/WhatsAppSendCards';
+import { InvoicesSection } from './components/InvoicesSection';
 import { FxSnapshotsSection } from './components/FxSnapshotsSection';
 import { EditPackageDialog } from '../packages/components/EditPackageDialog';
 
@@ -515,6 +516,8 @@ export default function ShipmentDetailPage() {
             customerCount={uniqueCustomerCount}
           />
         )}
+
+        {canExport(role) && <InvoicesSection shipmentId={id} canInvoice={canExport(role)} />}
 
         <FxSnapshotsSection shipmentId={id} canManage={canManageShipments(role)} />
 

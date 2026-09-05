@@ -45,3 +45,17 @@ export const PRICE_BASIS_LABELS: Record<string, string> = {
   Minimum: 'Minimum charge',
   Custom: 'Custom',
 };
+
+// Accounting document states (ACC-04): drafts are reviewed, then posted.
+export const INVOICE_STATE_LABELS: Record<string, string> = {
+  Draft: 'Draft',
+  Posted: 'Posted',
+  Cancelled: 'Cancelled',
+};
+
+// ACC-18: derived from allocations, never a stored flag.
+export const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  Unpaid: 'Unpaid',
+  'Partially paid': 'Part paid',
+  Paid: 'Paid',
+};

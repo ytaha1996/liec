@@ -27,6 +27,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PackagePricingOverride> PricingOverrides => Set<PackagePricingOverride>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // ── Accounting ──
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
+    public DbSet<Tax> Taxes => Set<Tax>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<AccountingSettings> AccountingSettings => Set<AccountingSettings>();
+    public DbSet<Journal> Journals => Set<Journal>();
+    public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Customer>().HasOne(x => x.WhatsAppConsent).WithOne(x => x.Customer).HasForeignKey<WhatsAppConsent>(x => x.CustomerId);
@@ -86,6 +99,109 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<WhatsAppDeliveryLog>().HasIndex(x => x.Result);
         modelBuilder.Entity<AuditLog>().HasIndex(x => x.AdminUserId);
         modelBuilder.Entity<AuditLog>().HasIndex(x => x.CreatedAt);
+
+        // ── Accounting ──
+        // ACC-07/08: one number per invoice, ever. The unique index is the last
+        // line of defence behind the numbering service.
+        modelBuilder.Entity<Invoice>().HasIndex(x => x.Number).IsUnique();
+        modelBuilder.Entity<Invoice>().HasIndex(x => new { x.ShipmentId, x.CustomerId });
+        modelBuilder.Entity<Invoice>().Property(x => x.UntaxedTotal).HasPrecision(18, 2);
+        modelBuilder.Entity<Invoice>().Property(x => x.TaxTotal).HasPrecision(18, 2);
+        modelBuilder.Entity<Invoice>().Property(x => x.GrandTotal).HasPrecision(18, 2);
+
+        // An invoiced container or customer cannot be deleted out from under
+        // the books, and a credit note keeps pointing at what it reverses.
+        modelBuilder.Entity<Invoice>()
+            .HasOne(x => x.Shipment).WithMany()
+            .HasForeignKey(x => x.ShipmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Invoice>()
+            .HasOne(x => x.Customer).WithMany()
+            .HasForeignKey(x => x.CustomerId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Invoice>()
+            .HasOne(x => x.ReversesInvoice).WithMany()
+            .HasForeignKey(x => x.ReversesInvoiceId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<InvoiceLine>().HasIndex(x => x.InvoiceId);
+        modelBuilder.Entity<InvoiceLine>()
+            .HasOne(x => x.Invoice).WithMany(i => i.Lines)
+            .HasForeignKey(x => x.InvoiceId)
+            .OnDelete(DeleteBehavior.Cascade);
+        // A billed package stays billed: it cannot be deleted while a line
+        // references it (trap 4).
+        modelBuilder.Entity<InvoiceLine>()
+            .HasOne(x => x.Package).WithMany()
+            .HasForeignKey(x => x.PackageId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ACC-14: amounts are stored with their currency, never bare.
+        modelBuilder.Entity<InvoiceLine>().OwnsOne(x => x.Amount, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("Amount").HasPrecision(18, 2);
+            m.Property(p => p.CurrencyCode).HasColumnName("AmountCurrency").HasMaxLength(3);
+        });
+        modelBuilder.Entity<PackageItem>().OwnsOne(x => x.DeclaredValue, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("DeclaredValueAmount").HasPrecision(18, 2);
+            m.Property(p => p.CurrencyCode).HasColumnName("DeclaredValueCurrency").HasMaxLength(3);
+        });
+
+        modelBuilder.Entity<Tax>().HasIndex(x => x.Code).IsUnique();
+
+        // ── Ledger ──
+        // Full-code uniqueness: two charts were once judged aligned by comparing
+        // prefixes when they shared almost no actual account numbers (trap 2).
+        modelBuilder.Entity<Account>().HasIndex(x => x.Code).IsUnique();
+        modelBuilder.Entity<Journal>().HasIndex(x => x.Code).IsUnique();
+        modelBuilder.Entity<AccountingPeriod>().HasIndex(x => new { x.Year, x.Month }).IsUnique();
+        modelBuilder.Entity<JournalEntry>().HasIndex(x => x.Number).IsUnique();
+        modelBuilder.Entity<JournalEntry>().HasIndex(x => x.AccountingDate);
+        modelBuilder.Entity<JournalEntry>()
+            .HasOne(x => x.Journal).WithMany().HasForeignKey(x => x.JournalId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<JournalEntry>()
+            .HasOne(x => x.Period).WithMany().HasForeignKey(x => x.PeriodId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<JournalEntryLine>().HasIndex(x => x.JournalEntryId);
+        modelBuilder.Entity<JournalEntryLine>().HasIndex(x => x.AccountId);
+        modelBuilder.Entity<JournalEntryLine>().Property(x => x.Debit).HasPrecision(18, 2);
+        modelBuilder.Entity<JournalEntryLine>().Property(x => x.Credit).HasPrecision(18, 2);
+        modelBuilder.Entity<JournalEntryLine>()
+            .HasOne(x => x.JournalEntry).WithMany(e => e.Lines).HasForeignKey(x => x.JournalEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+        // A posted account cannot be deleted from under the books.
+        modelBuilder.Entity<JournalEntryLine>()
+            .HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ── Payments ──
+        modelBuilder.Entity<Payment>().HasIndex(x => x.Number).IsUnique();
+        modelBuilder.Entity<Payment>().HasIndex(x => x.CustomerId);
+        modelBuilder.Entity<Payment>().OwnsOne(x => x.Amount, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("Amount").HasPrecision(18, 2);
+            m.Property(p => p.CurrencyCode).HasColumnName("AmountCurrency").HasMaxLength(3);
+        });
+        modelBuilder.Entity<Payment>()
+            .HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentAllocation>().Property(x => x.Amount).HasPrecision(18, 2);
+        modelBuilder.Entity<PaymentAllocation>().HasIndex(x => new { x.PaymentId, x.InvoiceId }).IsUnique();
+        modelBuilder.Entity<PaymentAllocation>()
+            .HasOne(x => x.Payment).WithMany(p => p.Allocations).HasForeignKey(x => x.PaymentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        // An allocated invoice stays allocated — it cannot vanish from the books.
+        modelBuilder.Entity<PaymentAllocation>()
+            .HasOne(x => x.Invoice).WithMany().HasForeignKey(x => x.InvoiceId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Invoice>().HasOne<JournalEntry>().WithMany()
+            .HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Tax>().Property(x => x.Rate).HasPrecision(9, 4);
+
+        modelBuilder.Entity<Package>().HasIndex(x => x.InvoiceLineId);
 
         // ── Restrict cascade-delete on parents (Task 6.4) ──
         modelBuilder.Entity<Shipment>()

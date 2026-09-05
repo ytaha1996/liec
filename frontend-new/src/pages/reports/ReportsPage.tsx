@@ -79,8 +79,11 @@ export default function ReportsPage() {
 
   useInitializeFunction([catalogue.reload, customers.reload, shipments.reload, warehouses.reload]);
 
-  const definition = (catalogue.data ?? []).find((d) => d.key === selected);
-  const filters = definition?.filters ?? [];
+  const definition = useMemo(
+    () => (catalogue.data ?? []).find((d) => d.key === selected),
+    [catalogue.data, selected],
+  );
+  const filters = useMemo(() => definition?.filters ?? [], [definition]);
   const supports = (name: string) => filters.includes(name);
 
   // Only the filters this report honours reach the API — sending the rest would

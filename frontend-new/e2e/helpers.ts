@@ -78,3 +78,13 @@ export async function fillField(page: Page, label: string | RegExp, value: strin
 export async function submitForm(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: 'Submit' }).click();
 }
+
+// Scope to one EnhancedTable when a page shows several. The table's card root
+// carries `rounded-lg` and its own <h3> title, so the same customer appearing
+// in two tables no longer makes a row selector ambiguous.
+export function tableByTitle(page: Page, title: string) {
+  return page
+    .locator('div.rounded-lg')
+    .filter({ has: page.getByRole('heading', { level: 3, name: title, exact: true }) })
+    .first();
+}

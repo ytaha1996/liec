@@ -3,7 +3,11 @@ import { API } from './helpers';
 
 // The report catalogue. Runs after the data-creating specs (alphabetical), so
 // shipments, packages, fees and discounts already exist.
-const KEYS = ['customer-summary', 'top-customers', 'revenue-by-month', 'container-utilisation'];
+// Operational reports, then the financial ones the accounting layer added.
+const KEYS = [
+  'customer-summary', 'top-customers', 'revenue-by-month', 'container-utilisation',
+  'aged-receivable', 'revenue-by-period', 'general-ledger', 'trial-balance',
+];
 
 interface Report {
   key: string;

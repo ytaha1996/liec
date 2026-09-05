@@ -85,6 +85,13 @@ else
     builder.Services.AddScoped<IWhatsAppSender, StubWhatsAppSender>();
 builder.Services.AddScoped<IExportService, ExportService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+
+// ── Accounting ──
+builder.Services.AddScoped<ShippingPlatform.Api.Services.Accounting.IInvoiceNumberService, ShippingPlatform.Api.Services.Accounting.InvoiceNumberService>();
+builder.Services.AddScoped<ShippingPlatform.Api.Services.Accounting.IInvoiceGenerationService, ShippingPlatform.Api.Services.Accounting.InvoiceGenerationService>();
+builder.Services.AddScoped<ShippingPlatform.Api.Services.Accounting.IPostingService, ShippingPlatform.Api.Services.Accounting.PostingService>();
+builder.Services.AddScoped<ShippingPlatform.Api.Services.Accounting.IInvoicePostingService, ShippingPlatform.Api.Services.Accounting.InvoicePostingService>();
+builder.Services.AddScoped<ShippingPlatform.Api.Services.Accounting.IPaymentService, ShippingPlatform.Api.Services.Accounting.PaymentService>();
 builder.Services.AddScoped<IInvoiceSequenceService, InvoiceSequenceService>();
 builder.Services.AddSingleton(sp => InvoiceTemplateConstants.FromConfig(sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddScoped<ShippingPlatform.Api.Services.FxRates.IFxRateService, ShippingPlatform.Api.Services.FxRates.FxRateService>();
@@ -227,6 +234,9 @@ using (var scope = app.Services.CreateScope())
 
     // ── Customers ───────────────────────────────────────────────────────────
     SeedHelper.SeedCustomers(db);
+
+    // ── Chart of accounts, journals and tax records (ACC-02, ACC-16) ──
+    ShippingPlatform.Api.Services.Accounting.AccountingSeed.EnsureAsync(db).GetAwaiter().GetResult();
 }
 
 app.Run();

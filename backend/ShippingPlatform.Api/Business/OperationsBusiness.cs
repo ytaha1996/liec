@@ -480,7 +480,7 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             if (input.Items is { Count: > 0 })
             {
                 foreach (var item in input.Items)
-                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, Unit = item.Unit, UnitPrice = item.UnitPrice, UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(), GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
+                    db.PackageItems.Add(new PackageItem { PackageId = package.Id, Unit = item.Unit, UnitPrice = item.UnitPrice, UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(), DeclaredValue = DeclaredValueOf(item), HsCode = await HsCodeOf(item), GoodTypeId = item.GoodTypeId, Quantity = item.Quantity, Note = item.Note });
                 await db.SaveChangesAsync();
             }
 
@@ -703,10 +703,10 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
             GoodTypeId = item.GoodTypeId,
             Quantity = item.Quantity,
             Unit = item.Unit,
-            // UnitPrice is nullable end-to-end; null means "not specified". Display layers
-            // (e.g., the commercial invoice) handle null with a documented fallback.
             UnitPrice = item.UnitPrice,
             UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(),
+            DeclaredValue = DeclaredValueOf(item),
+            HsCode = await HsCodeOf(item),
             Note = item.Note,
         };
         db.PackageItems.Add(entity);
@@ -715,6 +715,22 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         return (entity.ToDto(), null);
     }
 
+    /// <summary>
+    /// ACC-01: the declared value is what the goods are worth and is stored with
+    /// its currency (ACC-14). Absent means absent — it is never inferred from the
+    /// freight, and the commercial invoice refuses to print rather than guess.
+    /// </summary>
+    private static Money? DeclaredValueOf(UpsertPackageItemRequest item)
+        => item.DeclaredValue is { } amount
+            ? new Money(amount, string.IsNullOrWhiteSpace(item.DeclaredValueCurrency) ? "USD" : item.DeclaredValueCurrency)
+            : null;
+
+    /// <summary>An item inherits the customs code of its good type unless told otherwise.</summary>
+    private async Task<string?> HsCodeOf(UpsertPackageItemRequest item)
+        => !string.IsNullOrWhiteSpace(item.HsCode)
+            ? item.HsCode.Trim()
+            : (await db.GoodTypes.FindAsync(item.GoodTypeId))?.DefaultHsCode;
+
     public async Task<(List<PackageItemDto>? dtos, object? error)> AddItemsBulkAsync(int id, List<UpsertPackageItemRequest> items)
     {
         var p = await db.Packages.FindAsync(id);
@@ -722,16 +738,22 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (p.Status >= PackageStatus.ArrivedAtDestination) return (null, new { code = "PACKAGE_LOCKED", message = "Items cannot be modified once the package has arrived at destination." });
         if (items.Count == 0) return (new List<PackageItemDto>(), null);
 
-        var entities = items.Select(item => new PackageItem
+        var entities = new List<PackageItem>();
+        foreach (var item in items)
         {
-            PackageId = id,
-            GoodTypeId = item.GoodTypeId,
-            Quantity = item.Quantity,
-            Unit = item.Unit,
-            UnitPrice = item.UnitPrice,
-            UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(),
-            Note = item.Note,
-        }).ToList();
+            entities.Add(new PackageItem
+            {
+                PackageId = id,
+                GoodTypeId = item.GoodTypeId,
+                Quantity = item.Quantity,
+                Unit = item.Unit,
+                UnitPrice = item.UnitPrice,
+                UnitPriceCurrency = (item.UnitPriceCurrency ?? "USD").ToUpperInvariant(),
+                DeclaredValue = DeclaredValueOf(item),
+                HsCode = await HsCodeOf(item),
+                Note = item.Note,
+            });
+        }
         db.PackageItems.AddRange(entities);
         await db.SaveChangesAsync();
         foreach (var e in entities) await db.Entry(e).Reference(x => x.GoodType).LoadAsync();
@@ -752,6 +774,8 @@ public class PackageBusiness(AppDbContext db, IPricingService pricing, IPhotoCom
         if (input.UnitPrice.HasValue) i.UnitPrice = input.UnitPrice.Value;
         if (!string.IsNullOrWhiteSpace(input.UnitPriceCurrency))
             i.UnitPriceCurrency = input.UnitPriceCurrency.ToUpperInvariant();
+        if (input.DeclaredValue.HasValue) i.DeclaredValue = DeclaredValueOf(input);
+        if (!string.IsNullOrWhiteSpace(input.HsCode)) i.HsCode = input.HsCode.Trim();
         i.Note = input.Note;
         await db.SaveChangesAsync();
         await db.Entry(i).Reference(x => x.GoodType).LoadAsync();
